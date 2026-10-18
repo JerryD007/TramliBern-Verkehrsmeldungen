@@ -1,4 +1,4 @@
-name: TramliBern BERNMOBIL Diagnose
+name: TramliBern Haltestellen-ID-Abgleich
 
 on:
   workflow_dispatch:
@@ -7,98 +7,176 @@ permissions:
   contents: read
 
 jobs:
-  bernmobil-diagnose:
+  haltestellen-abgleich:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Python vorbereiten
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
       - name: Requests installieren
         run: python -m pip install requests
-      - name: BERNMOBIL Kennungen untersuchen
+
+      - name: Fuenf Haltestellen und GTFS-SA vergleichen
         env:
           API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
         run: |
           python - <<'PY'
+          import csv
+          import io
           import os
           import re
+          import tempfile
+          import unicodedata
+          import zipfile
           from collections import Counter
           from datetime import datetime, timezone
+          from pathlib import Path
+          from urllib.parse import urlencode
+
           import requests
+
+          STOPS = [
+              'Bern, Giacomettistrasse',
+              'Bern, Ostring',
+              'Bern, Zentrum Paul Klee',
+              'Bern, Burgernziel',
+              'Bern, Brunnadernstrasse',
+          ]
+          API = 'https://api.opentransportdata.swiss/la/gtfs-sa?format=json'
+          DATASET = 'https://data.opentransportdata.swiss/api/3/action/package_show'
+          PACKAGE = 'timetable-2026-gtfs2020'
+
+          def normalized(s):
+              s = unicodedata.normalize('NFKD', str(s))
+              s = ''.join(c for c in s if not unicodedata.combining(c))
+              return re.sub(r'[^a-z0-9]+', ' ', s.casefold()).strip()
+
+          def acceptable_name(name, wanted):
+              a, b = normalized(name), normalized(wanted)
+              return a == b or a == normalized(wanted.split(', ', 1)[-1])
+
+          def selectors(alert):
+              raw = alert.get('informedEntity', [])
+              return raw if isinstance(raw, list) else []
 
           token = os.environ.get('API_TOKEN', '').strip()
           if not token:
-              raise SystemExit('FEHLER: GitHub Secret OPENTRANSPORT_API_TOKEN fehlt.')
+              raise SystemExit('FEHLER: GitHub-Secret OPENTRANSPORT_API_TOKEN fehlt.')
 
-          url = 'https://api.opentransportdata.swiss/la/gtfs-sa?format=json'
-          response = requests.get(url, headers={
+          session = requests.Session()
+          print('=== TramliBern: offizieller Haltestellen-ID-Abgleich ===', flush=True)
+          print('Haltestellen:', ' | '.join(STOPS), flush=True)
+
+          # CKAN-Katalog: aktuellste offizielle GTFS-Static-ZIP des Jahres 2026.
+          meta = session.get(DATASET, params={'id': PACKAGE}, timeout=45)
+          meta.raise_for_status()
+          catalog = meta.json()
+          if not catalog.get('success'):
+              raise SystemExit('FEHLER: GTFS-Static-Katalog nicht abrufbar.')
+          resources = catalog['result']['resources']
+          candidates = []
+          for resource in resources:
+              name = str(resource.get('name') or resource.get('url') or '')
+              filename = re.search(r'gtfs_fp2026_(\d{8})\.zip', name, re.I)
+              link = str(resource.get('url', ''))
+              if filename and link.startswith('https://'):
+                  candidates.append((filename.group(1), link))
+          if not candidates:
+              raise SystemExit('FEHLER: Keine GTFS-2026-ZIP im offiziellen Katalog gefunden.')
+          stamp, gtfs_url = max(candidates)
+          print('Offizieller GTFS-Static-Stand:', stamp, flush=True)
+          print('Hinweis: Einmaliger Diagnosetest, ZIP kann mehr als 200 MB gross sein.', flush=True)
+
+          # ZIP auf Platte streamen, nicht komplett in RAM halten.
+          with tempfile.TemporaryDirectory() as tempdir:
+              local = Path(tempdir) / 'gtfs.zip'
+              with session.get(gtfs_url, stream=True, timeout=(30, 180)) as response:
+                  response.raise_for_status()
+                  with local.open('wb') as output:
+                      for chunk in response.iter_content(chunk_size=1024 * 1024):
+                          if chunk:
+                              output.write(chunk)
+              print('GTFS ZIP heruntergeladen:', local.stat().st_size, 'Bytes', flush=True)
+              with zipfile.ZipFile(local) as archive:
+                  stopfiles = [n for n in archive.namelist() if n.lower().endswith('stops.txt')]
+                  if not stopfiles:
+                      raise SystemExit('FEHLER: stops.txt ist in der GTFS-ZIP nicht vorhanden.')
+                  with archive.open(stopfiles[0]) as raw:
+                      rows = list(csv.DictReader(io.TextIOWrapper(raw, encoding='utf-8-sig')))
+
+          print('GTFS-Haltestellen-Datensaetze:', len(rows), flush=True)
+          matched_ids = {}
+          for wanted in STOPS:
+              found = [row for row in rows if acceptable_name(row.get('stop_name', ''), wanted)]
+              # Alle Haltekanten behalten; die grossen Parent-Datensaetze separat erkennen.
+              identifiers = set()
+              bases = set()
+              for row in found:
+                  for field in ('stop_id', 'original_stop_id'):
+                      value = (row.get(field) or '').strip()
+                      if value:
+                          identifiers.add(value)
+                          # Auch Stammscheid ohne Haltekanten-Teil als Abgleichhilfe.
+                          match = re.match(r'(ch:1:sloid:[0-9]+)', value)
+                          if match:
+                              bases.add(match.group(1))
+              matched_ids[wanted] = identifiers | bases
+              print('\nHALTESTELLE:', wanted, flush=True)
+              print('  GTFS-Zeilen mit exakt passendem Namen:', len(found), flush=True)
+              print('  Zugeordnete IDs (inkl. SLOID-Stamm):', len(matched_ids[wanted]), flush=True)
+              for row in found[:12]:
+                  print('  stop_name={name} | stop_id={id} | original_stop_id={original} | parent={parent} | didok={didok}'.format(
+                      name=row.get('stop_name', ''), id=row.get('stop_id', ''),
+                      original=row.get('original_stop_id', ''),
+                      parent=row.get('parent_station', ''), didok=row.get('didok', '')
+                  ), flush=True)
+              if not found:
+                  print('  NICHT ZUGEORDNET: Namensvariante im offiziellen GTFS pruefen!', flush=True)
+
+          # Service Alerts aus dem bereits erfolgreich getesteten JSON-Diagnosezugang.
+          reply = session.get(API, headers={
               'Authorization': 'Bearer ' + token,
-              'User-Agent': 'TramliBern-GitHub-Diagnose',
+              'User-Agent': 'TramliBern-GitHub-Haltestellenabgleich',
               'Accept': 'application/json',
           }, timeout=120)
-          print('HTTP:', response.status_code, flush=True)
-          response.raise_for_status()
-          data = response.json()
+          print('\nGTFS-SA HTTP:', reply.status_code, flush=True)
+          reply.raise_for_status()
+          data = reply.json()
           entities = data.get('entity', [])
-          print('Gesamte Schweizer Eintraege:', len(entities))
+          print('Schweizer GTFS-SA-Eintraege:', len(entities), flush=True)
 
-          agencies = Counter()
-          routes = Counter()
-          stops = Counter()
-          bern_hits = []
-          matched_agencies = Counter()
-          keyword = re.compile(r'bern\s*mobil|bernmobil', re.I)
-
-          def translations(field):
-              if not isinstance(field, dict):
-                  return []
-              return [t.get('text', '') for t in field.get('translation', [])
-                      if isinstance(t, dict) and isinstance(t.get('text'), str)]
-
-          for entry in entities:
-              alert = entry.get('alert', {})
-              if not isinstance(alert, dict):
-                  continue
-              selectors = alert.get('informedEntity', [])
-              if not isinstance(selectors, list):
-                  selectors = []
-              for s in selectors:
-                  if not isinstance(s, dict):
+          # Nur Diagnose: Stop-Schnittmenge; keine Behauptung, dass Linien- oder
+          # richtungsbasierte Meldungen ohne explizite stopId bereits erfasst sind.
+          all_agencies = Counter()
+          for wanted, ids in matched_ids.items():
+              matches = []
+              for entity in entities:
+                  alert = entity.get('alert', {})
+                  if not isinstance(alert, dict):
                       continue
-                  if s.get('agencyId'):
-                      agencies[str(s['agencyId'])] += 1
-                  if s.get('routeId'):
-                      routes[str(s['routeId'])] += 1
-                  if s.get('stopId'):
-                      stops[str(s['stopId'])] += 1
-              texts = (translations(alert.get('headerText')) +
-                       translations(alert.get('descriptionText')) +
-                       translations(alert.get('causeDetail')) +
-                       translations(alert.get('effectDetail')))
-              if any(keyword.search(t) for t in texts):
-                  for s in selectors:
-                      if isinstance(s, dict) and s.get('agencyId'):
-                          matched_agencies[str(s['agencyId'])] += 1
-                  sample = next((t for t in texts if keyword.search(t)), '')
-                  first_selectors = [s for s in selectors if isinstance(s, dict)][:3]
-                  bern_hits.append((entry.get('id','?'), sample[:120].replace('\n',' '), first_selectors))
+                  for sel in selectors(alert):
+                      if not isinstance(sel, dict):
+                          continue
+                      stop_id = str(sel.get('stopId') or '')
+                      original_id = str(sel.get('originalStopId') or '')
+                      if (stop_id in ids or original_id in ids) and ids:
+                          agency = str(sel.get('agencyId') or '-')
+                          all_agencies[agency] += 1
+                          matches.append((str(entity.get('id', '')), agency,
+                                          str(sel.get('routeId') or '-'), stop_id, original_id))
+                          break
+              print('\nGTFS-SA: ', wanted, flush=True)
+              print('  Alerts mit explizit uebereinstimmender stopId:', len(matches), flush=True)
+              for row in matches[:10]:
+                  print('  alertId={} | agencyId={} | routeId={} | stopId={} | originalStopId={}'.format(*row), flush=True)
+              if not matches:
+                  print('  Kein expliziter Treffer. Das bedeutet NICHT automatisch stoerungsfrei.', flush=True)
 
-          print('\nHaeufigste Betreiberkennungen im Feed (nicht automatisch BERNMOBIL):')
-          for key, count in agencies.most_common(15):
-              print(' agencyId:', key, '| Selektoren:', count)
-          print('\nExplizite BERNMOBIL-Nennung in Meldungstexten:', len(bern_hits))
-          print('Betreiberkennungen bei solchen Nennungen (nur Hinweise):')
-          for key, count in matched_agencies.most_common(15):
-              print(' agencyId:', key, '| Selektoren:', count)
-          print('\nBis zu 5 BERNMOBIL-Texttreffer mit Kennungen:')
-          for ident, snippet, selectors in bern_hits[:5]:
-              print('Meldungs-ID:', ident)
-              print(' Text:', snippet)
-              print(' Erste Selektoren:', selectors)
-          print('\nBeispiele vorhandener routeId:', [r for r, _ in routes.most_common(8)])
-          print('Beispiele vorhandener stopId:', [s for s, _ in stops.most_common(8)])
-          print('Zeitpunkt UTC:', datetime.now(timezone.utc).isoformat())
-          print('WICHTIG: Noch kein verlaesslicher BERNMOBIL-Filter.')
-          print('Naechster Schritt: agencyId mit offiziellen GTFS-Stammdaten verifizieren.')
+          print('\nBetreiberkennungen der expliziten Stop-Treffer:', all_agencies.most_common(10), flush=True)
+          print('WICHTIG: Noch keine fertige Betriebsstoerungsanzeige; Betreiber, Linien,', flush=True)
+          print('Richtungen, Zeitfenster und Namensvarianten muessen separat validiert werden.', flush=True)
+          print('DIAGNOSE ABGESCHLOSSEN.', flush=True)
           PY
