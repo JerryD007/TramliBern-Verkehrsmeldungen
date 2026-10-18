@@ -1,13 +1,15 @@
-name: TramliBern SLOID-Abgleich
+name: TramliBern BERNMOBIL Filter (Testbetrieb)
 
 on:
   workflow_dispatch:
+  # JSON ist beim Anbieter nur fuer Tests vorgesehen.
+  # Automatischen Dauerbetrieb erst mit GTFS-SA-Binaerparser aktivieren.
 
 permissions:
   contents: read
 
 jobs:
-  sloid-abgleich:
+  bermobil-filter-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -15,108 +17,128 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
       - name: Requests installieren
         run: python -m pip install requests
-
-      - name: Fuenf Stations-IDs mit SLOIDs abgleichen
+      - name: Aktuelle BERNMOBIL-Verkehrsmeldungen filtern
+        env:
+          API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
         run: |
           python - <<'PY'
-          import csv
-          import io
+          import os
           import re
+          import json
           import requests
+          from datetime import datetime, timezone
+          from collections import Counter
 
-          STATIONS = {
-              '8590090': 'Bern, Giacomettistrasse',
-              '8587480': 'Bern, Ostring',
-              '8590127': 'Bern, Zentrum Paul Klee',
-              '8587481': 'Bern, Burgernziel',
-              '8507061': 'Bern, Brunnadernstrasse',
+          STOPS = {
+              '8590090': ('Bern, Giacomettistrasse', 'ch:1:sloid:90090'),
+              '8587480': ('Bern, Ostring', 'ch:1:sloid:87480'),
+              '8590127': ('Bern, Zentrum Paul Klee', 'ch:1:sloid:90127'),
+              '8587481': ('Bern, Burgernziel', 'ch:1:sloid:87481'),
+              '8507061': ('Bern, Brunnadernstrasse', 'ch:1:sloid:7061'),
           }
+          token = os.environ.get('API_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('GitHub Secret OPENTRANSPORT_API_TOKEN fehlt.')
+          url = 'https://api.opentransportdata.swiss/la/gtfs-sa/?format=json'
+          r = requests.get(url, headers={
+              'Authorization': 'Bearer ' + token,
+              'User-Agent': 'TramliBern-Diagnose',
+              'Accept': 'application/json',
+              'Accept-Encoding': 'gzip, deflate',
+          }, timeout=120)
+          print('HTTP:', r.status_code, flush=True)
+          r.raise_for_status()
+          payload = r.json()
+          if not isinstance(payload, dict) or not isinstance(payload.get('entity'), list):
+              raise SystemExit('Unerwartete GTFS-SA-JSON-Struktur')
+          now = int(datetime.now(timezone.utc).timestamp())
 
-          # Oeffentlicher SBB-DiDok-Export, ohne GitHub-Secret.
-          URL = (
-              'https://data.sbb.ch/api/v2/catalog/datasets/'
-              'dienststellen-gemass-opentransportdataswiss/exports/csv'
-              '?use_labels=false'
-          )
-          print('=== TramliBern: Stations-ID zu offizieller SLOID ===', flush=True)
-          print('Datenquelle: SBB Open Data, Dienststellen (DiDok)', flush=True)
-          try:
-              response = requests.get(URL, timeout=120)
-              print('HTTP:', response.status_code, flush=True)
-              response.raise_for_status()
-              response.encoding = 'utf-8-sig'
-          except requests.RequestException as exc:
-              raise SystemExit('Export konnte nicht geladen werden: ' + str(exc))
+          def active(alert):
+              periods = alert.get('activePeriod') or []
+              if not periods:
+                  return True
+              if not isinstance(periods, list):
+                  return False
+              for p in periods:
+                  if not isinstance(p, dict):
+                      continue
+                  try:
+                      start = int(p.get('start') or 0)
+                      end = int(p.get('end') or 253402300799)
+                  except (ValueError, TypeError):
+                      continue
+                  if start <= now <= end:
+                      return True
+              return False
 
-          raw = response.text
-          if not raw.strip():
-              raise SystemExit('FEHLER: Leerer CSV-Export.')
-          print('Groesse:', len(response.content), 'Bytes', flush=True)
-          sample = raw[:8192]
-          try:
-              delimiter = csv.Sniffer().sniff(sample, delimiters=';,\t|').delimiter
-          except csv.Error:
-              delimiter = ';'
-          reader = csv.DictReader(io.StringIO(raw), delimiter=delimiter)
-          fields = reader.fieldnames or []
-          if not fields:
-              raise SystemExit('FEHLER: CSV hat keine Spaltenueberschriften.')
-          print('CSV-Spalten:', fields[:35], flush=True)
+          def language_text(field):
+              if not isinstance(field, dict):
+                  return ''
+              values = field.get('translation') or []
+              if not isinstance(values, list):
+                  return ''
+              entries = [t for t in values if isinstance(t, dict) and isinstance(t.get('text'), str)]
+              if not entries:
+                  return ''
+              for lang in ('de', 'de-CH', 'de_CH'):
+                  for t in entries:
+                      if t.get('language') == lang:
+                          return t['text'].strip()
+              return entries[0]['text'].strip()
 
-          # Der Export kann Spaltennamen aendern. Suche die bestaetigten
-          # 7-stelligen Stationsnummern als ganze Zellen, nicht als Teilstrings.
-          matches = {key: [] for key in STATIONS}
-          total_rows = 0
-          sloid_pattern = re.compile(r'ch:1:sloid:\d+(?::\d+){0,3}')
-          for row in reader:
-              total_rows += 1
-              values = {k: str(v or '').strip() for k, v in row.items() if k}
-              found_ids = set(values.values()) & set(STATIONS)
-              if not found_ids:
+          def matches_stop(selector_id, parent):
+              return selector_id == parent or selector_id.startswith(parent + ':')
+
+          results = {number: [] for number in STOPS}
+          counts = Counter()
+          route_only = 0
+          for item in payload['entity']:
+              alert = item.get('alert') if isinstance(item, dict) else None
+              if not isinstance(alert, dict) or not active(alert):
                   continue
-              sloids = sorted(set(
-                  item.group(0)
-                  for value in values.values()
-                  for item in sloid_pattern.finditer(value)
-              ))
-              for station_id in found_ids:
-                  matches[station_id].append({
-                      'sloids': sloids,
-                      'details': {
-                          k: v for k, v in values.items()
-                          if v and (
-                              'name' in k.lower() or 'designation' in k.lower()
-                              or 'bezeichnung' in k.lower() or 'sloid' in k.lower()
-                              or 'number' in k.lower() or 'nummer' in k.lower()
-                          )
-                      },
+              selectors = alert.get('informedEntity') or []
+              if not isinstance(selectors, list):
+                  continue
+              selectors = [s for s in selectors if isinstance(s, dict)]
+              # Nur eindeutig mit Betreiberkennung 827 markierte Meldungen.
+              relevant = [s for s in selectors if str(s.get('agencyId', '')) == '827']
+              if not relevant:
+                  continue
+              counts['bernmobil_alerts'] += 1
+              text = (language_text(alert.get('headerText')) or
+                      language_text(alert.get('descriptionText')) or
+                      'Verkehrsmeldung ohne Beschreibung')
+              desc = language_text(alert.get('descriptionText'))
+              stop_ids = sorted({str(s.get('stopId')) for s in relevant if s.get('stopId')})
+              route_ids = sorted({str(s.get('routeId')) for s in relevant if s.get('routeId')})
+              if not stop_ids:
+                  route_only += 1
+              for number, (name, sloid) in STOPS.items():
+                  matched = [sid for sid in stop_ids if matches_stop(sid, sloid)]
+                  if not matched:
+                      continue
+                  results[number].append({
+                      'id': str(item.get('id', '')),
+                      'title': re.sub(r'\s+', ' ', text)[:210],
+                      'description': re.sub(r'\s+', ' ', desc)[:350],
+                      'routes': route_ids[:20],
+                      'matched_stop_ids': matched,
                   })
-          print('Gelesene Datenzeilen:', total_rows, flush=True)
 
-          unique_count = 0
-          for station_id, name in STATIONS.items():
-              found = matches[station_id]
-              unique_sloids = sorted(set(
-                  sloid for record in found for sloid in record['sloids']
-              ))
-              print('\nHALTESTELLE:', name, flush=True)
-              print('Stations-ID:', station_id, flush=True)
-              print('Passende Exportzeilen:', len(found), flush=True)
-              print('SLOID-Kandidaten:', unique_sloids or 'keine', flush=True)
-              for record in found[:2]:
-                  print('Exportfelder:', record['details'], flush=True)
-              if len(unique_sloids) == 1:
-                  unique_count += 1
-                  print('STATUS: eindeutiger SLOID-Kandidat', flush=True)
-              elif not unique_sloids:
-                  print('STATUS: keine SLOID im Export gefunden', flush=True)
-              else:
-                  print('STATUS: mehrere SLOIDs; Zuordnung pruefen', flush=True)
-
-          print('\nEindeutige Kandidaten:', unique_count, 'von', len(STATIONS))
-          print('Hinweis: Kandidaten erst nach Namenspruefung uebernehmen.')
-          print('Die Touch-Tastatur und die TramliBern-Web-App bleiben unveraendert.')
+          print('--- Diagnose fuer aktuell ausgewaehlte Haltestellen ---')
+          print('Gesamte Feed-Eintraege:', len(payload['entity']))
+          print('Aktive Meldungen mit agencyId 827:', counts['bernmobil_alerts'])
+          print('Davon ohne stopId (Linien-/Gebietsmeldungen):', route_only)
+          for number, (name, sloid) in STOPS.items():
+              unique = {a['id']: a for a in results[number]}
+              print('\nHALTESTELLE:', name)
+              print('Stations-ID:', number, 'SLOID:', sloid)
+              print('Treffer mit exakter SLOID/Unterkennung:', len(unique))
+              for record in list(unique.values())[:3]:
+                  print('Meldung:', json.dumps(record, ensure_ascii=False))
+          print('\nWICHTIG: Linienmeldungen ohne stopId werden noch NICHT zugeordnet.')
+          print('Das ist ein Test. Kein Ergebnis ist nicht gleichbedeutend mit stoerungsfrei.')
+          print('Naechster Schritt: ESP32 v2.8 anbinden, aktuelle Auswahl und Linien abgleichen.')
           PY
