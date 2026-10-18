@@ -1,4 +1,5 @@
-name: TramliBern JSON Diagnose
+
+name: TramliBern BERNMOBIL Diagnose
 
 on:
   workflow_dispatch:
@@ -7,82 +8,98 @@ permissions:
   contents: read
 
 jobs:
-  json-test:
+  bernmobil-diagnose:
     runs-on: ubuntu-latest
-
     steps:
       - name: Python vorbereiten
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
       - name: Requests installieren
         run: python -m pip install requests
-
-      - name: Schweizer GTFS-SA JSON testen
+      - name: BERNMOBIL Kennungen untersuchen
         env:
           API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
         run: |
           python - <<'PY'
           import os
+          import re
+          from collections import Counter
+          from datetime import datetime, timezone
           import requests
 
-          token = os.environ.get("API_TOKEN", "").strip()
+          token = os.environ.get('API_TOKEN', '').strip()
           if not token:
-              raise SystemExit("FEHLER: GitHub Secret fehlt.")
+              raise SystemExit('FEHLER: GitHub Secret OPENTRANSPORT_API_TOKEN fehlt.')
 
-          url = "https://api.opentransportdata.swiss/la/gtfs-sa/?format=json"
-          headers = {
-              "Authorization": "Bearer " + token,
-              "User-Agent": "TramliBern-JSON-Diagnose",
-              "Accept": "application/json",
-              "Accept-Encoding": "gzip, deflate",
-          }
+          url = 'https://api.opentransportdata.swiss/la/gtfs-sa?format=json'
+          response = requests.get(url, headers={
+              'Authorization': 'Bearer ' + token,
+              'User-Agent': 'TramliBern-GitHub-Diagnose',
+              'Accept': 'application/json',
+          }, timeout=120)
+          print('HTTP:', response.status_code, flush=True)
+          response.raise_for_status()
+          data = response.json()
+          entities = data.get('entity', [])
+          print('Gesamte Schweizer Eintraege:', len(entities))
 
-          print("=== TramliBern JSON-Diagnosetest ===", flush=True)
+          agencies = Counter()
+          routes = Counter()
+          stops = Counter()
+          bern_hits = []
+          matched_agencies = Counter()
+          keyword = re.compile(r'bern\s*mobil|bernmobil', re.I)
 
-          try:
-              response = requests.get(
-                  url, headers=headers, timeout=120,
-                  allow_redirects=True
-              )
-              print("HTTP:", response.status_code, flush=True)
-              print("Datenformat:", response.headers.get("Content-Type"), flush=True)
-              print("Dateigroesse:", len(response.content), "Bytes", flush=True)
-              response.raise_for_status()
-          except requests.RequestException as exc:
-              raise SystemExit("API-Fehler: " + str(exc))
+          def translations(field):
+              if not isinstance(field, dict):
+                  return []
+              return [t.get('text', '') for t in field.get('translation', [])
+                      if isinstance(t, dict) and isinstance(t.get('text'), str)]
 
-          try:
-              data = response.json()
-          except ValueError:
-              print("Antwortanfang (Hex):", response.content[:24].hex())
-              raise SystemExit("FEHLER: Antwort ist kein gueltiges JSON.")
+          for entry in entities:
+              alert = entry.get('alert', {})
+              if not isinstance(alert, dict):
+                  continue
+              selectors = alert.get('informedEntity', [])
+              if not isinstance(selectors, list):
+                  selectors = []
+              for s in selectors:
+                  if not isinstance(s, dict):
+                      continue
+                  if s.get('agencyId'):
+                      agencies[str(s['agencyId'])] += 1
+                  if s.get('routeId'):
+                      routes[str(s['routeId'])] += 1
+                  if s.get('stopId'):
+                      stops[str(s['stopId'])] += 1
+              texts = (translations(alert.get('headerText')) +
+                       translations(alert.get('descriptionText')) +
+                       translations(alert.get('causeDetail')) +
+                       translations(alert.get('effectDetail')))
+              if any(keyword.search(t) for t in texts):
+                  for s in selectors:
+                      if isinstance(s, dict) and s.get('agencyId'):
+                          matched_agencies[str(s['agencyId'])] += 1
+                  sample = next((t for t in texts if keyword.search(t)), '')
+                  first_selectors = [s for s in selectors if isinstance(s, dict)][:3]
+                  bern_hits.append((entry.get('id','?'), sample[:120].replace('\n',' '), first_selectors))
 
-          print("JSON erfolgreich gelesen!", flush=True)
-          print("Oberster Datentyp:", type(data).__name__, flush=True)
-
-          if isinstance(data, dict):
-              print("Hauptfelder:", list(data.keys())[:20], flush=True)
-              entities = data.get("entity")
-              if entities is None:
-                  entities = data.get("Entity")
-
-              if isinstance(entities, list):
-                  print("Anzahl Eintraege:", len(entities), flush=True)
-                  if entities and isinstance(entities[0], dict):
-                      print(
-                          "Felder des ersten Eintrags:",
-                          list(entities[0].keys())[:20],
-                          flush=True
-                      )
-              else:
-                  print("Kein direktes entity-Array gefunden.", flush=True)
-
-          elif isinstance(data, list):
-              print("Anzahl Eintraege:", len(data), flush=True)
-
-          print("Diagnose abgeschlossen.", flush=True)
+          print('\nHaeufigste Betreiberkennungen im Feed (nicht automatisch BERNMOBIL):')
+          for key, count in agencies.most_common(15):
+              print(' agencyId:', key, '| Selektoren:', count)
+          print('\nExplizite BERNMOBIL-Nennung in Meldungstexten:', len(bern_hits))
+          print('Betreiberkennungen bei solchen Nennungen (nur Hinweise):')
+          for key, count in matched_agencies.most_common(15):
+              print(' agencyId:', key, '| Selektoren:', count)
+          print('\nBis zu 5 BERNMOBIL-Texttreffer mit Kennungen:')
+          for ident, snippet, selectors in bern_hits[:5]:
+              print('Meldungs-ID:', ident)
+              print(' Text:', snippet)
+              print(' Erste Selektoren:', selectors)
+          print('\nBeispiele vorhandener routeId:', [r for r, _ in routes.most_common(8)])
+          print('Beispiele vorhandener stopId:', [s for s, _ in stops.most_common(8)])
+          print('Zeitpunkt UTC:', datetime.now(timezone.utc).isoformat())
+          print('WICHTIG: Noch kein verlaesslicher BERNMOBIL-Filter.')
+          print('Naechster Schritt: agencyId mit offiziellen GTFS-Stammdaten verifizieren.')
           PY
-
-
