@@ -1,0 +1,53 @@
+name: TramliBern Verkehrsmeldungen
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gtfs-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Python vorbereiten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: GTFS-Bibliotheken installieren
+        run: pip install requests gtfs-realtime-bindings
+
+      - name: Schweizer Verkehrsmeldungen testen
+        env:
+          API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+          from google.transit import gtfs_realtime_pb2
+
+          token = os.environ.get('API_TOKEN', '')
+          if not token:
+              raise SystemExit('FEHLER: API-Token fehlt.')
+
+          url = 'https://api.opentransportdata.swiss/la/gtfs-sa'
+          headers = {
+              'Authorization': 'Bearer ' + token,
+              'User-Agent': 'TramliBern-ESP32',
+          }
+          response = requests.get(url, headers=headers, timeout=90)
+          response.raise_for_status()
+
+          feed = gtfs_realtime_pb2.FeedMessage()
+          feed.ParseFromString(response.content)
+          alerts = sum(
+              1 for item in feed.entity
+              if item.HasField('alert')
+          )
+
+          print('API erfolgreich verbunden.')
+          print('Empfangene Bytes:', len(response.content))
+          print('Anzahl Verkehrsmeldungen:', alerts)
+          print('Naechster Schritt: BERNMOBIL und Haltestellen filtern.')
+          PY
