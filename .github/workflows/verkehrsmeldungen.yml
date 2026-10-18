@@ -1,4 +1,4 @@
-name: TramliBern Verkehrsmeldungen
+name: TramliBern JSON Diagnose
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  gtfs-test:
+  json-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,100 +16,75 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Bibliotheken installieren
-        run: python -m pip install requests gtfs-realtime-bindings
+      - name: Requests installieren
+        run: python -m pip install requests
 
-      - name: Schweizer Verkehrsmeldungen testen
+      - name: Schweizer GTFS-SA JSON testen
         env:
           API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
         run: |
           python - <<'PY'
           import os
-          import gzip
           import requests
-          from google.protobuf.message import DecodeError
-          from google.transit import gtfs_realtime_pb2
 
           token = os.environ.get("API_TOKEN", "").strip()
           if not token:
               raise SystemExit("FEHLER: GitHub Secret fehlt.")
 
-          url = "https://api.opentransportdata.swiss/la/gtfs-sa"
+          url = "https://api.opentransportdata.swiss/la/gtfs-sa/?format=json"
           headers = {
               "Authorization": "Bearer " + token,
-              "User-Agent": "TramliBern-ESP32",
-             "Accept": "application/octet-stream",
-             "Accept-Encoding": "gzip, deflate",
+              "User-Agent": "TramliBern-JSON-Diagnose",
+              "Accept": "application/json",
+              "Accept-Encoding": "gzip, deflate",
           }
 
-          print("TramliBern GTFS-SA Test", flush=True)
+          print("=== TramliBern JSON-Diagnosetest ===", flush=True)
 
           try:
               response = requests.get(
-                  url, headers=headers, timeout=90
+                  url, headers=headers, timeout=120,
+                  allow_redirects=True
               )
               print("HTTP:", response.status_code, flush=True)
-              print(
-                  "Datenformat:",
-                  response.headers.get("Content-Type", "unbekannt"),
-                  flush=True
-              )
+              print("Datenformat:", response.headers.get("Content-Type"), flush=True)
+              print("Dateigroesse:", len(response.content), "Bytes", flush=True)
               response.raise_for_status()
           except requests.RequestException as exc:
-              raise SystemExit(
-                  "FEHLER beim API-Abruf: " + str(exc)
-              )
+              raise SystemExit("API-Fehler: " + str(exc))
 
-          data = response.content
-          print("Dateigroesse:", len(data), "Bytes", flush=True)
-          print("Erste Bytes:", data[:24].hex(), flush=True)
-
-          if data.startswith(b"\x1f\x8b"):
-              print("GZIP-Daten erkannt.", flush=True)
-              data = gzip.decompress(data)
-
-          if data.startswith(b"PK\x03\x04"):
-              raise SystemExit(
-                  "Antwort ist ein ZIP-Archiv, kein GTFS-Protobuf."
-              )
-
-          if data.lstrip().startswith((b"{", b"[")):
-              print("Antwort sieht nach JSON aus.", flush=True)
-              print(
-                  "JSON-Anfang:",
-                  data[:160].decode("utf-8", errors="replace"),
-                  flush=True
-              )
-              raise SystemExit(
-                  "GTFS-SA wurde als JSON statt Protobuf geliefert."
-              )
-
-          if data.lstrip().startswith(b"<"):
-              raise SystemExit(
-                  "Antwort sieht nach HTML oder XML aus."
-              )
-
-          feed = gtfs_realtime_pb2.FeedMessage()
           try:
-              feed.ParseFromString(data)
-          except DecodeError:
-              raise SystemExit(
-                  "Antwort konnte nicht als GTFS-Protobuf "
-                  "gelesen werden. Datenformat und erste "
-                  "Bytes oben kontrollieren."
-              )
+              data = response.json()
+          except ValueError:
+              print("Antwortanfang (Hex):", response.content[:24].hex())
+              raise SystemExit("FEHLER: Antwort ist kein gueltiges JSON.")
 
-          alerts = [
-              entity.alert
-              for entity in feed.entity
-              if entity.HasField("alert")
-          ]
+          print("JSON erfolgreich gelesen!", flush=True)
+          print("Oberster Datentyp:", type(data).__name__, flush=True)
 
-          print("GTFS-Protobuf erfolgreich gelesen!", flush=True)
-          print("Anzahl Verkehrsmeldungen:", len(alerts), flush=True)
-          print(
-              "Naechster Schritt: BERNMOBIL-Meldungen "
-              "und Haltestellen filtern.",
-              flush=True
-          )
+          if isinstance(data, dict):
+              print("Hauptfelder:", list(data.keys())[:20], flush=True)
+              entities = data.get("entity")
+              if entities is None:
+                  entities = data.get("Entity")
+
+              if isinstance(entities, list):
+                  print("Anzahl Eintraege:", len(entities), flush=True)
+                  if entities and isinstance(entities[0], dict):
+                      print(
+                          "Felder des ersten Eintrags:",
+                          list(entities[0].keys())[:20],
+                          flush=True
+                      )
+              else:
+                  print("Kein direktes entity-Array gefunden.", flush=True)
+
+          elif isinstance(data, list):
+              print("Anzahl Eintraege:", len(data), flush=True)
+
+          print("Diagnose abgeschlossen.", flush=True)
           PY
+
+
+
+3. Datei speichern und Test starten
