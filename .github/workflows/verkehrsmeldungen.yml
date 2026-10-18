@@ -1,4 +1,4 @@
-name: TramliBern Haltestellen-ID Diagnose
+name: TramliBern SLOID-Abgleich
 
 on:
   workflow_dispatch:
@@ -7,61 +7,116 @@ permissions:
   contents: read
 
 jobs:
-  haltestellen-test:
+  sloid-abgleich:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Python vorbereiten
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
       - name: Requests installieren
         run: python -m pip install requests
-      - name: Fuenf Haltestellen suchen
+
+      - name: Fuenf Stations-IDs mit SLOIDs abgleichen
         run: |
           python - <<'PY'
+          import csv
+          import io
+          import re
           import requests
-          import unicodedata
 
-          names = [
-              'Bern, Giacomettistrasse',
-              'Bern, Ostring',
-              'Bern, Zentrum Paul Klee',
-              'Bern, Burgernziel',
-              'Bern, Brunnadernstrasse',
-          ]
+          STATIONS = {
+              '8590090': 'Bern, Giacomettistrasse',
+              '8587480': 'Bern, Ostring',
+              '8590127': 'Bern, Zentrum Paul Klee',
+              '8587481': 'Bern, Burgernziel',
+              '8507061': 'Bern, Brunnadernstrasse',
+          }
 
-          def normalize(value):
-              value = unicodedata.normalize('NFKD', value.casefold())
-              return ''.join(ch for ch in value if ch.isalnum())
+          # Oeffentlicher SBB-DiDok-Export, ohne GitHub-Secret.
+          URL = (
+              'https://data.sbb.ch/api/v2/catalog/datasets/'
+              'dienststellen-gemass-opentransportdataswiss/exports/csv'
+              '?use_labels=false'
+          )
+          print('=== TramliBern: Stations-ID zu offizieller SLOID ===', flush=True)
+          print('Datenquelle: SBB Open Data, Dienststellen (DiDok)', flush=True)
+          try:
+              response = requests.get(URL, timeout=120)
+              print('HTTP:', response.status_code, flush=True)
+              response.raise_for_status()
+              response.encoding = 'utf-8-sig'
+          except requests.RequestException as exc:
+              raise SystemExit('Export konnte nicht geladen werden: ' + str(exc))
 
-          session = requests.Session()
-          print('=== TramliBern: Haltestellen-ID-Diagnose ===', flush=True)
-          for name in names:
-              print('\nGESUCHT:', name, flush=True)
-              try:
-                  response = session.get(
-                      'https://transport.opendata.ch/v1/locations',
-                      params={'query': name, 'type': 'station'},
-                      timeout=30,
-                  )
-                  print('HTTP:', response.status_code, flush=True)
-                  response.raise_for_status()
-                  stations = response.json().get('stations') or []
-                  exact = [s for s in stations if normalize(s.get('name') or '') == normalize(name)]
-                  print('Exakte Namens-Treffer:', len(exact), flush=True)
-                  choices = exact if exact else stations[:5]
-                  for station in choices[:5]:
-                      if not isinstance(station, dict):
-                          continue
-                      print('  Name:', station.get('name'), flush=True)
-                      print('  Stations-ID:', station.get('id'), flush=True)
-                      print('  Position:', station.get('coordinate'), flush=True)
-                  if not choices:
-                      print('  Kein Treffer. Manuelle Kontrolle erforderlich.', flush=True)
-                  elif not exact:
-                      print('  ACHTUNG: Nur aehnliche Treffer; nicht automatisch zuordnen.', flush=True)
-              except (requests.RequestException, ValueError) as exc:
-                  print('  FEHLER:', type(exc).__name__, str(exc)[:200], flush=True)
-          print('\nHINWEIS: Die Stations-ID ist nicht automatisch die GTFS-SA stopId/SLOID.', flush=True)
-          print('Naechster Schritt: Stations-IDs mit offiziellen GTFS-Stammdaten abgleichen.', flush=True)
+          raw = response.text
+          if not raw.strip():
+              raise SystemExit('FEHLER: Leerer CSV-Export.')
+          print('Groesse:', len(response.content), 'Bytes', flush=True)
+          sample = raw[:8192]
+          try:
+              delimiter = csv.Sniffer().sniff(sample, delimiters=';,\t|').delimiter
+          except csv.Error:
+              delimiter = ';'
+          reader = csv.DictReader(io.StringIO(raw), delimiter=delimiter)
+          fields = reader.fieldnames or []
+          if not fields:
+              raise SystemExit('FEHLER: CSV hat keine Spaltenueberschriften.')
+          print('CSV-Spalten:', fields[:35], flush=True)
+
+          # Der Export kann Spaltennamen aendern. Suche die bestaetigten
+          # 7-stelligen Stationsnummern als ganze Zellen, nicht als Teilstrings.
+          matches = {key: [] for key in STATIONS}
+          total_rows = 0
+          sloid_pattern = re.compile(r'ch:1:sloid:\d+(?::\d+){0,3}')
+          for row in reader:
+              total_rows += 1
+              values = {k: str(v or '').strip() for k, v in row.items() if k}
+              found_ids = set(values.values()) & set(STATIONS)
+              if not found_ids:
+                  continue
+              sloids = sorted(set(
+                  item.group(0)
+                  for value in values.values()
+                  for item in sloid_pattern.finditer(value)
+              ))
+              for station_id in found_ids:
+                  matches[station_id].append({
+                      'sloids': sloids,
+                      'details': {
+                          k: v for k, v in values.items()
+                          if v and (
+                              'name' in k.lower() or 'designation' in k.lower()
+                              or 'bezeichnung' in k.lower() or 'sloid' in k.lower()
+                              or 'number' in k.lower() or 'nummer' in k.lower()
+                          )
+                      },
+                  })
+          print('Gelesene Datenzeilen:', total_rows, flush=True)
+
+          unique_count = 0
+          for station_id, name in STATIONS.items():
+              found = matches[station_id]
+              unique_sloids = sorted(set(
+                  sloid for record in found for sloid in record['sloids']
+              ))
+              print('\nHALTESTELLE:', name, flush=True)
+              print('Stations-ID:', station_id, flush=True)
+              print('Passende Exportzeilen:', len(found), flush=True)
+              print('SLOID-Kandidaten:', unique_sloids or 'keine', flush=True)
+              for record in found[:2]:
+                  print('Exportfelder:', record['details'], flush=True)
+              if len(unique_sloids) == 1:
+                  unique_count += 1
+                  print('STATUS: eindeutiger SLOID-Kandidat', flush=True)
+              elif not unique_sloids:
+                  print('STATUS: keine SLOID im Export gefunden', flush=True)
+              else:
+                  print('STATUS: mehrere SLOIDs; Zuordnung pruefen', flush=True)
+
+          print('\nEindeutige Kandidaten:', unique_count, 'von', len(STATIONS))
+          print('Hinweis: Kandidaten erst nach Namenspruefung uebernehmen.')
+          print('Die Touch-Tastatur und die TramliBern-Web-App bleiben unveraendert.')
           PY
