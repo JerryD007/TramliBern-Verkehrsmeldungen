@@ -2,6 +2,8 @@ name: TramliBern 2.9 Meldungen TEST
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
 
 permissions:
   contents: read
