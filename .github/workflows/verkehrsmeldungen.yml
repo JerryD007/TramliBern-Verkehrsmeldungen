@@ -9,14 +9,15 @@ permissions:
 jobs:
   gtfs-test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Python vorbereiten
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: GTFS-Bibliotheken installieren
-        run: pip install requests gtfs-realtime-bindings
+      - name: Bibliotheken installieren
+        run: python -m pip install requests gtfs-realtime-bindings
 
       - name: Schweizer Verkehrsmeldungen testen
         env:
@@ -24,35 +25,91 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import gzip
           import requests
+          from google.protobuf.message import DecodeError
           from google.transit import gtfs_realtime_pb2
 
-          token = os.environ.get('API_TOKEN', '')
+          token = os.environ.get("API_TOKEN", "").strip()
           if not token:
-              raise SystemExit('FEHLER: API-Token fehlt.')
+              raise SystemExit("FEHLER: GitHub Secret fehlt.")
 
-          url = 'https://api.opentransportdata.swiss/la/gtfs-sa'
+          url = "https://api.opentransportdata.swiss/la/gtfs-sa"
           headers = {
-              'Authorization': 'Bearer ' + token,
-              'User-Agent': 'TramliBern-ESP32',
+              "Authorization": "Bearer " + token,
+              "User-Agent": "TramliBern-ESP32",
+              "Accept": "application/x-protobuf",
+              "Accept-Encoding": "identity",
           }
-          response = requests.get(url, headers=headers, timeout=90)
-          response.raise_for_status()
 
-         
-          print('HTTP:', response.status_code)
-          print('Datenformat:', response.headers.get('Content-Type'))
-          print('Dateigroesse:', len(response.content))
-          print('Erste Bytes:', response.content[:24].hex())
+          print("TramliBern GTFS-SA Test", flush=True)
+
+          try:
+              response = requests.get(
+                  url, headers=headers, timeout=90
+              )
+              print("HTTP:", response.status_code, flush=True)
+              print(
+                  "Datenformat:",
+                  response.headers.get("Content-Type", "unbekannt"),
+                  flush=True
+              )
+              response.raise_for_status()
+          except requests.RequestException as exc:
+              raise SystemExit(
+                  "FEHLER beim API-Abruf: " + str(exc)
+              )
+
+          data = response.content
+          print("Dateigroesse:", len(data), "Bytes", flush=True)
+          print("Erste Bytes:", data[:24].hex(), flush=True)
+
+          if data.startswith(b"\x1f\x8b"):
+              print("GZIP-Daten erkannt.", flush=True)
+              data = gzip.decompress(data)
+
+          if data.startswith(b"PK\x03\x04"):
+              raise SystemExit(
+                  "Antwort ist ein ZIP-Archiv, kein GTFS-Protobuf."
+              )
+
+          if data.lstrip().startswith((b"{", b"[")):
+              print("Antwort sieht nach JSON aus.", flush=True)
+              print(
+                  "JSON-Anfang:",
+                  data[:160].decode("utf-8", errors="replace"),
+                  flush=True
+              )
+              raise SystemExit(
+                  "GTFS-SA wurde als JSON statt Protobuf geliefert."
+              )
+
+          if data.lstrip().startswith(b"<"):
+              raise SystemExit(
+                  "Antwort sieht nach HTML oder XML aus."
+              )
 
           feed = gtfs_realtime_pb2.FeedMessage()
-          feed.ParseFromString(response.content)          alerts = sum(
-              1 for item in feed.entity
-              if item.HasField('alert')
-          )
+          try:
+              feed.ParseFromString(data)
+          except DecodeError:
+              raise SystemExit(
+                  "Antwort konnte nicht als GTFS-Protobuf "
+                  "gelesen werden. Datenformat und erste "
+                  "Bytes oben kontrollieren."
+              )
 
-          print('API erfolgreich verbunden.')
-          print('Empfangene Bytes:', len(response.content))
-          print('Anzahl Verkehrsmeldungen:', alerts)
-          print('Naechster Schritt: BERNMOBIL und Haltestellen filtern.')
+          alerts = [
+              entity.alert
+              for entity in feed.entity
+              if entity.HasField("alert")
+          ]
+
+          print("GTFS-Protobuf erfolgreich gelesen!", flush=True)
+          print("Anzahl Verkehrsmeldungen:", len(alerts), flush=True)
+          print(
+              "Naechster Schritt: BERNMOBIL-Meldungen "
+              "und Haltestellen filtern.",
+              flush=True
+          )
           PY
