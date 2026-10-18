@@ -38,8 +38,8 @@ jobs:
           headers = {
               "Authorization": "Bearer " + token,
               "User-Agent": "TramliBern-ESP32",
-              "Accept": "application/x-protobuf",
-              "Accept-Encoding": "identity",
+             "Accept": "application/octet-stream",
+             "Accept-Encoding": "gzip, deflate",
           }
 
           print("TramliBern GTFS-SA Test", flush=True)
