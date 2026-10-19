@@ -1,0 +1,114 @@
+name: TramliBern 3.0 Linien-ID Diagnose
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linien-abgleich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Python vorbereiten
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Bibliotheken installieren
+        run: python -m pip install requests gtfs-realtime-bindings
+      - name: Linienkennungen diagnostizieren
+        env:
+          API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          from collections import defaultdict
+          import requests
+          from google.transit import gtfs_realtime_pb2
+
+          token = os.environ.get('API_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('GitHub Secret OPENTRANSPORT_API_TOKEN fehlt.')
+
+          stops = [
+              'Bern, Giacomettistrasse',
+              'Bern, Ostring',
+              'Bern, Zentrum Paul Klee',
+              'Bern, Burgernziel',
+              'Bern, Brunnadernstrasse',
+          ]
+          session = requests.Session()
+          print('=== TramliBern: Linien-ID Diagnose (nur lesend) ===', flush=True)
+          print('1. Angezeigte Linien je Haltestelle (transport.opendata.ch)')
+          for stop in stops:
+              try:
+                  r = session.get('https://transport.opendata.ch/v1/stationboard',
+                      params={'station': stop, 'limit': 12,
+                              'fields[]': ['stationboard/category', 'stationboard/number',
+                                           'stationboard/to']}, timeout=25)
+                  r.raise_for_status()
+                  board = r.json().get('stationboard', [])
+                  labels = sorted({str(x.get('category', '')).strip() + ' ' +
+                                   str(x.get('number', '')).strip()
+                                   for x in board if isinstance(x, dict) and x.get('number')})
+                  print(f'  {stop}: {", ".join(labels) if labels else "keine Linien im Ergebnis"}')
+              except (requests.RequestException, ValueError) as exc:
+                  print(f'  {stop}: Abfrage fehlgeschlagen ({type(exc).__name__})')
+
+          print('\n2. Offizielle GTFS-SA-Linienreferenzen (Protobuf)')
+          url = 'https://api.opentransportdata.swiss/la/gtfs-sa'
+          r = session.get(url, headers={
+              'Authorization': 'Bearer ' + token,
+              'User-Agent': 'TramliBern-GitHub-Linien-ID-Test',
+              'Accept': 'application/octet-stream'}, timeout=100)
+          print('  HTTP:', r.status_code, 'Bytes:', len(r.content), flush=True)
+          r.raise_for_status()
+          feed = gtfs_realtime_pb2.FeedMessage()
+          try:
+              feed.ParseFromString(r.content)
+          except Exception as exc:
+              raise SystemExit(f'Antwort ist kein gueltiges GTFS-SA-Protobuf: {type(exc).__name__}')
+
+          agencies = defaultdict(int)
+          candidates = defaultdict(list)
+          route_only_count = 0
+          for entity in feed.entity:
+              if not entity.HasField('alert'):
+                  continue
+              alert = entity.alert
+              selectors = list(alert.informed_entity)
+              for s in selectors:
+                  if s.agency_id:
+                      agencies[s.agency_id] += 1
+              bern = [s for s in selectors if s.agency_id == '827']
+              if not bern:
+                  continue
+              # Jeder alert wird nur dann als Linienmeldung betrachtet,
+              # wenn es einen route_id-Selektor ohne stop_id gibt.
+              route_ids = sorted({s.route_id for s in bern if s.route_id and not s.stop_id})
+              if not route_ids:
+                  continue
+              route_only_count += 1
+              text = ''
+              for field in (alert.header_text, alert.description_text):
+                  entries = list(field.translation)
+                  preferred = next((t.text for t in entries if t.language.lower().startswith('de')), '')
+                  text = preferred or (entries[0].text if entries else '')
+                  if text:
+                      break
+              text = ' '.join(text.split())[:180]
+              for route in route_ids:
+                  candidates[route].append(text)
+
+          print('  HINWEIS: Betreiberkennung 827 ist ein bisheriger Diagnose-Kandidat, noch nicht verifiziert.')
+          print('  Gesamtzahl Alerts:', len(feed.entity))
+          print('  Anzahl Alerts mit Linienselektor ohne Haltestelle (827):', route_only_count)
+          print('  Betroffene technische routeIds:', len(candidates))
+          for route in sorted(candidates):
+              print('  routeId:', repr(route), '| Meldungen:', len(candidates[route]))
+              for message in candidates[route][:2]:
+                  print('    Text:', message or '[kein Meldungstext]')
+          print('\n3. Naechster Schritt: routeId mit offiziellem GTFS routes.txt (route_short_name) abgleichen.')
+          print('Keine Warnungen werden aus unbewiesenen Liniennummern erzeugt.')
+          PY
