@@ -1,4 +1,4 @@
-name: TramliBern 3.0 Linien-ID Diagnose
+name: TramliBern 3.0 Linien-ID Diagnose (JSON)
 
 on:
   workflow_dispatch:
@@ -15,100 +15,181 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Bibliotheken installieren
-        run: python -m pip install requests gtfs-realtime-bindings
+
+      - name: Requests installieren
+        run: python -m pip install requests
+
       - name: Linienkennungen diagnostizieren
         env:
           API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+        shell: bash
         run: |
           python - <<'PY'
           import os
-          from collections import defaultdict
+          import re
+          from collections import Counter, defaultdict
+          from datetime import datetime, timezone
+
           import requests
-          from google.transit import gtfs_realtime_pb2
 
-          token = os.environ.get('API_TOKEN', '').strip()
-          if not token:
-              raise SystemExit('GitHub Secret OPENTRANSPORT_API_TOKEN fehlt.')
-
-          stops = [
+          STOPS = [
               'Bern, Giacomettistrasse',
               'Bern, Ostring',
               'Bern, Zentrum Paul Klee',
               'Bern, Burgernziel',
               'Bern, Brunnadernstrasse',
           ]
+          SLOIDS = {
+              'Bern, Giacomettistrasse': 'ch:1:sloid:90090',
+              'Bern, Ostring': 'ch:1:sloid:87480',
+              'Bern, Zentrum Paul Klee': 'ch:1:sloid:90127',
+              'Bern, Burgernziel': 'ch:1:sloid:87481',
+              'Bern, Brunnadernstrasse': 'ch:1:sloid:7061',
+          }
+          AGENCY_HINT = '827'  # Aus vorherigem Diagnoselauf; kein offizieller Mapping-Nachweis.
+          GTFS_URL = 'https://api.opentransportdata.swiss/la/gtfs-sa'
+          STATIONBOARD_URL = 'https://transport.opendata.ch/v1/stationboard'
+          token = os.environ.get('API_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('FEHLER: GitHub Secret OPENTRANSPORT_API_TOKEN fehlt.')
+
           session = requests.Session()
-          print('=== TramliBern: Linien-ID Diagnose (nur lesend) ===', flush=True)
-          print('1. Angezeigte Linien je Haltestelle (transport.opendata.ch)')
-          for stop in stops:
+          session.headers.update({'User-Agent': 'TramliBern-Linien-Diagnose/3.0'})
+
+          print('=== TRAMLIBERN 3.0: LINIEN-ID-DIAGNOSE (NUR LESEN) ===', flush=True)
+          print('UTC:', datetime.now(timezone.utc).isoformat(), flush=True)
+          print('\n1) Aktuelle Linien pro Haltestelle (transport.opendata.ch)', flush=True)
+          all_lines = set()
+          for stop in STOPS:
               try:
-                  r = session.get('https://transport.opendata.ch/v1/stationboard',
-                      params={'station': stop, 'limit': 12,
-                              'fields[]': ['stationboard/category', 'stationboard/number',
-                                           'stationboard/to']}, timeout=25)
+                  r = session.get(STATIONBOARD_URL, params={
+                      'station': stop,
+                      'limit': 30,
+                      'fields[]': ['stationboard/category', 'stationboard/number'],
+                  }, timeout=25)
                   r.raise_for_status()
                   board = r.json().get('stationboard', [])
-                  labels = sorted({str(x.get('category', '')).strip() + ' ' +
-                                   str(x.get('number', '')).strip()
-                                   for x in board if isinstance(x, dict) and x.get('number')})
-                  print(f'  {stop}: {", ".join(labels) if labels else "keine Linien im Ergebnis"}')
+                  lines = sorted({
+                      (str(d.get('category') or '').strip(), str(d.get('number') or '').strip())
+                      for d in board if isinstance(d, dict) and d.get('number')
+                  })
+                  all_lines.update(lines)
+                  print(f'  {stop} | {SLOIDS[stop]} | Linien: {lines or "keine im Antwortfenster"}', flush=True)
               except (requests.RequestException, ValueError) as exc:
-                  print(f'  {stop}: Abfrage fehlgeschlagen ({type(exc).__name__})')
+                  print(f'  {stop} | Abfrage fehlgeschlagen: {type(exc).__name__}: {exc}', flush=True)
 
-          print('\n2. Offizielle GTFS-SA-Linienreferenzen (Protobuf)')
-          url = 'https://api.opentransportdata.swiss/la/gtfs-sa'
-          r = session.get(url, headers={
-              'Authorization': 'Bearer ' + token,
-              'User-Agent': 'TramliBern-GitHub-Linien-ID-Test',
-              'Accept': 'application/octet-stream'}, timeout=100)
-          print('  HTTP:', r.status_code, 'Bytes:', len(r.content), flush=True)
-          r.raise_for_status()
-          feed = gtfs_realtime_pb2.FeedMessage()
+          print('\n2) Offizielle GTFS-SA-Meldungen als JSON abfragen', flush=True)
           try:
-              feed.ParseFromString(r.content)
-          except Exception as exc:
-              raise SystemExit(f'Antwort ist kein gueltiges GTFS-SA-Protobuf: {type(exc).__name__}')
+              response = session.get(
+                  GTFS_URL,
+                  headers={
+                      'Authorization': 'Bearer ' + token,
+                      'Accept': 'application/json',
+                  },
+                  params={'format': 'json'},
+                  timeout=120,
+              )
+              print('  HTTP:', response.status_code, flush=True)
+              print('  Content-Type:', response.headers.get('Content-Type', ''), flush=True)
+              print('  Bytes:', len(response.content), flush=True)
+              response.raise_for_status()
+              try:
+                  payload = response.json()
+              except ValueError:
+                  raise SystemExit('FEHLER: API lieferte kein JSON. Erste Bytes (Hex): ' + response.content[:20].hex())
+              if not isinstance(payload, dict) or not isinstance(payload.get('entity'), list):
+                  raise SystemExit('FEHLER: Unerwartete JSON-Struktur; entity-Liste fehlt.')
+          except requests.RequestException as exc:
+              raise SystemExit('FEHLER beim API-Aufruf: ' + type(exc).__name__ + ': ' + str(exc))
 
-          agencies = defaultdict(int)
-          candidates = defaultdict(list)
-          route_only_count = 0
-          for entity in feed.entity:
-              if not entity.HasField('alert'):
+          entities = payload['entity']
+          print('  Meldungseintraege gesamt:', len(entities), flush=True)
+
+          def translations(obj):
+              if not isinstance(obj, dict):
+                  return []
+              result = []
+              for item in obj.get('translation') or []:
+                  if isinstance(item, dict) and isinstance(item.get('text'), str):
+                      result.append((str(item.get('language') or ''), item['text']))
+              return result
+
+          def summary_text(alert):
+              items = translations(alert.get('headerText')) or translations(alert.get('descriptionText'))
+              for language, value in items:
+                  if language.lower().startswith('de'):
+                      return re.sub(r'\s+', ' ', value).strip()[:180]
+              return re.sub(r'\s+', ' ', items[0][1]).strip()[:180] if items else '(kein Meldungstext)'
+
+          def is_active(alert, now):
+              periods = alert.get('activePeriod') or []
+              if not periods:
+                  return True
+              for period in periods:
+                  if not isinstance(period, dict):
+                      continue
+                  try:
+                      start = int(period.get('start') or 0)
+                      end = int(period.get('end') or 0)
+                      if (not start or start <= now) and (not end or now <= end):
+                          return True
+                  except (TypeError, ValueError):
+                      continue
+              return False
+
+          now = int(datetime.now(timezone.utc).timestamp())
+          route_counts = Counter()
+          agency_counts = Counter()
+          matches = defaultdict(list)
+          route_only = []
+          alert_count = 0
+          agency_alerts = 0
+          for entity in entities:
+              if not isinstance(entity, dict):
                   continue
-              alert = entity.alert
-              selectors = list(alert.informed_entity)
+              alert = entity.get('alert')
+              if not isinstance(alert, dict) or not is_active(alert, now):
+                  continue
+              alert_count += 1
+              selectors = [s for s in (alert.get('informedEntity') or []) if isinstance(s, dict)]
               for s in selectors:
-                  if s.agency_id:
-                      agencies[s.agency_id] += 1
-              bern = [s for s in selectors if s.agency_id == '827']
-              if not bern:
+                  agency = str(s.get('agencyId') or '')
+                  if agency:
+                      agency_counts[agency] += 1
+              related = [s for s in selectors if str(s.get('agencyId') or '') == AGENCY_HINT]
+              if not related:
                   continue
-              # Jeder alert wird nur dann als Linienmeldung betrachtet,
-              # wenn es einen route_id-Selektor ohne stop_id gibt.
-              route_ids = sorted({s.route_id for s in bern if s.route_id and not s.stop_id})
-              if not route_ids:
-                  continue
-              route_only_count += 1
-              text = ''
-              for field in (alert.header_text, alert.description_text):
-                  entries = list(field.translation)
-                  preferred = next((t.text for t in entries if t.language.lower().startswith('de')), '')
-                  text = preferred or (entries[0].text if entries else '')
-                  if text:
-                      break
-              text = ' '.join(text.split())[:180]
-              for route in route_ids:
-                  candidates[route].append(text)
+              agency_alerts += 1
+              ids = {str(s.get('routeId')) for s in related if s.get('routeId') is not None}
+              for route in ids:
+                  route_counts[route] += 1
+              stops = {str(s.get('stopId')) for s in related if s.get('stopId')}
+              text = summary_text(alert)
+              record = (str(entity.get('id') or '')[:70], sorted(ids), text)
+              if not stops and ids:
+                  route_only.append(record)
+              for name, sloid in SLOIDS.items():
+                  if any(stop_id == sloid or stop_id.startswith(sloid + ':') for stop_id in stops):
+                      matches[name].append(record)
 
-          print('  HINWEIS: Betreiberkennung 827 ist ein bisheriger Diagnose-Kandidat, noch nicht verifiziert.')
-          print('  Gesamtzahl Alerts:', len(feed.entity))
-          print('  Anzahl Alerts mit Linienselektor ohne Haltestelle (827):', route_only_count)
-          print('  Betroffene technische routeIds:', len(candidates))
-          for route in sorted(candidates):
-              print('  routeId:', repr(route), '| Meldungen:', len(candidates[route]))
-              for message in candidates[route][:2]:
-                  print('    Text:', message or '[kein Meldungstext]')
-          print('\n3. Naechster Schritt: routeId mit offiziellem GTFS routes.txt (route_short_name) abgleichen.')
-          print('Keine Warnungen werden aus unbewiesenen Liniennummern erzeugt.')
+          print('\n3) Meldungskennungen (AGENCY 827 ist nur ein Diagnose-Hinweis)', flush=True)
+          print('  Aktive Alerts aller Betreiber:', alert_count, flush=True)
+          print('  Agency-827-Alerts:', agency_alerts, flush=True)
+          print('  Haeufigste Betreiberkennungen:', agency_counts.most_common(12), flush=True)
+          print('  Route-IDs bei Agency 827:', route_counts.most_common(35), flush=True)
+          print('  Agency-827-Meldungen nur mit routeId, ohne stopId:', len(route_only), flush=True)
+          print('\n4) Haltestellenbezogene Treffermeldungen', flush=True)
+          for stop in STOPS:
+              records = matches[stop]
+              print(f'  {stop}: {len(records)} Treffer', flush=True)
+              for entry_id, routes, message in records[:5]:
+                  print(f'    id={entry_id} routeId={routes} text={message}', flush=True)
+
+          print('\n5) Beispiele fuer routeId-only-Meldungen (KEINE automatische Linienzuordnung!)', flush=True)
+          for entry_id, routes, message in route_only[:12]:
+              print(f'  id={entry_id} routeId={routes} text={message}', flush=True)
+
+          print('\nERGEBNIS: JSON erfolgreich ausgewertet. Die Zuordnung routeId -> Liniennummer', flush=True)
+          print('muss vor einer Display-Warnung anhand offizieller GTFS-Stammdaten geprueft werden.', flush=True)
+          print('Version 2.9 und GitHub Pages wurden NICHT veraendert.', flush=True)
           PY
