@@ -220,7 +220,7 @@ String alertForActivePage() {
       for (int j = 0; j < al.count; ++j) {
         if (exactStopMatch(mappedSloid[i], al.stopIds[j])) {
           String place = stops[i];
-          place.replace("Bern, ", "");
+          place.replace(String(CITY_QUERIES[activeCity]) + ", ", "");
           return place + ": " + al.text;
         }
       }
@@ -863,6 +863,38 @@ bool readIndex(int limit, int &index) {
 }
 
 void setupRoutes() {
+  // TramliBern 3.0 TEST: Diagnose nur im lokalen Browser.
+  // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
+  server.on("/alerts-status", HTTP_GET, []() {
+    String html = pageStart("Verkehrsmeldungen TEST");
+    html += "<section class='card'><h2>Verkehrsmeldungen 3.0 TEST</h2>";
+    html += "<p>Stadt: <b>" + escapeHtml(String(CITY_LABELS[activeCity])) + "</b></p>";
+    html += "<p>Feed: <b>" + String(alertsValid ? "geladen" : "nicht aktuell") + "</b> &middot; Eintraege: " + String(serviceAlertCount) + "</p>";
+    if (alertsFetchedAt && alertsValid)
+      html += "<p>Letzter Empfang vor " + String((millis() - alertsFetchedAt) / 1000) + " Sekunden</p>";
+    html += "<p>Aktuelle Displayseite: " + String(activePage + 1) + "/3</p>";
+    html += "<p>Passende Warnung: " + escapeHtml(alertForActivePage().length() ? alertForActivePage() : "(keine)") + "</p>";
+    html += "</section><section class='card'><h2>Haltestellen und Meldungen</h2><ul>";
+    time_t current = time(nullptr);
+    for (int i = 0; i < stopCount; ++i) {
+      int hits = 0;
+      if (alertsValid && mappedComplete[i]) {
+        for (int a = 0; a < serviceAlertCount; ++a) {
+          const ServiceAlert &al = serviceAlerts[a];
+          if (al.until && al.until < current) continue;
+          for (int j = 0; j < al.count; ++j) {
+            if (exactStopMatch(mappedSloid[i], al.stopIds[j])) { ++hits; break; }
+          }
+        }
+      }
+      html += "<li><b>" + escapeHtml(stops[i]) + "</b>";
+      html += "<p>SLOID: " + escapeHtml(mappedComplete[i] ? mappedSloid[i] : "noch nicht aufgeloest") + "</p>";
+      html += "<p>Passende Haltestellenmeldungen: " + String(hits) + "</p></li>";
+    }
+    html += "</ul><p class='hint'>Reine Linienmeldungen ohne Haltestellen-ID werden noch nicht angezeigt. Eine Linien-ID ist keine bestaetigte Liniennummer.</p>";
+    html += "<p><a class='button subtle' href='/'>Zurueck</a></p></section>";
+    sendPage(html);
+  });
   server.on("/", HTTP_GET, []() {
     String html = pageStart("Meine Haltestellen");
     html += "<section class='card'><h2>Stadt auswählen</h2><p>Aktuelle Stadt: <b>" + String(CITY_LABELS[activeCity]) + "</b></p>";
@@ -875,6 +907,7 @@ void setupRoutes() {
       if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
     }
     html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
+    html += "<p><a class='button subtle' href='/alerts-status'>Verkehrsmeldungen pruefen (3.0 TEST)</a></p>";
     html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
