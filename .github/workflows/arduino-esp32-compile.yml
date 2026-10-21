@@ -36,3 +36,12 @@ jobs:
           path: reports/
           if-no-files-found: warn
           retention-days: 30
+
+  alerts-json:
+    name: Validate alert JSON and matching
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run offline alert regression tests
+        run: python3 -m unittest discover -s ci -p 'test_*.py' -v
