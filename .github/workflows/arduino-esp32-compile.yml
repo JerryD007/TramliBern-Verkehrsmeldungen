@@ -2,7 +2,7 @@ name: Arduino ESP32 compile test
 
 on:
   push:
-    branches: ['test/arduino-esp32-compile']
+    branches: ['test/arduino-esp32-compile', 'test/tramlibern-3.1-route-verification']
     paths: ['firmware/**', 'ci/**', '.github/workflows/arduino-esp32-compile.yml']
   pull_request:
     paths: ['firmware/**', 'ci/**', '.github/workflows/arduino-esp32-compile.yml']
