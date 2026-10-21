@@ -866,14 +866,16 @@ void setupRoutes() {
   // TramliBern 3.0 TEST: Diagnose nur im lokalen Browser.
   // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
   server.on("/alerts-status", HTTP_GET, []() {
-    String html = pageStart("Verkehrsmeldungen TEST");
-    html += "<section class='card'><h2>Verkehrsmeldungen 3.0 TEST</h2>";
+    String html = pageStart("Verkehrsmeldungen 3.1 TEST");
+    html += "<section class='card'><h2>Verkehrsmeldungen 3.1 TEST</h2>";
     html += "<p>Stadt: <b>" + escapeHtml(String(CITY_LABELS[activeCity])) + "</b></p>";
     html += "<p>Feed: <b>" + String(alertsValid ? "geladen" : "nicht aktuell") + "</b> &middot; Eintraege: " + String(serviceAlertCount) + "</p>";
     if (alertsFetchedAt && alertsValid)
       html += "<p>Letzter Empfang vor " + String((millis() - alertsFetchedAt) / 1000) + " Sekunden</p>";
     html += "<p>Aktuelle Displayseite: " + String(activePage + 1) + "/3</p>";
     html += "<p>Passende Warnung: " + escapeHtml(alertForActivePage().length() ? alertForActivePage() : "(keine)") + "</p>";
+    html += "<p><b>Linienabgleich:</b> GTFS-Stammdaten-Pruefung im Testzweig. "
+            "Ohne nachgewiesene Linien-Haltestellen-Verbindung keine automatische Linienwarnung.</p>";
     html += "</section><section class='card'><h2>Haltestellen und Meldungen</h2><ul>";
     time_t current = time(nullptr);
     for (int i = 0; i < stopCount; ++i) {
@@ -889,9 +891,20 @@ void setupRoutes() {
       }
       html += "<li><b>" + escapeHtml(stops[i]) + "</b>";
       html += "<p>SLOID: " + escapeHtml(mappedComplete[i] ? mappedSloid[i] : "noch nicht aufgeloest") + "</p>";
-      html += "<p>Passende Haltestellenmeldungen: " + String(hits) + "</p></li>";
+      html += "<p>Passende Haltestellenmeldungen: " + String(hits) + "</p>";
+      String seenLines;
+      for (int d = 0; d < departureCount; ++d) {
+        if (departures[d].station != stops[i]) continue;
+        String line = departures[d].line;
+        if (!line.length()) continue;
+        String token = "|" + line + "|";
+        if (seenLines.indexOf(token) >= 0) continue;
+        seenLines += token;
+        html += "<p>Beobachtete Linie: <b>" + escapeHtml(line) + "</b> (Abfahrtsdaten, noch kein GTFS-Beweis)</p>";
+      }
+      html += "</li>";
     }
-    html += "</ul><p class='hint'>Reine Linienmeldungen ohne Haltestellen-ID werden noch nicht angezeigt. Eine Linien-ID ist keine bestaetigte Liniennummer.</p>";
+    html += "</ul><p class='hint'>Linien aus Abfahrtsdaten sind nur Beobachtungen. Eine GTFS-Route muss exakt ueber route_id, trip_id und stop_id geprueft werden; selbst dann bleibt eine Streckenstoerung ohne Segmentdaten unbestaetigt.</p>";
     html += "<p><a class='button subtle' href='/'>Zurueck</a></p></section>";
     sendPage(html);
   });
@@ -907,7 +920,7 @@ void setupRoutes() {
       if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
     }
     html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
-    html += "<p><a class='button subtle' href='/alerts-status'>Verkehrsmeldungen pruefen (3.0 TEST)</a></p>";
+    html += "<p><a class='button subtle' href='/alerts-status'>Verkehrsmeldungen pruefen (3.1 TEST)</a></p>";
     html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
