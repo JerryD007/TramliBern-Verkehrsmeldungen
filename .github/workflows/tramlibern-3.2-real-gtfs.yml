@@ -2,6 +2,9 @@ name: TramliBern 3.2 Real GTFS Diagnostics
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['test/tramlibern-3.2-alert-segments']
+    paths: ['ci/live_gtfs_diagnostic.py', '.github/workflows/tramlibern-3.2-real-gtfs.yml']
 
 permissions:
   contents: read
