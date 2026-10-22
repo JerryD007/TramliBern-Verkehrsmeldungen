@@ -106,6 +106,26 @@ def crosscheck(alerts, archive_path, metadata):
                 reasons[reason]=reasons.get(reason,0)+1
                 if status in ('explicit_stop','route_candidate'):
                     results.append(dict(stop=name,status=status,reason=reason,alert_id=e['id'],selector=sel))
+    # Export an exact-row subset for reproducible real-data joins, not synthetic evidence.
+    output=Path('reports')
+    output.mkdir(exist_ok=True)
+    selected_ids=set().union(*(g.family(s) for s in SELECTED.values()))
+    trip_ids=set(g.visits)
+    route_ids={g.trips[t]['route_id'] for t in trip_ids}
+    with zipfile.ZipFile(archive_path) as source, zipfile.ZipFile(output/'real-gtfs-selected.zip','w',zipfile.ZIP_DEFLATED) as dest:
+        filters={'stops.txt':('stop_id',selected_ids),'trips.txt':('trip_id',trip_ids),
+                 'routes.txt':('route_id',route_ids),'stop_times.txt':('stop_id',selected_ids)}
+        for name,(key,allowed) in filters.items():
+            with source.open(name) as src:
+                reader=csv.DictReader(io.TextIOWrapper(src,encoding='utf-8-sig',newline=''))
+                with dest.open(name,'w') as target:
+                    writer_stream=io.TextIOWrapper(target,encoding='utf-8',newline='')
+                    writer=csv.DictWriter(writer_stream,fieldnames=reader.fieldnames)
+                    writer.writeheader()
+                    for row in reader:
+                        if row.get(key) in allowed: writer.writerow(row)
+                    writer_stream.flush()
+                    writer_stream.detach()
     quality={'examined_selectors':len(selectors), 'distinct_alert_route_ids':len(ids['routeId']),
         'alert_route_ids_found_in_static':compatibility['routeId']['found'],
         'explicit_stop_selectors':sum('stopId' in s for s in selectors),

@@ -39,3 +39,32 @@ class Safety(unittest.TestCase):
         self.assertEqual(decode_alerts({'header':{'timestamp':1000},'entity':[{'id':'x','isDeleted':True}]},1000),[])
     def test_differential(self):
         with self.assertRaises(ValueError): decode_alerts({'header':{'timestamp':1000,'incrementality':1},'entity':[]},1000)
+
+class DecoderRegression(unittest.TestCase):
+    def feed(self, alert, **header):
+        return {'header':dict(timestamp=1000,**header),'entity':[{'id':'x','alert':alert}]}
+    def test_future_period(self):
+        self.assertEqual(decode_alerts(self.feed({'activePeriod':[{'start':1100}]}),1000),[])
+    def test_absent_period_is_active(self):
+        self.assertEqual(len(decode_alerts(self.feed({}),1000)),1)
+    def test_no_merge_between_selectors(self):
+        sels=[{'routeId':'r'},{'stopId':'p'}]
+        self.assertEqual(decode_alerts(self.feed({'informedEntity':sels}),1000)[0]['selectors'],sels)
+    def test_trip_start_date_is_not_discarded(self):
+        from alert_decode import normalize
+        self.assertIn('unsupportedTripConstraint',normalize({'trip':{'tripId':'t','startDate':'20261022'}}))
+    def test_unknown_top_level_constraint_is_not_discarded(self):
+        from alert_decode import normalize
+        self.assertIn('newConstraint',normalize({'stopId':'p','newConstraint':'x'}))
+    def test_malformed_selector_stays_unverifiable(self):
+        from alert_decode import normalize
+        self.assertEqual(normalize(None),{'invalid':True})
+    def test_future_header(self):
+        with self.assertRaises(ValueError): decode_alerts({'header':{'timestamp':2000},'entity':[]},1000)
+    def test_missing_header(self):
+        with self.assertRaises(ValueError): decode_alerts({'entity':[]},1000)
+    def test_duplicate_entity(self):
+        p=self.feed({}); p['entity']*=2
+        with self.assertRaises(ValueError): decode_alerts(p,1000)
+    def test_malformed_period_does_not_default_active(self):
+        with self.assertRaises(ValueError): decode_alerts(self.feed({'activePeriod':'bad'}),1000)

@@ -72,6 +72,10 @@ def evaluate_selector(g, selector, selected_stop):
     unknown = ('unverifiable', 'unknown, unsupported or contradictory selector')
     if set(selector) - {'routeId','tripId','stopId','directionId','agencyId','routeType'}:
         return unknown
+    if 'agencyId' in selector and (not isinstance(selector['agencyId'],str) or not selector['agencyId']):
+        return unknown
+    if 'routeType' in selector and (type(selector['routeType']) is not int or selector['routeType'] < 0):
+        return unknown
     family = g.family(selected_stop)
     if not family:
         return 'unverifiable', 'selected stop absent from static GTFS'
