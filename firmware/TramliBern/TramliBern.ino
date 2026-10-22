@@ -196,6 +196,8 @@ struct ServiceAlert {
 ServiceAlert serviceAlerts[MAX_ALERTS];
 int serviceAlertCount = 0;
 bool alertsValid = false;
+String alertFeedError = "Noch kein Feed-Abruf";
+time_t alertFeedGenerated = 0;
 uint32_t alertsFetchedAt = 0, alertsAttemptAt = 0;
 uint32_t sloidStepAt = 0;
 String mappedStation[MAX_STOPS], mappedSloid[MAX_STOPS];
@@ -244,14 +246,26 @@ void invalidateChangedStopMappings() {
 
 bool fetchAlertFeed() {
   JsonDocument doc;
-  if (!getJson(String(ALERTS_BASE) + "alerts.json", doc)) return false;
-  if (!doc["alerts"].is<JsonArray>()) return false;
+  if (!getJson(String(ALERTS_BASE) + "alerts.json", doc)) {
+    alertFeedError = "Feed-Abruf: " + lastHttpError;
+    return false;
+  }
+  if (!doc["alerts"].is<JsonArray>()) {
+    alertFeedError = "Feed-JSON: Feld alerts fehlt oder ist kein Array";
+    return false;
+  }
   const time_t now = time(nullptr);
-  if (now < 1700000000) return false;
+  if (now < 1700000000) {
+    alertFeedError = "ESP32-Uhrzeit noch nicht synchronisiert";
+    return false;
+  }
   time_t generated = (time_t)(doc["generated"] | 0LL);
+  alertFeedGenerated = generated;
   // Bei fehlender/alter Aktualisierung keine scheinbar aktuellen Meldungen zeigen.
   if (generated < now - 3 * 3600 || generated > now + 600) {
-    Serial.println("Service Alerts: Daten zu alt oder Zeitstempel ungueltig");
+    alertFeedError = "Feed-Zeitstempel zu alt/ungueltig, Alter: " +
+      String((long long)(now - generated)) + " Sekunden";
+    Serial.println("Service Alerts: " + alertFeedError);
     return false;
   }
   serviceAlertCount = 0;
@@ -276,6 +290,7 @@ bool fetchAlertFeed() {
   }
   alertsFetchedAt = millis();
   alertsValid = true;
+  alertFeedError = "";
   Serial.printf("Service Alerts: %d Meldungen gespeichert\n", serviceAlertCount);
   return true;
 }
@@ -870,13 +885,17 @@ void setupRoutes() {
     html += "<section class='card'><h2>Verkehrsmeldungen 3.1 TEST</h2>";
     html += "<p>Stadt: <b>" + escapeHtml(String(CITY_LABELS[activeCity])) + "</b></p>";
     html += "<p>Feed: <b>" + String(alertsValid ? "geladen" : "nicht aktuell") + "</b> &middot; Eintraege: " + String(serviceAlertCount) + "</p>";
+    if (!alertsValid)
+      html += "<p><b>Ursache:</b> " + escapeHtml(alertFeedError) + "</p>";
+    if (alertFeedGenerated && clockReady)
+      html += "<p>Stand der Quelle: " + String((long long)(time(nullptr) - alertFeedGenerated) / 60) + " Minuten alt</p>";
     if (alertsFetchedAt && alertsValid)
       html += "<p>Letzter Empfang vor " + String((millis() - alertsFetchedAt) / 1000) + " Sekunden</p>";
     html += "<p>Aktuelle Displayseite: " + String(activePage + 1) + "/3</p>";
     html += "<p>Passende Warnung: " + escapeHtml(alertForActivePage().length() ? alertForActivePage() : "(keine)") + "</p>";
     html += "<p><b>Linienabgleich:</b> GTFS-Stammdaten-Pruefung im Testzweig. "
             "Ohne nachgewiesene Linien-Haltestellen-Verbindung keine automatische Linienwarnung.</p>";
-    html += "</section><section class='card'><h2>Haltestellen und Meldungen</h2><ul>";
+    html += "</section><section class='card'><h2>Haltestellen und Meldungen</h2>";
     time_t current = time(nullptr);
     for (int i = 0; i < stopCount; ++i) {
       int hits = 0;
@@ -889,8 +908,9 @@ void setupRoutes() {
           }
         }
       }
-      html += "<li><b>" + escapeHtml(stops[i]) + "</b>";
-      html += "<p>SLOID: " + escapeHtml(mappedComplete[i] ? mappedSloid[i] : "noch nicht aufgeloest") + "</p>";
+      html += "<div style='display:block;width:100%;max-width:100%;box-sizing:border-box;min-width:0;overflow-wrap:anywhere;word-break:normal;padding:14px 0;border-bottom:1px solid #d8ddd2'>";
+      html += "<p><b>" + escapeHtml(stops[i]) + "</b></p>";
+      html += "<p style='overflow-wrap:anywhere'>SLOID: " + escapeHtml(mappedComplete[i] ? mappedSloid[i] : "noch nicht aufgeloest") + "</p>";
       html += "<p>Passende Haltestellenmeldungen: " + String(hits) + "</p>";
       String seenLines;
       for (int d = 0; d < departureCount; ++d) {
@@ -902,9 +922,9 @@ void setupRoutes() {
         seenLines += token;
         html += "<p>Beobachtete Linie: <b>" + escapeHtml(line) + "</b> (Abfahrtsdaten, noch kein GTFS-Beweis)</p>";
       }
-      html += "</li>";
+      html += "</div>";
     }
-    html += "</ul><p class='hint'>Linien aus Abfahrtsdaten sind nur Beobachtungen. Eine GTFS-Route muss exakt ueber route_id, trip_id und stop_id geprueft werden; selbst dann bleibt eine Streckenstoerung ohne Segmentdaten unbestaetigt.</p>";
+    html += "<p class='hint'>Linien aus Abfahrtsdaten sind nur Beobachtungen. Eine GTFS-Route muss exakt ueber route_id, trip_id und stop_id geprueft werden; selbst dann bleibt eine Streckenstoerung ohne Segmentdaten unbestaetigt.</p>";
     html += "<p><a class='button subtle' href='/'>Zurueck</a></p></section>";
     sendPage(html);
   });
