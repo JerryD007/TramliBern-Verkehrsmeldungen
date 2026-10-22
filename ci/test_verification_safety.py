@@ -67,4 +67,6 @@ class DecoderRegression(unittest.TestCase):
         p=self.feed({}); p['entity']*=2
         with self.assertRaises(ValueError): decode_alerts(p,1000)
     def test_malformed_period_does_not_default_active(self):
-        with self.assertRaises(ValueError): decode_alerts(self.feed({'activePeriod':'bad'}),1000)
+        result=decode_alerts(self.feed({'activePeriod':'bad'}),1000)
+        self.assertIn('validation_error',result[0])
+        self.assertEqual(result[0]['selectors'],[])

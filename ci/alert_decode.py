@@ -54,7 +54,12 @@ def decode_alerts(payload, now=None):
         if 'alert' not in e: continue
         a=e['alert']
         if not isinstance(a,dict): raise ValueError('invalid alert')
-        if not active_periods(a.get('activePeriod',[]),now): continue
+        try:
+            if not active_periods(a.get('activePeriod',[]),now): continue
+        except ValueError as exc:
+            result.append({'id':e['id'],'selectors':[],'validation_error':str(exc),
+                           'activePeriod':a.get('activePeriod')})
+            continue
         sels=a.get('informedEntity',[])
         if not isinstance(sels,list): raise ValueError('invalid informedEntity')
         result.append({'id':e['id'],'selectors':[normalize(s) for s in sels],

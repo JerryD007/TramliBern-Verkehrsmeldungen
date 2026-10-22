@@ -43,7 +43,6 @@ def fetch_inputs(token, root):
     }, timeout=120)
     resp.raise_for_status()
     payload = resp.json()
-    alerts = decode_alerts(payload)
     Path("reports").mkdir(exist_ok=True)
     Path("reports/real-gtfs-source.json").write_text(json.dumps(payload), encoding="utf-8")
     # Download to disk: GTFS static is typically >100 MB compressed.
@@ -135,7 +134,8 @@ def crosscheck(alerts, archive_path, metadata):
     return dict(source='opentransportdata.swiss',quality=quality,compatibility=compatibility,
         selected_evidence=selected_evidence,reason_counts=reasons,counts=counts,
         checked_at_utc_epoch=int(time.time()),static=metadata,selected_stops=SELECTED,
-        active_alert_entities=len(alerts),matches=results,
+        active_alert_entities=sum('validation_error' not in a for a in alerts),matches=results,
+        rejected_alerts=[a for a in alerts if 'validation_error' in a],
         note='Diagnostic only. No publication. Unknown IDs and candidate routes are not warnings.')
 
 
