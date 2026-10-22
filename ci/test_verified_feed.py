@@ -29,3 +29,14 @@ class VerifiedFeed(unittest.TestCase):
     def test_stale_source_cannot_be_republished(self):
         r,a=self.setup_data()
         with self.assertRaises(ValueError):build_feed(r,a,1000,source_timestamp=100)
+
+    def test_row_limit_fails_instead_of_truncating(self):
+        r,a=self.setup_data()
+        r['matches']=[dict(status='explicit_stop',alert_id='a',stop=str(i)) for i in range(33)]
+        r['selected_stops']={str(i):'ch:1:sloid:'+str(i) for i in range(33)}
+        with self.assertRaises(ValueError):build_feed(r,a,1000)
+    def test_utf8_byte_limit(self):
+        r,a=self.setup_data();a[0]['headerText']['translation'][0]['text']='🚋'*180
+        r['matches']=[dict(status='explicit_stop',alert_id='a',stop=str(i)) for i in range(32)]
+        r['selected_stops']={str(i):'ch:1:sloid:'+str(i) for i in range(32)}
+        with self.assertRaises(ValueError):build_feed(r,a,1000)

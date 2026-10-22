@@ -5,7 +5,7 @@ https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/pull/2
 
 ## Stand vom 23.10.2026
 
-Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 108 automatische Tests
+Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 110 automatische Tests
 bestehen, einschließlich eines echten positiven Schweizer Störungsfalls und
 negativer Kontrollen für alle fünf gewünschten Berner Haltestellen.
 **Noch keine Freigabe für einen dauerhaften Warnbetrieb:** Der jüngste Live-Abruf
@@ -47,7 +47,11 @@ GTFS-Zeilenauszüge: `ci/fixtures/real_20261022/`.
 
 Der Live-Lauf 39861621301 wurde am 22.10.2026 um 22:00 UTC blockiert:
 Die Quelle meldete 20:51:38 UTC (1792702298), also rund 69 Minuten Alter.
-Die 15-Minuten-Sperre wurde nicht gelockert. Alte Daten erhalten keinen neuen
+Eine unabhängige Abfrage der offiziellen Protobuf-Schnittstelle bestätigte um
+22:14:09 UTC denselben Zeitstempel (4.951 Sekunden Alter). Es handelt sich somit
+nicht nur um einen veralteten JSON-Abruf. Die 15-Minuten-Sperre wurde nicht gelockert. Veraltete Aufnahmen werden ausschließlich für klar gekennzeichnete historische
+Diagnosen mit dem statischen Fahrplan verknüpft; die Veröffentlichung prüft danach
+erneut den Originalzeitstempel und scheitert. Alte Daten erhalten keinen neuen
 scheinbar frischen Gültigkeitszeitraum.
 
 ## Welche Störungen unterstützt werden

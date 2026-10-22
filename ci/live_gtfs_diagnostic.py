@@ -63,9 +63,17 @@ def fetch_inputs(token, root):
                     raise ValueError("GTFS archive unexpectedly large")
                 f.write(chunk)
                 sha.update(chunk)
-    alerts = decode_alerts(payload)  # Recheck freshness after downloading the static feed.
+    freshness_error = None
+    try:
+        alerts = decode_alerts(payload)  # Recheck after downloading static data.
+    except ValueError as exc:
+        if not str(exc).startswith('stale or future GTFS-SA header:'): raise
+        # Preserve useful historical joins, but publication below still enforces
+        # the ORIGINAL timestamp against the current clock and must fail closed.
+        freshness_error = str(exc)
+        alerts = decode_alerts(payload, now=int(payload['header']['timestamp']))
     return alerts, archive_path, {"source_url": STATIC_URL, "bytes": size,
-                                  "sha256": sha.hexdigest(), "resolved_url":resp.url.split("?")[0], "source_timestamp":int(payload["header"]["timestamp"])}
+                                  "sha256": sha.hexdigest(), "resolved_url":resp.url.split("?")[0], "source_timestamp":int(payload["header"]["timestamp"]), "freshness_error":freshness_error}
 
 
 def iter_table(zf, name):
@@ -156,7 +164,7 @@ def crosscheck(alerts, archive_path, metadata):
         trip_instance_samples=[dict(trip_id=t,static=g.trips[t],first_departure=g.first_departures.get(t)) for t in sorted(requested & set(g.trips))[:20]],
         active_alert_entities=sum('validation_error' not in a for a in alerts),matches=results,
         rejected_alerts=[a for a in alerts if 'validation_error' in a],
-        note='Diagnostic only. No publication. Unknown IDs and candidate routes are not warnings.')
+        note='Diagnostic at source time if stale; freshness_error blocks publication. Unknown IDs and candidate routes are not warnings.')
 
 
 def main():
@@ -170,21 +178,10 @@ def main():
     report = crosscheck(alerts, gtfs, info)
     (output / "real-gtfs-selector-diagnostic.json").write_text(
         json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    # Publishable test output is separate from the diagnostic and excludes controls.
-    from verified_feed import build_feed
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    date=datetime.fromtimestamp(info['source_timestamp'],ZoneInfo('Europe/Zurich')).strftime('%Y%m%d')
-    feed_info=info.get('feed_info',[])
-    if len(feed_info)!=1 or not feed_info[0].get('feed_start_date','99999999')<=date<=feed_info[0].get('feed_end_date',''):
-        raise ValueError('static feed validity does not cover source date')
-    if any(not e['resolved_static_id'] for e in report['selected_evidence'].values()):
-        raise ValueError('a selected station is unresolved')
-    feed=build_feed(report,alerts,int(time.time()),info['source_timestamp'])
-    (output/'alerts-v2.json').write_text(json.dumps(feed,ensure_ascii=False),encoding='utf-8')
     summary = [
         "# TramliBern 3.2 – Live GTFS diagnostic",
         "",
+        "Historical diagnostic only; publication blocked: " + info["freshness_error"] if info.get("freshness_error") else "Source was fresh at acquisition; publication rechecks current age.",
         f"Live alert entities with selectors: {report['active_alert_entities']}",
         f"GTFS archive SHA256: {info['sha256']}",
         f"GTFS archive bytes: {info['bytes']}",
@@ -208,6 +205,19 @@ def main():
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write("\n".join(summary)+"\n")
     print("\n".join(summary))
+    # Publishable test output is separate from the diagnostic and excludes controls.
+    from verified_feed import build_feed
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    date=datetime.fromtimestamp(info['source_timestamp'],ZoneInfo('Europe/Zurich')).strftime('%Y%m%d')
+    feed_info=info.get('feed_info',[])
+    if len(feed_info)!=1 or not feed_info[0].get('feed_start_date','99999999')<=date<=feed_info[0].get('feed_end_date',''):
+        raise ValueError('static feed validity does not cover source date')
+    if any(not e['resolved_static_id'] for e in report['selected_evidence'].values()):
+        raise ValueError('a selected station is unresolved')
+    feed=build_feed(report,alerts,int(time.time()),info['source_timestamp'])
+    (output/'alerts-v2.json').write_text(json.dumps(feed,ensure_ascii=False),encoding='utf-8')
+
 
 
 if __name__ == "__main__":
