@@ -1,0 +1,32 @@
+name: TramliBern 3.2 Real GTFS Diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-gtfs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install HTTP client
+        run: python -m pip install requests
+      - name: Compare live Service Alerts against original static IDs
+        env:
+          OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+        run: python ci/live_gtfs_diagnostic.py
+      - name: Save diagnostic reports (no publishing)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tramlibern-3-2-real-gtfs-report
+          path: reports/real-gtfs-*
+          if-no-files-found: warn
+          retention-days: 14
