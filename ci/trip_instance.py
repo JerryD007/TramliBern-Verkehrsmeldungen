@@ -21,7 +21,7 @@ def verify_instance(g, selector):
     t=g.trips[tid]
     if 'originalTripId' in selector and (not t.get('original_trip_id') or selector['originalTripId']!=t['original_trip_id']):
         return 'unverifiable','originalTripId conflicts with static trip'
-    if selector.get('scheduleRelationship','SCHEDULED') not in ('SCHEDULED',0):
+    if type(selector.get('scheduleRelationship')) is bool or selector.get('scheduleRelationship','SCHEDULED') not in ('SCHEDULED',0):
         return 'unverifiable','non-scheduled trip instance unsupported'
     if tid in g.frequency_trips: return 'unverifiable','frequency trip instance unsupported'
     if 'startDate' in selector:

@@ -20,3 +20,5 @@ class TripInstance(unittest.TestCase):
     def test_frequency_not_guessed(self):
         self.g.frequency_trips={'t'};self.assertEqual(self.check(startTime='25:30:00'),'unverifiable')
     def test_new_trip_not_guessed(self):self.assertEqual(self.check(scheduleRelationship='NEW'),'unverifiable')
+
+    def test_boolean_relationship_rejected(self):self.assertEqual(self.check(scheduleRelationship=False),'unverifiable')

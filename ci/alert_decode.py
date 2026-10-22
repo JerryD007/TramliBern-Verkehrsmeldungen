@@ -25,8 +25,8 @@ def normalize(s):
     if not isinstance(s,dict): return {'invalid': True}
     result = dict(s)
     trip = result.pop('trip', None)
-    if trip is not None:
-        if not isinstance(trip,dict): return {'invalid':True}
+    if 'trip' in s:
+        if not isinstance(trip,dict) or not trip: return {'invalid':True}
         for k,v in trip.items():
             if k not in ('tripId','routeId','directionId','originalTripId','startTime','startDate','scheduleRelationship') or (k in result and result[k] != v):
                 return dict(result, unsupportedTripConstraint=trip)
@@ -42,7 +42,7 @@ def decode_alerts(payload, now=None):
     timestamp = integer(header.get('timestamp'))
     if not now-900 <= timestamp <= now+120:
         raise ValueError(f'stale or future GTFS-SA header: source={timestamp}, now={now}, age_seconds={now-timestamp}')
-    if header.get('incrementality', 'FULL_DATASET') not in ('FULL_DATASET',0):
+    if type(header.get('incrementality')) is bool or header.get('incrementality', 'FULL_DATASET') not in ('FULL_DATASET',0):
         raise ValueError('differential feed unsupported')
     result=[]
     seen=set()

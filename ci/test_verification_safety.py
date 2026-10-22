@@ -70,3 +70,13 @@ class DecoderRegression(unittest.TestCase):
         result=decode_alerts(self.feed({'activePeriod':'bad'}),1000)
         self.assertIn('validation_error',result[0])
         self.assertEqual(result[0]['selectors'],[])
+
+class EmptyTripSafety(unittest.TestCase):
+    def test_null_trip_not_discarded(self):
+        from alert_decode import normalize
+        self.assertEqual(normalize({'stopId':'p','trip':None}),{'invalid':True})
+    def test_empty_trip_not_discarded(self):
+        from alert_decode import normalize
+        self.assertEqual(normalize({'stopId':'p','trip':{}}),{'invalid':True})
+    def test_bool_incrementality_rejected(self):
+        with self.assertRaises(ValueError):decode_alerts({'header':{'timestamp':1000,'incrementality':False},'entity':[]},1000)

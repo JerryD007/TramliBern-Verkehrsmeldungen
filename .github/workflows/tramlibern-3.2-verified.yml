@@ -30,8 +30,14 @@ jobs:
       - run: python ci/live_gtfs_diagnostic.py
         env:
           OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+      - name: Diagnose protobuf freshness if the JSON live check fails
+        if: failure()
+        continue-on-error: true
+        run: python ci/probe_protobuf.py
+        env:
+          OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
       - name: Publish short-lived test feed on this test branch only
-        if: github.ref == 'refs/heads/test/tramlibern-3.2-verified'
+        if: success() && github.ref == 'refs/heads/test/tramlibern-3.2-verified'
         run: |
           mkdir -p data
           cp reports/alerts-v2.json data/alerts-v2.json
