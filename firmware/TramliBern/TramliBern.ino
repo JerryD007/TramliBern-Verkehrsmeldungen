@@ -1,3 +1,4 @@
+#include "AlertSafety.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -182,7 +183,7 @@ bool getJson(const String &url, JsonDocument &doc) {
 // 2.9: Verkehrsmeldungen ausschliesslich als optionale Erweiterung.
 // Keine API-Zugangsdaten auf dem ESP32; GitHub Pages liefert die aufbereiteten Daten.
 static const char *ALERTS_BASE =
-  "https://jerryd007.github.io/TramliBern-Verkehrsmeldungen/";
+  "https://raw.githubusercontent.com/JerryD007/TramliBern-Verkehrsmeldungen/test/tramlibern-3.2-verified/data/";
 constexpr uint32_t ALERT_REFRESH_MS = 300000UL;
 constexpr uint32_t ALERT_RETRY_MS = 60000UL;
 constexpr uint32_t SLOID_STEP_MS = 3000UL;
@@ -197,7 +198,7 @@ ServiceAlert serviceAlerts[MAX_ALERTS];
 int serviceAlertCount = 0;
 bool alertsValid = false;
 String alertFeedError = "Noch kein Feed-Abruf";
-time_t alertFeedGenerated = 0;
+time_t alertFeedGenerated = 0, alertFeedExpires = 0;
 uint32_t alertsFetchedAt = 0, alertsAttemptAt = 0;
 uint32_t sloidStepAt = 0;
 String mappedStation[MAX_STOPS], mappedSloid[MAX_STOPS];
@@ -206,19 +207,20 @@ bool mappedComplete[MAX_STOPS] = {};
 uint32_t mappedRetryAt[MAX_STOPS] = {};
 
 bool exactStopMatch(const String &selected, const String &affected) {
-  return selected.length() && (affected == selected || affected.startsWith(selected + ":"));
+  return selected.length() && (affected == selected);
 }
 
 String alertForActivePage() {
   if (!alertsValid || !clockReady) return "";
   const time_t now = time(nullptr);
+  if (!verifiedFeedTime(now, alertFeedGenerated, alertFeedExpires)) return "";
   const int from = activePage * STOPS_PER_PAGE;
   const int to = min(stopCount, from + (activePage == 2 ? 1 : STOPS_PER_PAGE));
   for (int i = from; i < to; ++i) {
     if (!mappedComplete[i] || !mappedSloid[i].length()) continue;
     for (int a = 0; a < serviceAlertCount; ++a) {
       ServiceAlert &al = serviceAlerts[a];
-      if (al.until && al.until < now) continue;
+      if (al.until <= now) continue;
       for (int j = 0; j < al.count; ++j) {
         if (exactStopMatch(mappedSloid[i], al.stopIds[j])) {
           String place = stops[i];
@@ -246,12 +248,14 @@ void invalidateChangedStopMappings() {
 
 bool fetchAlertFeed() {
   JsonDocument doc;
-  if (!getJson(String(ALERTS_BASE) + "alerts.json", doc)) {
+  if (!getJson(String(ALERTS_BASE) + "alerts-v2.json", doc)) {
     alertFeedError = "Feed-Abruf: " + lastHttpError;
     return false;
   }
-  if (!doc["alerts"].is<JsonArray>()) {
-    alertFeedError = "Feed-JSON: Feld alerts fehlt oder ist kein Array";
+  if (!doc["schema"].is<int>() || doc["schema"].as<int>() != 2 ||
+      !doc["generated"].is<int64_t>() || !doc["expires"].is<int64_t>() ||
+      !doc["alerts"].is<JsonArray>() || doc["alerts"].size() > MAX_ALERTS) {
+    alertFeedError = "Kein gueltiger verifizierter 3.2-Testfeed";
     return false;
   }
   const time_t now = time(nullptr);
@@ -260,31 +264,36 @@ bool fetchAlertFeed() {
     return false;
   }
   time_t generated = (time_t)(doc["generated"] | 0LL);
-  alertFeedGenerated = generated;
+  time_t expires = (time_t)(doc["expires"] | 0LL);
   // Bei fehlender/alter Aktualisierung keine scheinbar aktuellen Meldungen zeigen.
-  if (generated < now - 3 * 3600 || generated > now + 600) {
+  if (!verifiedFeedTime(now, generated, expires)) {
     alertFeedError = "Feed-Zeitstempel zu alt/ungueltig, Alter: " +
       String((long long)(now - generated)) + " Sekunden";
     Serial.println("Service Alerts: " + alertFeedError);
     return false;
   }
+  alertFeedGenerated = generated;
+  alertFeedExpires = expires;
   serviceAlertCount = 0;
   for (JsonObject row : doc["alerts"].as<JsonArray>()) {
     if (serviceAlertCount >= MAX_ALERTS) break;
-    if (!row["stops"].is<JsonArray>()) continue;
+    if (strcmp(row["verification"] | "", "explicit_stop") != 0 ||
+        !row["start"].is<int64_t>() || !row["end"].is<int64_t>() ||
+        !row["text"].is<const char *>() || !row["stops"].is<JsonArray>() ||
+        row["stops"].size() > 12) continue;
     String text = row["text"] | "";
     text.trim();
     if (!text.length()) continue;
     time_t until = (time_t)(row["end"] | 0LL);
-    if (until && until < now) continue;
+    if (!verifiedAlertTime(now, row["start"].as<int64_t>(), until, expires)) continue;
     ServiceAlert &a = serviceAlerts[serviceAlertCount];
     a.text = text.substring(0, 180);
     a.until = until;
     a.count = 0;
     for (JsonVariant v : row["stops"].as<JsonArray>()) {
       if (a.count >= 12) break;
-      String id = v.as<String>();
-      if (id.startsWith("ch:1:sloid:")) a.stopIds[a.count++] = id;
+      if (!v.is<const char *>() || !verifiedStationId(v.as<const char *>())) continue;
+      a.stopIds[a.count++] = v.as<String>();
     }
     if (a.count) ++serviceAlertCount;
   }
@@ -326,7 +335,7 @@ bool resolveSloid(int i) {
   char suffix[8];
   snprintf(suffix, sizeof(suffix), "%02x.json", bucket);
   JsonDocument doc;
-  if (!getJson(String(ALERTS_BASE) + "ids/" + suffix, doc)) return false;
+  if (!getJson(String("https://jerryd007.github.io/TramliBern-Verkehrsmeldungen/ids/") + suffix, doc)) return false;
   String key = String(mappedId[i]);
   String sloid = doc[key].as<String>();
   if (!sloid.startsWith("ch:1:sloid:")) {
@@ -343,6 +352,11 @@ void serviceAlertsTick() {
   invalidateChangedStopMappings();
   if (touchMenuOpen || WiFi.status() != WL_CONNECTED || !clockReady) return;
   uint32_t now = millis();
+  if (alertsValid && clockReady && !verifiedFeedTime(time(nullptr), alertFeedGenerated, alertFeedExpires)) {
+    alertsValid = false;
+    serviceAlertCount = 0;
+    alertFeedError = "Testfeed abgelaufen: neuen Cloud-Test ausfuehren";
+  }
   uint32_t interval = alertsValid ? ALERT_REFRESH_MS : ALERT_RETRY_MS;
   if (!alertsAttemptAt || now - alertsAttemptAt >= interval) {
     alertsAttemptAt = now ? now : 1;
@@ -881,8 +895,8 @@ void setupRoutes() {
   // TramliBern 3.0 TEST: Diagnose nur im lokalen Browser.
   // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
   server.on("/alerts-status", HTTP_GET, []() {
-    String html = pageStart("Verkehrsmeldungen 3.1 TEST");
-    html += "<section class='card'><h2>Verkehrsmeldungen 3.1 TEST</h2>";
+    String html = pageStart("Verkehrsmeldungen 3.2 TEST");
+    html += "<section class='card'><h2>Verkehrsmeldungen 3.2 TEST</h2>";
     html += "<p>Stadt: <b>" + escapeHtml(String(CITY_LABELS[activeCity])) + "</b></p>";
     html += "<p>Feed: <b>" + String(alertsValid ? "geladen" : "nicht aktuell") + "</b> &middot; Eintraege: " + String(serviceAlertCount) + "</p>";
     if (!alertsValid)
@@ -899,10 +913,10 @@ void setupRoutes() {
     time_t current = time(nullptr);
     for (int i = 0; i < stopCount; ++i) {
       int hits = 0;
-      if (alertsValid && mappedComplete[i]) {
+      if (alertsValid && verifiedFeedTime(current, alertFeedGenerated, alertFeedExpires) && mappedComplete[i]) {
         for (int a = 0; a < serviceAlertCount; ++a) {
           const ServiceAlert &al = serviceAlerts[a];
-          if (al.until && al.until < current) continue;
+          if (al.until <= current) continue;
           for (int j = 0; j < al.count; ++j) {
             if (exactStopMatch(mappedSloid[i], al.stopIds[j])) { ++hits; break; }
           }
@@ -940,7 +954,7 @@ void setupRoutes() {
       if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
     }
     html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
-    html += "<p><a class='button subtle' href='/alerts-status'>Verkehrsmeldungen pruefen (3.1 TEST)</a></p>";
+    html += "<p><a class='button subtle' href='/alerts-status'>Verkehrsmeldungen pruefen (3.2 TEST)</a></p>";
     html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";

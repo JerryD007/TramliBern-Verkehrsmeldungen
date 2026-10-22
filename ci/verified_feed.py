@@ -13,8 +13,12 @@ def text_of(value):
     return ((german or valid)[0]['text'].strip() if valid else '')
 
 
-def build_feed(report, alerts, now):
+def build_feed(report, alerts, now, source_timestamp=None):
     # Source records have already passed strict full-dataset timestamp validation.
+    source_timestamp=now if source_timestamp is None else source_timestamp
+    if type(source_timestamp) is not int or not now-900 < source_timestamp <= now+120:
+        raise ValueError('source no longer fresh')
+    expiry=min(now+900,source_timestamp+900)
     by_id={a['id']:a for a in alerts}
     rows=[]
     seen=set()
@@ -28,7 +32,7 @@ def build_feed(report, alerts, now):
         key=(alert['id'],selected)
         if key in seen: continue
         seen.add(key)
-        end=now+900
+        end=expiry
         for p in alert.get('activePeriod',[]):
             start=integer(p['start']) if 'start' in p else 0
             stop=integer(p['end']) if 'end' in p else None
@@ -36,8 +40,8 @@ def build_feed(report, alerts, now):
                 end=min(end,stop if stop is not None else end)
         rows.append({'id':alert['id'],'stops':[selected],'text':text[:180],
                      'start':now,'end':end,'verification':'explicit_stop'})
-    feed={'schema':2,'generated':now,'expires':now+900,'alerts':rows,
-          'static_sha256':report['static']['sha256']}
+    feed={'schema':2,'generated':now,'expires':expiry,'alerts':rows,
+          'static_sha256':report['static']['sha256'], 'source_timestamp':source_timestamp}
     # Fail rather than silently discarding potentially relevant entries.
     if len(rows)>32 or len(json.dumps(feed,ensure_ascii=False).encode())>MAX_BYTES:
         raise ValueError('verified feed exceeds device capacity')

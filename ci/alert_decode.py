@@ -41,7 +41,7 @@ def decode_alerts(payload, now=None):
     header = payload.get('header',{})
     timestamp = integer(header.get('timestamp'))
     if not now-900 <= timestamp <= now+120:
-        raise ValueError('stale or future GTFS-SA header')
+        raise ValueError(f'stale or future GTFS-SA header: source={timestamp}, now={now}, age_seconds={now-timestamp}')
     if header.get('incrementality', 'FULL_DATASET') not in ('FULL_DATASET',0):
         raise ValueError('differential feed unsupported')
     result=[]

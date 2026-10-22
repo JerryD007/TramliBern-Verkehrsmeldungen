@@ -42,6 +42,7 @@ def fetch_inputs(token, root):
         "User-Agent": "TramliBern-3.2-ReadOnly-GitHub-Diagnostic",
         "Accept-Encoding": "gzip, deflate",
         "Accept": "application/json",
+        "Cache-Control": "no-cache",
     }, timeout=120)
     resp.raise_for_status()
     payload = resp.json()
@@ -64,7 +65,7 @@ def fetch_inputs(token, root):
                 sha.update(chunk)
     alerts = decode_alerts(payload)  # Recheck freshness after downloading the static feed.
     return alerts, archive_path, {"source_url": STATIC_URL, "bytes": size,
-                                  "sha256": sha.hexdigest(), "resolved_url":resp.url.split("?")[0]}
+                                  "sha256": sha.hexdigest(), "resolved_url":resp.url.split("?")[0], "source_timestamp":int(payload["header"]["timestamp"])}
 
 
 def iter_table(zf, name):
@@ -169,6 +170,18 @@ def main():
     report = crosscheck(alerts, gtfs, info)
     (output / "real-gtfs-selector-diagnostic.json").write_text(
         json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Publishable test output is separate from the diagnostic and excludes controls.
+    from verified_feed import build_feed
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    date=datetime.fromtimestamp(info['source_timestamp'],ZoneInfo('Europe/Zurich')).strftime('%Y%m%d')
+    feed_info=info.get('feed_info',[])
+    if len(feed_info)!=1 or not feed_info[0].get('feed_start_date','99999999')<=date<=feed_info[0].get('feed_end_date',''):
+        raise ValueError('static feed validity does not cover source date')
+    if any(not e['resolved_static_id'] for e in report['selected_evidence'].values()):
+        raise ValueError('a selected station is unresolved')
+    feed=build_feed(report,alerts,int(time.time()),info['source_timestamp'])
+    (output/'alerts-v2.json').write_text(json.dumps(feed,ensure_ascii=False),encoding='utf-8')
     summary = [
         "# TramliBern 3.2 – Live GTFS diagnostic",
         "",

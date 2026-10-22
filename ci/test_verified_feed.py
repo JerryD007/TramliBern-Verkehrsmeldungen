@@ -23,3 +23,9 @@ class VerifiedFeed(unittest.TestCase):
         r,a=self.setup_data(); a[0]['activePeriod']=[]; self.assertEqual(build_feed(r,a,1000)['alerts'][0]['end'],1900)
     def test_duplicate_selectors_deduplicated(self):
         r,a=self.setup_data();r['matches']*=3;self.assertEqual(len(build_feed(r,a,1000)['alerts']),1)
+    def test_source_age_not_reset_by_processing(self):
+        r,a=self.setup_data();a[0]['activePeriod']=[]
+        self.assertEqual(build_feed(r,a,1000,source_timestamp=200)['expires'],1100)
+    def test_stale_source_cannot_be_republished(self):
+        r,a=self.setup_data()
+        with self.assertRaises(ValueError):build_feed(r,a,1000,source_timestamp=100)
