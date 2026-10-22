@@ -148,6 +148,21 @@ def crosscheck(alerts, archive_path, metadata):
     results = []
     counts = {"explicit_stop": 0, "route_candidate": 0,
               "not_matched": 0, "unverifiable": 0}
+    examined_selectors = sum(len(e["selectors"]) for e in alerts)
+    identified_route_ids = sorted({s["routeId"] for e in alerts
+        for s in e["selectors"] if isinstance(s.get("routeId"), str)})
+    explicit_stop_selectors = sum(1 for e in alerts for s in e["selectors"]
+        if isinstance(s.get("stopId"), str))
+    # In a zero-hit result, distinguish "none affected" from incompatible IDs.
+    route_ids_in_static = len(set(identified_route_ids) & known_routes)
+    diagnostic = {
+        "examined_selectors": examined_selectors,
+        "distinct_alert_route_ids": len(identified_route_ids),
+        "alert_route_ids_found_in_static": route_ids_in_static,
+        "explicit_stop_selectors": explicit_stop_selectors,
+        "selected_gtfs_stops_found": len(stops),
+        "matched_selected_stop_route_candidates": 0,
+    }
     for name, selected in SELECTED.items():
         for e in alerts:
             for sel in e["selectors"]:
@@ -184,8 +199,10 @@ def crosscheck(alerts, archive_path, metadata):
                                     "alert_id": e["id"],
                                     "selector": {k: v for k, v in sel.items()
                                                  if k in ("agencyId", "routeId", "tripId", "stopId", "directionId")}})
+    diagnostic["matched_selected_stop_route_candidates"] = counts["route_candidate"]
     return {
         "source": "opentransportdata.swiss",
+        "quality": diagnostic,
         "checked_at_utc_epoch": int(time.time()),
         "static": metadata,
         "selected_stops": SELECTED,
@@ -219,7 +236,13 @@ def main():
         "| Classification | Count |", "|---|---:|",
     ]
     summary += [f"| {k} | {v} |" for k, v in report["counts"].items()]
-    summary += ["", "Route-only candidates are NOT confirmed affected stops.",
+    summary += ["", "## Dataset compatibility checks", "",
+        f"Alert selectors checked: {report['quality']['examined_selectors']}",
+        f"Distinct route IDs in alert selectors: {report['quality']['distinct_alert_route_ids']}",
+        f"Those exact route IDs found in GTFS-static: {report['quality']['alert_route_ids_found_in_static']}",
+        f"Selectors with explicit stop ID: {report['quality']['explicit_stop_selectors']}",
+        f"Selected GTFS stop IDs found: {report['quality']['selected_gtfs_stops_found']}",
+        "", "Route-only candidates are NOT confirmed affected stops.",
                 "Static feed compatibility and affected route segments still require verification.",
                 "No production data or firmware changed."]
     (output / "real-gtfs-summary.md").write_text("\n".join(summary)+"\n", encoding="utf-8")
