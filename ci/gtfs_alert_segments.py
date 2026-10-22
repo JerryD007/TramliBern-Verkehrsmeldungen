@@ -1,82 +1,115 @@
-"""Conservative GTFS service-alert selector verification for TramliBern 3.2 TEST.
-
-A route-only alert does not identify an affected stop or route segment.
-Only explicitly named stop IDs can confirm stop-specific relevance; optional
-route and trip selectors are checked against static GTFS relationships.
-Never publish these test decisions directly to the production alerts.json.
-"""
+"""Fail-closed exact GTFS joins. No segment is inferred from a line number."""
 import csv
 import io
-import re
 import zipfile
+from dataclasses import dataclass, field
 
-SLOID = re.compile(r"ch:1:sloid:\d+(?::\d+)*\Z")
-FILES = ("routes.txt", "trips.txt", "stops.txt", "stop_times.txt")
+FILES = ('routes.txt', 'trips.txt', 'stops.txt', 'stop_times.txt')
+
+@dataclass
+class Index:
+    routes: dict = field(default_factory=dict)
+    stops: dict = field(default_factory=dict)
+    trips: dict = field(default_factory=dict)
+    visits: dict = field(default_factory=dict)
+    families: dict = field(default_factory=dict)
+
+    def family(self, stop):
+        if stop in self.families:
+            return self.families[stop]
+        if stop not in self.stops:
+            return set()
+        # Only a declared station may expand to its declared child platforms.
+        if self.stops[stop].get('location_type') == '1':
+            self.families[stop] = {stop} | {s for s, r in self.stops.items()
+                            if r.get('parent_station') == stop and r.get('location_type', '0') in ('', '0')}
+        else:
+            self.families[stop] = {stop}
+        return self.families[stop]
 
 
-def read_gtfs(gtfs_zip):
-    if not isinstance(gtfs_zip, bytes):
-        raise ValueError("GTFS ZIP bytes required")
-    with zipfile.ZipFile(io.BytesIO(gtfs_zip)) as archive:
-        if any(name not in archive.namelist() for name in FILES):
-            raise ValueError("GTFS missing required tables")
-        def rows(name):
-            return list(csv.DictReader(io.StringIO(archive.read(name).decode("utf-8-sig"))))
-        routes, trips, stops, times = (rows(n) for n in FILES)
-    route_ids = {r.get("route_id") for r in routes}
-    stop_ids = {s.get("stop_id") for s in stops}
-    trip_routes = {t["trip_id"]: t["route_id"] for t in trips
-                   if t.get("trip_id") and t.get("route_id") in route_ids}
-    trip_stops = {}
-    for t in times:
-        if t.get("trip_id") in trip_routes and t.get("stop_id") in stop_ids:
-            trip_stops.setdefault(t["trip_id"], set()).add(t["stop_id"])
-    return route_ids, stop_ids, trip_routes, trip_stops
+def rows(z, name):
+    with z.open(name) as f:
+        yield from csv.DictReader(io.TextIOWrapper(f, encoding='utf-8-sig', newline=''))
 
 
-def evaluate_selector(gtfs, selector, selected_stop):
-    """Return (status, reason): confirmed_stop, candidate, or no_match.
+def read_gtfs(source, selected_stops=None):
+    """Stream stop_times; on live data retain only selected station families."""
+    g = Index()
+    with zipfile.ZipFile(io.BytesIO(source) if isinstance(source, bytes) else source) as z:
+        if not set(FILES).issubset(z.namelist()):
+            raise ValueError('GTFS missing required tables')
+        for name, key, target in [('routes.txt','route_id',g.routes),
+                                  ('stops.txt','stop_id',g.stops),
+                                  ('trips.txt','trip_id',g.trips)]:
+            for r in rows(z, name):
+                ident = r.get(key)
+                if not ident or ident in target:
+                    raise ValueError('missing or duplicate ' + key)
+                target[ident] = ({k:r.get(k,'') for k in ('route_id','direction_id')} if key == 'trip_id' else r)
+        keep = None if selected_stops is None else set().union(*(g.family(s) for s in selected_stops))
+        for r in rows(z, 'stop_times.txt'):
+            s, t = r.get('stop_id'), r.get('trip_id')
+            if keep is not None and s not in keep:
+                continue
+            if s not in g.stops or t not in g.trips:
+                raise ValueError('orphan stop_time')
+            try:
+                seq = int(r['stop_sequence'])
+                if seq < 0: raise ValueError()
+            except (KeyError, ValueError):
+                raise ValueError('invalid stop_sequence')
+            visits = g.visits.setdefault(t, {})
+            if seq in visits:
+                raise ValueError('duplicate trip stop_sequence')
+            visits[seq] = s
+    return g
 
-    confirmation requires an explicit stopId, never a line number guess.
-    A route-only/trip-only alert may be a candidate but not a confirmed stop.
-    An explicitly named station is confirmed only for that named stop.
-    """
+
+def evaluate_selector(g, selector, selected_stop):
     if not isinstance(selector, dict) or not isinstance(selected_stop, str):
-        raise ValueError("selector and stop required")
-    if not SLOID.fullmatch(selected_stop):
-        raise ValueError("selected stop needs SLOID")
-    route_ids, stop_ids, trip_routes, trip_stops = gtfs
-    route_id = selector.get("routeId")
-    trip = selector.get("tripId")
-    stop_id = selector.get("stopId")
-    if route_id is not None and (not isinstance(route_id, str) or route_id not in route_ids):
-        return "no_match", "unknown exact route_id"
-    if trip is not None:
-        if not isinstance(trip, str) or trip not in trip_routes:
-            return "no_match", "unknown exact trip_id"
-        if route_id is not None and trip_routes[trip] != route_id:
-            return "no_match", "trip belongs to different route"
-    if stop_id is not None:
-        if not isinstance(stop_id, str) or stop_id not in stop_ids:
-            return "no_match", "unknown exact stop_id"
-        # Match station and child platform only, never arbitrary ID prefixes.
-        if stop_id != selected_stop and not stop_id.startswith(selected_stop + ":"):
-            return "no_match", "different stop"
-        if trip is not None and stop_id not in trip_stops.get(trip, set()):
-            return "no_match", "trip does not visit affected stop"
-        if route_id is not None and trip is None:
-            # Explicit stop and route: verify route actually serves that stop.
-            if not any(trip_routes[t] == route_id and stop_id in trip_stops.get(t, set())
-                       for t in trip_routes):
-                return "no_match", "route does not serve affected stop"
-        return "confirmed_stop", "selector explicitly identifies selected stop"
-    if route_id is not None or trip is not None:
-        if trip is not None:
-            serves = any(s == selected_stop or s.startswith(selected_stop + ":")
-                         for s in trip_stops.get(trip, set()))
-            return ("candidate", "trip visits stop but no affected segment specified") if serves else ("no_match", "trip does not visit stop")
-        serves = any(trip_routes[t] == route_id and any(
-            s == selected_stop or s.startswith(selected_stop + ":")
-            for s in trip_stops.get(t, set())) for t in trip_routes)
-        return ("candidate", "route visits stop but affected segment unknown") if serves else ("no_match", "route does not visit stop")
-    return "no_match", "selector has no identifying route, trip or stop"
+        raise ValueError('selector and stop required')
+    unknown = ('unverifiable', 'unknown, unsupported or contradictory selector')
+    if set(selector) - {'routeId','tripId','stopId','directionId','agencyId','routeType'}:
+        return unknown
+    family = g.family(selected_stop)
+    if not family:
+        return 'unverifiable', 'selected stop absent from static GTFS'
+    route, trip, stop = (selector.get(k) for k in ('routeId','tripId','stopId'))
+    for value, table in ((route,g.routes),(trip,g.trips),(stop,g.stops)):
+        if value is not None and (not isinstance(value,str) or value not in table):
+            return 'unverifiable', 'exact identifier absent from static GTFS'
+    direction = selector.get('directionId')
+    if direction is not None and (type(direction) is not int or direction not in (0,1) or not (route or trip)):
+        return unknown
+    if trip and route and g.trips[trip]['route_id'] != route:
+        return unknown
+    if stop and not (g.family(stop) & family):
+        return 'no_match', 'different explicitly named stop'
+    if not (route or trip or stop):
+        return 'unverifiable', 'no supported spatial identifier'
+    candidates = [trip] if trip else g.visits.keys()
+    constrained = any(k in selector for k in ('routeId','tripId','directionId','agencyId','routeType'))
+    matched = False
+    missing_direction = False
+    for tid in candidates:
+        t = g.trips[tid]
+        rid = t.get('route_id')
+        r = g.routes.get(rid)
+        if r is None or (route and rid != route): continue
+        if 'agencyId' in selector and r.get('agency_id') != selector['agencyId']: continue
+        if 'routeType' in selector and str(selector['routeType']) != r.get('route_type'): continue
+        if direction is not None:
+            if t.get('direction_id') not in ('0','1'):
+                missing_direction = True
+                continue
+            if t['direction_id'] != str(direction): continue
+        targets = family & g.family(stop) if stop else family
+        if targets & set(g.visits.get(tid,{}).values()):
+            matched = True
+            break
+    if constrained and not matched:
+        return ('unverifiable', 'direction absent') if missing_direction else ('no_match','no trip satisfies all selector constraints at stop')
+    if stop:
+        return 'confirmed_stop', 'explicit stop; all supplied constraints verified'
+    return 'candidate', 'route or trip visits stop but affected segment unspecified'

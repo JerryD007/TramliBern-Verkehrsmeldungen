@@ -44,7 +44,7 @@ class AlertSelectorVerification(unittest.TestCase):
         self.assertEqual(self.check({"tripId":"t7-out"}),"candidate")
 
     def test_mismatched_line_number_not_guessed(self):
-        self.assertEqual(self.check({"routeId":"7"}),"no_match")
+        self.assertEqual(self.check({"routeId":"7"}),"unverifiable")
 
     def test_route_not_at_stop(self):
         self.assertEqual(self.check({"routeId":"r-28"}),"no_match")
@@ -53,10 +53,10 @@ class AlertSelectorVerification(unittest.TestCase):
         self.assertEqual(self.check({"routeId":"r-28","stopId":S1}),"no_match")
 
     def test_unknown_trip(self):
-        self.assertEqual(self.check({"tripId":"missing","stopId":S1}),"no_match")
+        self.assertEqual(self.check({"tripId":"missing","stopId":S1}),"unverifiable")
 
     def test_trip_route_mismatch(self):
-        self.assertEqual(self.check({"routeId":"r-28","tripId":"t7-out","stopId":S1}),"no_match")
+        self.assertEqual(self.check({"routeId":"r-28","tripId":"t7-out","stopId":S1}),"unverifiable")
 
     def test_trip_wrong_stop(self):
         self.assertEqual(self.check({"tripId":"t28","stopId":S1}),"no_match")
@@ -67,7 +67,7 @@ class AlertSelectorVerification(unittest.TestCase):
         self.assertIn("segment", reason)
 
     def test_prefix_collision_not_matched(self):
-        self.assertEqual(self.check({"stopId":S1}, S1+"0"),"no_match")
+        self.assertEqual(self.check({"stopId":S1}, S1+"0"),"unverifiable")
 
 if __name__ == "__main__":
     unittest.main()
