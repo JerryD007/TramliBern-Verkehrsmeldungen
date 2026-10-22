@@ -70,10 +70,6 @@ def iter_table(zf, name):
         yield from csv.DictReader(io.TextIOWrapper(fp, encoding="utf-8-sig", newline=""))
 
 
-def stop_matches(selected, stop):
-    return stop == selected or stop.startswith(selected + ":")
-
-
 def crosscheck(alerts, archive_path, metadata):
     g = read_gtfs(archive_path, SELECTED.values())
     selectors = [s for e in alerts for s in e['selectors']]
@@ -92,8 +88,8 @@ def crosscheck(alerts, archive_path, metadata):
         family=g.family(selected)
         serving={g.trips[t]['route_id'] for t,visits in g.visits.items()
                  if set(visits.values()) & family}
-        selected_evidence[name]={'id':selected,'static_name':g.stops.get(selected,{}).get('stop_name'),
-            'platforms':sorted(family),'serving_routes':sorted(serving),
+        selected_evidence[name]={'id':selected,'static_name':g.stops.get(g.resolve_stop(selected),{}).get('stop_name'),
+            'resolved_static_id':g.resolve_stop(selected),'platforms':sorted(family),'serving_routes':sorted(serving),
             'alert_routes_intersection':sorted(serving & ids['routeId'])}
         cache={}
         for e in alerts:
@@ -116,6 +112,14 @@ def crosscheck(alerts, archive_path, metadata):
         filters={'stops.txt':('stop_id',selected_ids),'trips.txt':('trip_id',trip_ids),
                  'routes.txt':('route_id',route_ids),'stop_times.txt':('stop_id',selected_ids)}
         for name,(key,allowed) in filters.items():
+            if name == 'stop_times.txt':
+                stream=io.StringIO()
+                fields=list(g.time_rows[0]) if g.time_rows else ['trip_id','stop_id','stop_sequence']
+                writer=csv.DictWriter(stream,fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(g.time_rows)
+                dest.writestr(name,stream.getvalue())
+                continue
             with source.open(name) as src:
                 reader=csv.DictReader(io.TextIOWrapper(src,encoding='utf-8-sig',newline=''))
                 with dest.open(name,'w') as target:

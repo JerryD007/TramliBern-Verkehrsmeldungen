@@ -1,0 +1,7 @@
+{
+  "source": "https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink",
+  "download_date": "2026-10-22",
+  "archive_sha256": "3c521698af71f2fda37ae9ac748eda0107f923305615bd25383bc5976df8c3d4",
+  "table": "stops.txt",
+  "selection": "Exact original_stop_id station records and declared children; no edited values"
+}

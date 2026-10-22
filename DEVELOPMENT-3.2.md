@@ -86,3 +86,25 @@ nicht in den Feed. Er läuft spätestens nach 15 Minuten ab und überschreitet w
 
 Die Schweizer JSON-Schnittstelle ist laut Betreiber für Testzwecke vorgesehen.
 Vor einem regulären Produktivbetrieb ist die Protobuf-Anbindung erforderlich.
+
+## Zusätzlich am 22.10.2026 direkt geprüft
+
+Der aktuelle offizielle GTFS-Fahrplan enthält die fünf Stations-SLOIDs nicht
+unmittelbar als `stop_id`. Stattdessen stehen sie als `original_stop_id` an
+Stationszeilen mit `stop_id = Parentch:1:sloid:…` und `location_type = 1`.
+Die 17 Plattformen verweisen per `parent_station` auf diese Zeilen.
+Die Zuordnung erfolgt nun anhand dieser expliziten, eindeutigen Datenbeziehung.
+`ci/fixtures/swiss_selected_stops.csv` enthält die unveränderten Originalzeilen;
+Herkunft und Archivprüfsumme stehen in `ci/fixtures/PROVENANCE.json`.
+Dies bestätigt die Stationsstruktur, **keine aktuelle Störung**.
+
+Ein neuer Live-Lauf fand mindestens einen leeren/umgekehrten Gültigkeitszeitraum.
+Solche Meldungen werden jetzt einzeln mit Fehlergrund ausgesondert; gültige
+Meldungen werden weiter untersucht. Defekte Zeiträume werden nicht repariert oder
+als unbegrenzt gültig interpretiert.
+
+Die unveränderte 3.1-Firmware wurde auch lokal in der Cloud mit Arduino CLI 1.5.1
+und den festgelegten Bibliotheken erfolgreich kompiliert:
+Flash 1.253.987 / 1.310.720 Byte = 95,67 %, Reserve 56.733 Byte;
+statisches RAM 58.944 / 327.680 Byte = 17,99 %.
+Das ist ein Basiswert für 3.1, noch kein Kompiliernachweis einer neuen 3.2-Firmware.

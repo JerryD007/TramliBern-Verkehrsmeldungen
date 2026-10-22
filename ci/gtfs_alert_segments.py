@@ -13,8 +13,14 @@ class Index:
     trips: dict = field(default_factory=dict)
     visits: dict = field(default_factory=dict)
     families: dict = field(default_factory=dict)
+    aliases: dict = field(default_factory=dict)
+    time_rows: list = field(default_factory=list)
+
+    def resolve_stop(self, stop):
+        return stop if stop in self.stops else self.aliases.get(stop)
 
     def family(self, stop):
+        stop = self.resolve_stop(stop)
         if stop in self.families:
             return self.families[stop]
         if stop not in self.stops:
@@ -47,6 +53,11 @@ def read_gtfs(source, selected_stops=None):
                 if not ident or ident in target:
                     raise ValueError('missing or duplicate ' + key)
                 target[ident] = ({k:r.get(k,'') for k in ('route_id','direction_id')} if key == 'trip_id' else r)
+        originals = {}
+        for sid, r in g.stops.items():
+            if r.get('location_type') == '1' and r.get('original_stop_id'):
+                originals.setdefault(r['original_stop_id'],set()).add(sid)
+        g.aliases = {original:next(iter(ids)) for original,ids in originals.items() if len(ids)==1}
         keep = None if selected_stops is None else set().union(*(g.family(s) for s in selected_stops))
         for r in rows(z, 'stop_times.txt'):
             s, t = r.get('stop_id'), r.get('trip_id')
@@ -63,6 +74,7 @@ def read_gtfs(source, selected_stops=None):
             if seq in visits:
                 raise ValueError('duplicate trip stop_sequence')
             visits[seq] = s
+            if selected_stops is not None: g.time_rows.append(r)
     return g
 
 
@@ -80,9 +92,11 @@ def evaluate_selector(g, selector, selected_stop):
     if not family:
         return 'unverifiable', 'selected stop absent from static GTFS'
     route, trip, stop = (selector.get(k) for k in ('routeId','tripId','stopId'))
-    for value, table in ((route,g.routes),(trip,g.trips),(stop,g.stops)):
+    for value, table in ((route,g.routes),(trip,g.trips)):
         if value is not None and (not isinstance(value,str) or value not in table):
             return 'unverifiable', 'exact identifier absent from static GTFS'
+    if stop is not None and (not isinstance(stop,str) or g.resolve_stop(stop) is None):
+        return 'unverifiable', 'exact stop identifier or declared original_stop_id absent'
     direction = selector.get('directionId')
     if direction is not None and (type(direction) is not int or direction not in (0,1) or not (route or trip)):
         return unknown
