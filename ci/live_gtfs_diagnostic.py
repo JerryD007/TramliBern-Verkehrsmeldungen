@@ -14,7 +14,6 @@ import tempfile
 import time
 import zipfile
 
-import requests
 
 SA_URL = "https://api.opentransportdata.swiss/la/gtfs-sa/?format=json"
 STATIC_URL = "https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink"
@@ -34,6 +33,7 @@ from gtfs_alert_segments import read_gtfs, evaluate_selector
 
 
 def fetch_inputs(token, root):
+    import requests
     session = requests.Session()
     resp = session.get(SA_URL, headers={
         "Authorization": "Bearer " + token,
@@ -61,6 +61,7 @@ def fetch_inputs(token, root):
                     raise ValueError("GTFS archive unexpectedly large")
                 f.write(chunk)
                 sha.update(chunk)
+    alerts = decode_alerts(payload)  # Recheck freshness after downloading the static feed.
     return alerts, archive_path, {"source_url": STATIC_URL, "bytes": size,
                                   "sha256": sha.hexdigest(), "resolved_url":resp.url}
 
