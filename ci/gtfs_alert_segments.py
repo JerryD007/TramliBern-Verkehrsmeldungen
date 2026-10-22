@@ -3,6 +3,7 @@ import csv
 import io
 import zipfile
 from dataclasses import dataclass, field
+from trip_instance import verify_instance
 
 FILES = ('routes.txt', 'trips.txt', 'stops.txt', 'stop_times.txt')
 
@@ -15,6 +16,10 @@ class Index:
     families: dict = field(default_factory=dict)
     aliases: dict = field(default_factory=dict)
     time_rows: list = field(default_factory=list)
+    calendars: dict = field(default_factory=dict)
+    exceptions: dict = field(default_factory=dict)
+    frequency_trips: set = field(default_factory=set)
+    first_departures: dict = field(default_factory=dict)
 
     def resolve_stop(self, stop):
         return stop if stop in self.stops else self.aliases.get(stop)
@@ -39,7 +44,7 @@ def rows(z, name):
         yield from csv.DictReader(io.TextIOWrapper(f, encoding='utf-8-sig', newline=''))
 
 
-def read_gtfs(source, selected_stops=None):
+def read_gtfs(source, selected_stops=None, requested_trips=None):
     """Stream stop_times; on live data retain only selected station families."""
     g = Index()
     with zipfile.ZipFile(io.BytesIO(source) if isinstance(source, bytes) else source) as z:
@@ -52,7 +57,18 @@ def read_gtfs(source, selected_stops=None):
                 ident = r.get(key)
                 if not ident or ident in target:
                     raise ValueError('missing or duplicate ' + key)
-                target[ident] = ({k:r.get(k,'') for k in ('route_id','direction_id')} if key == 'trip_id' else r)
+                target[ident] = ({k:r.get(k,'') for k in ('route_id','direction_id','service_id','original_trip_id')} if key == 'trip_id' else r)
+        if 'calendar.txt' in z.namelist():
+            for r in rows(z,'calendar.txt'):
+                if r.get('service_id') in g.calendars: raise ValueError('duplicate calendar')
+                g.calendars[r.get('service_id')]=r
+        if 'calendar_dates.txt' in z.namelist():
+            for r in rows(z,'calendar_dates.txt'):
+                key=(r.get('service_id'),r.get('date'))
+                if key in g.exceptions or r.get('exception_type') not in ('1','2'): raise ValueError('invalid calendar exception')
+                g.exceptions[key]=r['exception_type']
+        if 'frequencies.txt' in z.namelist():
+            g.frequency_trips={r.get('trip_id') for r in rows(z,'frequencies.txt')}
         originals = {}
         for sid, r in g.stops.items():
             if r.get('location_type') == '1' and r.get('original_stop_id'):
@@ -61,6 +77,11 @@ def read_gtfs(source, selected_stops=None):
         keep = None if selected_stops is None else set().union(*(g.family(s) for s in selected_stops))
         for r in rows(z, 'stop_times.txt'):
             s, t = r.get('stop_id'), r.get('trip_id')
+            if requested_trips is None or t in requested_trips:
+                try: seq=int(r['stop_sequence'])
+                except (KeyError,ValueError): raise ValueError('invalid stop_sequence')
+                first=g.first_departures.get(t)
+                if first is None or seq<first[0]: g.first_departures[t]=(seq,r.get('departure_time',''))
             if keep is not None and s not in keep:
                 continue
             if s not in g.stops or t not in g.trips:
@@ -82,12 +103,13 @@ def evaluate_selector(g, selector, selected_stop):
     if not isinstance(selector, dict) or not isinstance(selected_stop, str):
         raise ValueError('selector and stop required')
     unknown = ('unverifiable', 'unknown, unsupported or contradictory selector')
-    if set(selector) - {'routeId','tripId','stopId','directionId','agencyId','routeType'}:
+    if set(selector) - {'routeId','tripId','stopId','directionId','agencyId','routeType','originalTripId','startDate','startTime','scheduleRelationship'}:
         return unknown
     if 'agencyId' in selector and (not isinstance(selector['agencyId'],str) or not selector['agencyId']):
         return unknown
     if 'routeType' in selector and (type(selector['routeType']) is not int or selector['routeType'] < 0):
         return unknown
+    if any(selector.get(k) is None for k in selector): return unknown
     family = g.family(selected_stop)
     if not family:
         return 'unverifiable', 'selected stop absent from static GTFS'
@@ -97,6 +119,8 @@ def evaluate_selector(g, selector, selected_stop):
             return 'unverifiable', 'exact identifier absent from static GTFS'
     if stop is not None and (not isinstance(stop,str) or g.resolve_stop(stop) is None):
         return 'unverifiable', 'exact stop identifier or declared original_stop_id absent'
+    instance=verify_instance(g,selector)
+    if instance is not None: return instance
     direction = selector.get('directionId')
     if direction is not None and (type(direction) is not int or direction not in (0,1) or not (route or trip)):
         return unknown

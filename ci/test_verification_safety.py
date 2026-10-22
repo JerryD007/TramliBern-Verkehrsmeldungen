@@ -52,7 +52,7 @@ class DecoderRegression(unittest.TestCase):
         self.assertEqual(decode_alerts(self.feed({'informedEntity':sels}),1000)[0]['selectors'],sels)
     def test_trip_start_date_is_not_discarded(self):
         from alert_decode import normalize
-        self.assertIn('unsupportedTripConstraint',normalize({'trip':{'tripId':'t','startDate':'20261022'}}))
+        self.assertEqual(normalize({'trip':{'tripId':'t','startDate':'20261022'}})['startDate'],'20261022')
     def test_unknown_top_level_constraint_is_not_discarded(self):
         from alert_decode import normalize
         self.assertIn('newConstraint',normalize({'stopId':'p','newConstraint':'x'}))

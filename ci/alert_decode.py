@@ -28,8 +28,8 @@ def normalize(s):
     if trip is not None:
         if not isinstance(trip,dict): return {'invalid':True}
         for k,v in trip.items():
-            if k not in ('tripId','routeId','directionId') or (k in result and result[k] != v):
-                return {'unsupportedTripConstraint':trip}
+            if k not in ('tripId','routeId','directionId','originalTripId','startTime','startDate','scheduleRelationship') or (k in result and result[k] != v):
+                return dict(result, unsupportedTripConstraint=trip)
             result[k] = v
     return result
 

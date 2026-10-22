@@ -31,6 +31,8 @@ SLOID = re.compile(r"ch:1:sloid:\d+(?::\d+)*\Z")
 from alert_decode import decode_alerts
 from gtfs_alert_segments import read_gtfs, evaluate_selector
 
+CONTROLS = {"Bern, Liebegg":"ch:1:sloid:90035", "Ostermundigen, Rüti":"ch:1:sloid:90052"}
+
 
 def fetch_inputs(token, root):
     import requests
@@ -62,7 +64,7 @@ def fetch_inputs(token, root):
                 sha.update(chunk)
     alerts = decode_alerts(payload)  # Recheck freshness after downloading the static feed.
     return alerts, archive_path, {"source_url": STATIC_URL, "bytes": size,
-                                  "sha256": sha.hexdigest(), "resolved_url":resp.url}
+                                  "sha256": sha.hexdigest(), "resolved_url":resp.url.split("?")[0]}
 
 
 def iter_table(zf, name):
@@ -71,8 +73,9 @@ def iter_table(zf, name):
 
 
 def crosscheck(alerts, archive_path, metadata):
-    g = read_gtfs(archive_path, SELECTED.values())
     selectors = [s for e in alerts for s in e['selectors']]
+    requested={s['tripId'] for s in selectors if isinstance(s.get('tripId'),str)}
+    g = read_gtfs(archive_path, list(SELECTED.values())+list(CONTROLS.values()), requested)
     ids = {k: {s[k] for s in selectors if isinstance(s.get(k), str)}
            for k in ('routeId','tripId','stopId')}
     compatibility = {k: {'total':len(ids[k]), 'found':len(ids[k] & set(table)),
@@ -81,6 +84,13 @@ def crosscheck(alerts, archive_path, metadata):
     counts = {k:0 for k in ('explicit_stop','route_candidate','not_matched','unverifiable')}
     translation = dict(confirmed_stop='explicit_stop',candidate='route_candidate',
                        no_match='not_matched',unverifiable='unverifiable')
+    control_matches=[]
+    for name,stop in CONTROLS.items():
+        for e in alerts:
+            for sel in e['selectors']:
+                if not sel.get('stopId') or not (g.family(sel['stopId']) & g.family(stop)): continue
+                status,reason=evaluate_selector(g,sel,stop)
+                control_matches.append(dict(stop=name,selected_id=stop,alert_id=e['id'],status=status,reason=reason,selector=sel))
     results=[]
     reasons={}
     selected_evidence={}
@@ -105,7 +115,7 @@ def crosscheck(alerts, archive_path, metadata):
     # Export an exact-row subset for reproducible real-data joins, not synthetic evidence.
     output=Path('reports')
     output.mkdir(exist_ok=True)
-    selected_ids=set().union(*(g.family(s) for s in SELECTED.values()))
+    selected_ids=set().union(*(g.family(s) for s in list(SELECTED.values())+list(CONTROLS.values())))
     trip_ids=set(g.visits)
     route_ids={g.trips[t]['route_id'] for t in trip_ids}
     with zipfile.ZipFile(archive_path) as source, zipfile.ZipFile(output/'real-gtfs-selected.zip','w',zipfile.ZIP_DEFLATED) as dest:
@@ -134,10 +144,15 @@ def crosscheck(alerts, archive_path, metadata):
         'alert_route_ids_found_in_static':compatibility['routeId']['found'],
         'explicit_stop_selectors':sum('stopId' in s for s in selectors),
         'selected_gtfs_stops_found':len(set().union(*(g.family(s) for s in SELECTED.values()))),
-        'matched_selected_stop_route_candidates':counts['route_candidate']}
+        'matched_selected_stop_route_candidates':counts['route_candidate'],
+        'trip_selectors':sum('tripId' in s for s in selectors),
+        'stop_ids_resolved_via_original_stop_id':sum(s not in g.stops and g.resolve_stop(s) is not None for s in ids['stopId'])}
+    with zipfile.ZipFile(archive_path) as z:
+        metadata['feed_info']=list(iter_table(z,'feed_info.txt')) if 'feed_info.txt' in z.namelist() else []
     return dict(source='opentransportdata.swiss',quality=quality,compatibility=compatibility,
-        selected_evidence=selected_evidence,reason_counts=reasons,counts=counts,
+        selected_evidence=selected_evidence,reason_counts=reasons,counts=counts,control_matches=control_matches,
         checked_at_utc_epoch=int(time.time()),static=metadata,selected_stops=SELECTED,
+        trip_instance_samples=[dict(trip_id=t,static=g.trips[t],first_departure=g.first_departures.get(t)) for t in sorted(requested & set(g.trips))[:20]],
         active_alert_entities=sum('validation_error' not in a for a in alerts),matches=results,
         rejected_alerts=[a for a in alerts if 'validation_error' in a],
         note='Diagnostic only. No publication. Unknown IDs and candidate routes are not warnings.')
@@ -170,6 +185,8 @@ def main():
         f"Those exact route IDs found in GTFS-static: {report['quality']['alert_route_ids_found_in_static']}",
         f"Selectors with explicit stop ID: {report['quality']['explicit_stop_selectors']}",
         f"Selected GTFS stop IDs found: {report['quality']['selected_gtfs_stops_found']}",
+        "", f"Confirmed live control selectors: {sum(m['status']=='confirmed_stop' for m in report['control_matches'])}",
+        f"Quarantined invalid alert entities: {len(report['rejected_alerts'])}",
         "", "Route-only candidates are NOT confirmed affected stops.",
                 "Static feed compatibility and affected route segments still require verification.",
                 "No production data or firmware changed."]
