@@ -1,0 +1,13 @@
+# Authorized scheduler: refresh data only on the isolated 3.2 test branch.
+name: TramliBern 3.2 test feed clock
+on:
+  schedule:
+    - cron: '7-57/10 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh_test_branch:
+    uses: JerryD007/TramliBern-Verkehrsmeldungen/.github/workflows/tramlibern-3.2-refresh.yml@test/tramlibern-3.2-verified
+    secrets:
+      OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
