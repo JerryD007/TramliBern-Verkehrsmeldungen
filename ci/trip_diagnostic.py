@@ -5,6 +5,13 @@ from probe_protobuf import fields
 from trip_instance import verify_instance, seconds
 
 
+def json_trip_observations(payload):
+    stamp = int(payload['header']['timestamp'])
+    return [{'alert_id': a['id'], 'selector_index': i, 'selector': s}
+            for a in decode_alerts(payload, now=stamp)
+            for i, s in enumerate(a['selectors']) if 'tripId' in s]
+
+
 def compare_trip_encodings(binary, companion):
     from google.transit import gtfs_realtime_pb2 as pb
     from google.protobuf.json_format import MessageToDict
@@ -14,7 +21,9 @@ def compare_trip_encodings(binary, companion):
         raise ValueError('incomplete binary feed')
     stamp = int(feed.header.timestamp)
     if str(companion.get('header', {}).get('timestamp')) != str(stamp):
-        return {'diagnostic_only': True, 'status': 'different_snapshots'}, []
+        return {'diagnostic_only': True, 'status': 'different_snapshots',
+                'binary_timestamp': stamp,
+                'json_timestamp': companion.get('header', {}).get('timestamp')}, []
     # Validate envelope, unique entity IDs, periods and incrementality first.
     active = {a['id'] for a in decode_alerts(companion, now=stamp)
               if 'validation_error' not in a}
@@ -65,7 +74,10 @@ def inspect_trip_instances(g, paired):
         selector = row['selector']
         tid = selector.get('tripId')
         static = g.trips.get(tid)
-        if static is None:
+        if set(selector) - {'agencyId', 'routeId', 'routeType', 'stopId', 'directionId',
+                            'tripId', 'originalTripId', 'startDate', 'startTime', 'scheduleRelationship'}:
+            reason = 'unsupported_selector_constraints'
+        elif static is None:
             reason = 'exact_trip_id_absent'
         elif selector.get('originalTripId') != static.get('original_trip_id'):
             reason = 'original_trip_id_conflict'

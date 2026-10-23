@@ -5,7 +5,7 @@ try:
 except ImportError:
     pb = None
 from gtfs_alert_segments import Index
-from trip_diagnostic import compare_trip_encodings, inspect_trip_instances
+from trip_diagnostic import compare_trip_encodings, inspect_trip_instances, json_trip_observations
 
 
 @unittest.skipIf(pb is None, 'dedicated workflow installs protobuf')
@@ -46,6 +46,30 @@ class TripEncodingEvidence(unittest.TestCase):
         raw, j = self.source()
         j['entity'][0]['alert']['informedEntity'][0]['trip']['originalTripId'] = 'wrong'
         self.assertEqual(compare_trip_encodings(raw, j)[1], [])
+
+    def test_json_instance_diagnostic_preserves_unknown_constraints(self):
+        _, j = self.source()
+        j['entity'][0]['alert']['informedEntity'][0]['trip']['newConstraint'] = 'unknown'
+        rows = json_trip_observations(j)
+        # normalize preserves unknown trip constraints instead of inventing IDs.
+        self.assertIn('unsupportedTripConstraint', rows[0]['selector'])
+        report = inspect_trip_instances(Index(trips={'t': {'original_trip_id': 'org'}}), rows)
+        self.assertEqual(report['counts'], {'unsupported_selector_constraints': 1})
+
+    def test_real_official_json_and_binary_pair(self):
+        import json
+        from pathlib import Path
+        fixture = json.loads((Path(__file__).parent / 'fixtures/real_trip_pair_20261022.json').read_text())
+        feed = pb.FeedMessage()
+        feed.header.ParseFromString(bytes.fromhex(fixture['header_hex']))
+        feed.entity.add().ParseFromString(bytes.fromhex(fixture['entity_hex']))
+        report, rows = compare_trip_encodings(feed.SerializeToString(), fixture['json'])
+        self.assertEqual(report['counts']['field7_equals_json_originalTripId'], 1)
+        self.assertEqual(rows[0]['selector']['originalTripId'], 'ch:1:sjyid:100061:11416-001')
+        # The production decoder still retains the unsupported condition.
+        from protobuf_decode import protobuf_payload
+        selector = protobuf_payload(feed.SerializeToString())['entity'][0]['alert']['informedEntity'][0]
+        self.assertTrue(selector['unsupportedProtobufFields'])
 
 
 class TripInstanceEvidence(unittest.TestCase):

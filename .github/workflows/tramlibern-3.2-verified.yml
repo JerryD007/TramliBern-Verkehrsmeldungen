@@ -47,6 +47,13 @@ jobs:
           name: real-gtfs-evidence
           path: reports/
           retention-days: 14
+  refresh_smoke:
+    needs: live
+    permissions:
+      contents: write
+    uses: ./.github/workflows/tramlibern-3.2-refresh.yml
+    secrets:
+      OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
   firmware:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

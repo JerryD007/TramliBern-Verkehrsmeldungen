@@ -5,7 +5,7 @@ https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/pull/2
 
 ## Stand vom 23.10.2026
 
-Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 141 automatische Tests
+Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 143 automatische Tests
 bestehen, einschließlich eines echten positiven Schweizer Störungsfalls und
 negativer Kontrollen für alle fünf gewünschten Berner Haltestellen.
 **Noch keine Freigabe für einen dauerhaften Warnbetrieb:** Lauf 39890999298

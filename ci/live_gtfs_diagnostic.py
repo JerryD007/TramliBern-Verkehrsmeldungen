@@ -81,10 +81,16 @@ def fetch_inputs(token, root):
             'Cache-Control': 'no-cache'}, timeout=120)
         companion.raise_for_status()
         Path('reports/official-json-companion.json').write_bytes(companion.content)
-        from trip_diagnostic import compare_trip_encodings
-        comparison, paired = compare_trip_encodings(resp.content, companion.json())
+        from trip_diagnostic import compare_trip_encodings, json_trip_observations
+        companion_payload = companion.json()
+        comparison, paired = compare_trip_encodings(resp.content, companion_payload)
         Path('reports/trip-encoding-comparison.json').write_text(json.dumps(comparison, indent=2))
         Path('reports/paired-trip-observations.json').write_text(json.dumps(paired))
+        # Independently inspect the official JSON snapshot even if the API caches
+        # return different generations. This cannot authorize binary warnings.
+        Path('reports/json-trip-observations.json').write_text(json.dumps({
+            'source_timestamp': companion_payload['header']['timestamp'],
+            'rows': json_trip_observations(companion_payload)}))
     freshness_error = None
     try:
         alerts = decode_alerts(payload)  # Validate the freshly acquired source against the local clock.
@@ -106,12 +112,24 @@ def iter_table(zf, name):
 def crosscheck(alerts, archive_path, metadata):
     selectors = [s for e in alerts for s in e['selectors']]
     requested={s['tripId'] for s in selectors if isinstance(s.get('tripId'),str)}
+    json_observations = None
+    observation_path = Path('reports/json-trip-observations.json')
+    if os.environ.get('TRAMLI_COMPARE_JSON') == '1' and observation_path.exists():
+        json_observations = json.loads(observation_path.read_text())
+        requested.update(row['selector']['tripId'] for row in json_observations['rows']
+                         if isinstance(row['selector'].get('tripId'), str))
     g = read_gtfs(archive_path, list(SELECTED.values())+list(CONTROLS.values()), requested)
     paired_path = Path('reports/paired-trip-observations.json')
     if os.environ.get('TRAMLI_COMPARE_JSON') == '1' and paired_path.exists():
         from trip_diagnostic import inspect_trip_instances
         diagnostic = inspect_trip_instances(g, json.loads(paired_path.read_text()))
         Path('reports/trip-instance-diagnostic.json').write_text(json.dumps(diagnostic, indent=2))
+    if json_observations is not None:
+        from trip_diagnostic import inspect_trip_instances
+        diagnostic = inspect_trip_instances(g, json_observations['rows'])
+        diagnostic.update(input_format='official_json_diagnostic_only',
+                          source_timestamp=json_observations['source_timestamp'])
+        Path('reports/json-trip-instance-diagnostic.json').write_text(json.dumps(diagnostic, indent=2))
     ids = {k: {s[k] for s in selectors if isinstance(s.get(k), str)}
            for k in ('routeId','tripId','stopId')}
     compatibility = {k: {'total':len(ids[k]), 'found':len(ids[k] & set(table)),

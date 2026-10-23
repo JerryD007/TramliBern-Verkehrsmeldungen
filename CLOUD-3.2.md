@@ -40,3 +40,20 @@ Kennungen liefern ausdrücklich keinen positiven Nachweis.
 Die GTFS-RT-Dokumentation nennt für `original_trip_id` Feld 8; ob für GTFS-SA
 absichtlich ein anderes Schema verwendet wird, ist noch nicht offiziell bestätigt.
 Quelle: https://opentransportdata.swiss/en/cookbook/realtime-prediction-cookbook/gtfs-rt/
+
+Die archivierte offizielle Aufnahme aus Artefakt 12463107076 belegt am identischen
+Quellzeitstempel 1792702298 bei allen 38.158 aktiven Fahrtselektoren die exakte
+Gleichheit von Binärfeld 7 und JSON-`originalTripId`, einschließlich aller übrigen
+Selektorfelder. Ein unveränderter Ausschnitt mit SHA256-Herkunftsnachweisen ist
+unter `ci/fixtures/real_trip_pair_20261022.json` als Regressionstest enthalten.
+Das ist ein empirischer Schemanachweis für diese Aufnahme, keine allgemeine
+Freigabe zukünftiger unbekannter Zusatzbedingungen.
+
+Die aktuellen Binär-/JSON-Abrufe können unterschiedliche Cache-Generationen liefern.
+Dann wird ausdrücklich kein identischer Snapshot behauptet. Die JSON-Fahrtkennungen
+werden trotzdem eigenständig gegen den statischen Fahrplan diagnostiziert und
+mit ihrem eigenen Quellzeitstempel gekennzeichnet. Dieser Pfad veröffentlicht
+keine Warnungen. Das offizielle Cookbook beschreibt außerdem Unterschiede zwischen
+Kalendertag/Startzeit in GTFS-RT und Betriebstag/Zeit über 24 Uhr in GTFS Static.
+Diese werden für GTFS-SA nicht ungeprüft übernommen oder mit Modulo 24 korrigiert.
+Quelle: https://opentransportdata.swiss/en/cookbook/timetable-cookbook/gtfs/
