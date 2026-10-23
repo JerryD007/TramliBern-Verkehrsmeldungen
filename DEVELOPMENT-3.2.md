@@ -201,3 +201,20 @@ Periodische Actions laufen laut GitHub nur auf dem Default-Zweig. Ein reines
 `schedule:` im Testzweig würde den Dauerbetrieb daher nicht herstellen. Noch kein
 externer Scheduler eingerichtet; bestehende Workflows und main bleiben unverändert.
 Quelle: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+
+## Umstellung auf Linienmeldungen (23.10.2026)
+Auf ausdrücklichen Nutzerauftrag erhält 3.2 TEST einen getrennten Feed
+`data/alerts-lines.json` (Schema 3). Jede Anzeige beginnt mit `Linienmeldung <Linie>:`.
+Dies bestätigt ausschließlich die Zuordnung der offiziellen Störung zu einer Linie,
+die einen ausgewählten Halt im statischen Fahrplan bedient. Es bestätigt weder
+Betroffenheit dieses Halts noch Richtung oder Abschnitt dort.
+Originale Selektoreinschränkungen werden weiterhin geprüft. Unbekannte IDs,
+Widersprüche und nicht unterstützte Fahrtzusatzfelder bleiben ausgeschlossen.
+Reine Haltestellenmeldungen ohne ermittelbare Linie werden nicht übernommen.
+Der bisherige Schema-2-Feed bleibt semantisch unverändert, sodass ältere Testfirmware
+keine Linienmeldung als bestätigte Haltestellenwarnung interpretiert.
+Die Live-Abdeckung bleibt zunächst auf die fünf konfigurierten Berner Zielhalte
+beschränkt. Andere Halte und Städte erhalten dadurch noch keine Linienmeldungen.
+Stop-bezogene Selektoren außerhalb der geladenen Fahrplanfamilien bleiben ohne
+Verbindungsnachweis ausgeschlossen. Keine vollständige Störungsabdeckung zugesagt.
+Firmware 3.1 bleibt auf dem Gerät; kein Flash und keine Änderung an main.

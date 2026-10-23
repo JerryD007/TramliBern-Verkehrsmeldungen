@@ -248,11 +248,11 @@ void invalidateChangedStopMappings() {
 
 bool fetchAlertFeed() {
   JsonDocument doc;
-  if (!getJson(String(ALERTS_BASE) + "alerts-v2.json", doc)) {
+  if (!getJson(String(ALERTS_BASE) + "alerts-lines.json", doc)) {
     alertFeedError = "Feed-Abruf: " + lastHttpError;
     return false;
   }
-  if (!doc["schema"].is<int>() || doc["schema"].as<int>() != 2 ||
+  if (!doc["schema"].is<int>() || doc["schema"].as<int>() != 3 ||
       !doc["generated"].is<int64_t>() || !doc["expires"].is<int64_t>() ||
       !doc["alerts"].is<JsonArray>() || doc["alerts"].size() > MAX_ALERTS) {
     alertFeedError = "Kein gueltiger verifizierter 3.2-Testfeed";
@@ -277,13 +277,14 @@ bool fetchAlertFeed() {
   serviceAlertCount = 0;
   for (JsonObject row : doc["alerts"].as<JsonArray>()) {
     if (serviceAlertCount >= MAX_ALERTS) break;
-    if (strcmp(row["verification"] | "", "explicit_stop") != 0 ||
+    if (strcmp(row["verification"] | "", "line_relevance") != 0 ||
+        strcmp(row["scope"] | "", "line") != 0 ||
         !row["start"].is<int64_t>() || !row["end"].is<int64_t>() ||
         !row["text"].is<const char *>() || !row["stops"].is<JsonArray>() ||
         row["stops"].size() > 12) continue;
     String text = row["text"] | "";
     text.trim();
-    if (!text.length()) continue;
+    if (!text.startsWith("Linienmeldung ")) continue;
     time_t until = (time_t)(row["end"] | 0LL);
     if (!verifiedAlertTime(now, row["start"].as<int64_t>(), until, expires)) continue;
     ServiceAlert &a = serviceAlerts[serviceAlertCount];
@@ -908,7 +909,7 @@ void setupRoutes() {
     html += "<p>Aktuelle Displayseite: " + String(activePage + 1) + "/3</p>";
     html += "<p>Passende Warnung: " + escapeHtml(alertForActivePage().length() ? alertForActivePage() : "(keine)") + "</p>";
     html += "<p><b>Linienabgleich:</b> GTFS-Stammdaten-Pruefung im Testzweig. "
-            "Ohne nachgewiesene Linien-Haltestellen-Verbindung keine automatische Linienwarnung.</p>";
+            "Linienmeldung: Die Linie bedient einen ausgewaehlten Halt. Der Halt selbst muss nicht betroffen sein.</p>";
     html += "</section><section class='card'><h2>Haltestellen und Meldungen</h2>";
     time_t current = time(nullptr);
     for (int i = 0; i < stopCount; ++i) {

@@ -12,7 +12,7 @@ def check_feed(data, now):
     if len(data) > MAX_BYTES:
         raise ValueError('feed too large')
     f = json.loads(data)
-    if not isinstance(f, dict) or f.get('schema') != 2:
+    if not isinstance(f, dict) or f.get('schema') not in (2, 3):
         raise ValueError('wrong feed schema')
     for name in ('generated', 'expires', 'source_timestamp'):
         if type(f.get(name)) is not int:
@@ -29,8 +29,15 @@ def check_feed(data, now):
     if not isinstance(alerts, list) or len(alerts) > 32:
         raise ValueError('invalid alert list')
     for a in alerts:
-        if not isinstance(a, dict) or a.get('verification') != 'explicit_stop':
+        expected = 'line_relevance' if f['schema'] == 3 else 'explicit_stop'
+        if not isinstance(a, dict) or a.get('verification') != expected:
             raise ValueError('unverified alert')
+        if f['schema'] == 3:
+            if (a.get('scope') != 'line' or not isinstance(a.get('route_id'), str) or not a['route_id']
+                or not isinstance(a.get('line'), str) or not a['line']
+                or not isinstance(a.get('text'), str)
+                or not a['text'].startswith('Linienmeldung ' + a['line'] + ': ')):
+                raise ValueError('missing line scope or label')
         if not isinstance(a.get('id'), str) or not a['id']:
             raise ValueError('missing alert identity')
         if not isinstance(a.get('text'), str) or not a['text'].strip() or len(a['text']) > 180:

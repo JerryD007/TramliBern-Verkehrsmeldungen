@@ -4,11 +4,13 @@ set -euo pipefail
 test_branch='test/tramlibern-3.2-verified'
 test "$(git branch --show-current)" = "$test_branch"
 python3 ci/check_feed_publication.py reports/alerts-v2.json
+python3 ci/check_feed_publication.py reports/alerts-lines.json
 mkdir -p data
 cp reports/alerts-v2.json data/alerts-v2.json
+cp reports/alerts-lines.json data/alerts-lines.json
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-git add -- data/alerts-v2.json
+git add -- data/alerts-v2.json data/alerts-lines.json
 if ! git diff --cached --quiet; then
   git commit -m 'Refresh verified 3.2 test feed'
   # No rebase, merge, force push or retry of data from an obsolete code revision.

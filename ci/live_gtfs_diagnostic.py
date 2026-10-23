@@ -145,6 +145,8 @@ def crosscheck(alerts, archive_path, metadata):
                 if not sel.get('stopId') or not (g.family(sel['stopId']) & g.family(stop)): continue
                 status,reason=evaluate_selector(g,sel,stop)
                 control_matches.append(dict(stop=name,selected_id=stop,alert_id=e['id'],status=status,reason=reason,selector=sel))
+    from line_messages import line_match
+    line_matches=[]
     results=[]
     reasons={}
     selected_evidence={}
@@ -158,6 +160,9 @@ def crosscheck(alerts, archive_path, metadata):
         cache={}
         for e in alerts:
             for sel in e['selectors']:
+                line=line_match(g,sel,selected)
+                if line:
+                    line_matches.append(dict(stop=name,alert_id=e['id'],**line))
                 key=json.dumps(sel,sort_keys=True)
                 if key not in cache: cache[key]=evaluate_selector(g,sel,selected)
                 status,reason=cache[key]
@@ -207,7 +212,7 @@ def crosscheck(alerts, archive_path, metadata):
         selected_evidence=selected_evidence,reason_counts=reasons,counts=counts,control_matches=control_matches,
         checked_at_utc_epoch=int(time.time()),static=metadata,selected_stops=SELECTED,
         trip_instance_samples=[dict(trip_id=t,static=g.trips[t],first_departure=g.first_departures.get(t)) for t in sorted(requested & set(g.trips))[:20]],
-        active_alert_entities=sum('validation_error' not in a for a in alerts),matches=results,
+        active_alert_entities=sum('validation_error' not in a for a in alerts),matches=results,line_matches=line_matches,
         rejected_alerts=[a for a in alerts if 'validation_error' in a],
         note='Diagnostic at source time if stale; freshness_error blocks publication. Unknown IDs and candidate routes are not warnings.')
 
@@ -251,7 +256,7 @@ def main():
             f.write("\n".join(summary)+"\n")
     print("\n".join(summary))
     # Publishable test output is separate from the diagnostic and excludes controls.
-    from verified_feed import build_feed
+    from verified_feed import build_feed, build_line_feed
     from datetime import datetime
     from zoneinfo import ZoneInfo
     date=datetime.fromtimestamp(info['source_timestamp'],ZoneInfo('Europe/Zurich')).strftime('%Y%m%d')
@@ -262,6 +267,8 @@ def main():
         raise ValueError('a selected station is unresolved')
     feed=build_feed(report,alerts,int(time.time()),info['source_timestamp'])
     (output/'alerts-v2.json').write_text(json.dumps(feed,ensure_ascii=False),encoding='utf-8')
+    lines=build_line_feed(report,alerts,int(time.time()),info['source_timestamp'])
+    (output/'alerts-lines.json').write_text(json.dumps(lines,ensure_ascii=False),encoding='utf-8')
 
 
 

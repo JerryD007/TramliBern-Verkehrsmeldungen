@@ -46,3 +46,27 @@ def build_feed(report, alerts, now, source_timestamp=None):
     if len(rows)>32 or len(json.dumps(feed,ensure_ascii=False).encode())>MAX_BYTES:
         raise ValueError('verified feed exceeds device capacity')
     return feed
+
+
+def build_line_feed(report, alerts, now, source_timestamp):
+    # Reuse expiry/text limits, but give the new semantic contract its own endpoint.
+    converted = dict(report, matches=[dict(m, status='explicit_stop')
+                                     for m in report.get('line_matches', [])])
+    rows = []
+    seen = set()
+    for match in converted['matches']:
+        key = (match['alert_id'], match['stop'], match['route_id'])
+        if key in seen: continue
+        seen.add(key)
+        part = build_feed(dict(converted, matches=[match]), alerts, now, source_timestamp)
+        for row in part['alerts']:
+            row.update(verification='line_relevance', scope='line',
+                       route_id=match['route_id'], line=match['line'])
+            prefix = 'Linienmeldung ' + match['line'] + ': '
+            row['text'] = (prefix + row['text'])[:180]
+            rows.append(row)
+    feed = build_feed(dict(report, matches=[]), alerts, now, source_timestamp)
+    feed.update(schema=3, alerts=rows)
+    if len(rows)>32 or len(json.dumps(feed,ensure_ascii=False).encode())>MAX_BYTES:
+        raise ValueError('line feed exceeds device capacity')
+    return feed
