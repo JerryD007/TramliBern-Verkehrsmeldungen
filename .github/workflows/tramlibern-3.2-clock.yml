@@ -1,9 +1,12 @@
-# Authorized scheduler: refresh data only on the isolated 3.2 test branch.
+# Authorized scheduler: data is written only to the isolated test branch.
 name: TramliBern 3.2 test feed clock
 on:
   schedule:
-    - cron: '7-57/10 * * * *'
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/tramlibern-3.2-clock.yml']
 permissions:
   contents: write
 jobs:
