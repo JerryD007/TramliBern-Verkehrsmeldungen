@@ -2,11 +2,16 @@
 name: TramliBern 3.2 test feed clock
 on:
   schedule:
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+    - cron: '3-58/5 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
     paths: ['.github/workflows/tramlibern-3.2-clock.yml']
+  # Independent fallback from the existing scheduled workflow; it is not modified.
+  workflow_run:
+    workflows: ['TramliBern 2.9 Meldungen TEST']
+    types: [completed]
+    branches: [main]
 permissions:
   contents: write
 jobs:
