@@ -20,6 +20,7 @@ class Index:
     exceptions: dict = field(default_factory=dict)
     frequency_trips: set = field(default_factory=set)
     first_departures: dict = field(default_factory=dict)
+    original_trips: dict = field(default_factory=dict)
 
     def resolve_stop(self, stop):
         return stop if stop in self.stops else self.aliases.get(stop)
@@ -58,6 +59,14 @@ def read_gtfs(source, selected_stops=None, requested_trips=None):
                 if not ident or ident in target:
                     raise ValueError('missing or duplicate ' + key)
                 target[ident] = ({k:r.get(k,'') for k in ('route_id','direction_id','service_id','original_trip_id')} if key == 'trip_id' else r)
+        for tid, trip in g.trips.items():
+            if (trip.get('original_trip_id') and
+                    (requested_trips is None or trip['original_trip_id'] in requested_trips)):
+                g.original_trips.setdefault(trip['original_trip_id'], set()).add(tid)
+        if requested_trips is not None:
+            requested_trips = set(requested_trips)
+            requested_trips.update(tid for original in tuple(requested_trips)
+                                   for tid in g.original_trips.get(original, ()))
         if 'calendar.txt' in z.namelist():
             for r in rows(z,'calendar.txt'):
                 if r.get('service_id') in g.calendars: raise ValueError('duplicate calendar')

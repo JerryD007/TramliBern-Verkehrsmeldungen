@@ -2,7 +2,7 @@
 from collections import Counter
 from alert_decode import decode_alerts, normalize
 from probe_protobuf import fields
-from trip_instance import verify_instance, seconds
+from trip_instance import verify_instance, seconds, resolve_original_instance
 
 
 def json_trip_observations(payload):
@@ -70,6 +70,8 @@ def compare_trip_encodings(binary, companion):
 def inspect_trip_instances(g, paired):
     counts = Counter()
     samples = {}
+    aliases = Counter()
+    alias_samples = {}
     for row in paired:
         selector = row['selector']
         tid = selector.get('tripId')
@@ -79,6 +81,11 @@ def inspect_trip_instances(g, paired):
             reason = 'unsupported_selector_constraints'
         elif static is None:
             reason = 'exact_trip_id_absent'
+            resolved, alias_reason = resolve_original_instance(g, selector)
+            aliases[alias_reason] += 1
+            if len(alias_samples.setdefault(alias_reason, [])) < 3:
+                alias_samples[alias_reason].append(dict(row, resolved_trip_id=resolved,
+                    static=g.trips.get(resolved), first_departure=g.first_departures.get(resolved)))
         elif selector.get('originalTripId') != static.get('original_trip_id'):
             reason = 'original_trip_id_conflict'
         else:
@@ -95,4 +102,5 @@ def inspect_trip_instances(g, paired):
         if len(samples.setdefault(reason, [])) < 3:
             samples[reason].append(dict(row, static=static, first_departure=first))
     return {'diagnostic_only': True, 'counts': dict(counts), 'samples': samples,
+            'original_id_resolution_counts': dict(aliases), 'original_id_resolution_samples': alias_samples,
             'note': 'Instance equality does not establish a stop or affected segment. No date/time wrapping or ID replacement.'}

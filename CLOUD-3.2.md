@@ -57,3 +57,13 @@ keine Warnungen. Das offizielle Cookbook beschreibt außerdem Unterschiede zwisc
 Kalendertag/Startzeit in GTFS-RT und Betriebstag/Zeit über 24 Uhr in GTFS Static.
 Diese werden für GTFS-SA nicht ungeprüft übernommen oder mit Modulo 24 korrigiert.
 Quelle: https://opentransportdata.swiss/en/cookbook/timetable-cookbook/gtfs/
+
+Für den dokumentierten Altfall `tripId == originalTripId == ch:1:sjyid:…`
+prüft die Diagnose nun alle statischen `original_trip_id`-Kandidaten. Explizites
+Datum und Anfangszeit sind Pflicht. Nur genau ein passender Kandidat und vollständig
+auflösbare Alternativen liefern eine Zuordnung; eine bekannte widersprüchliche
+Trip-ID wird niemals ersetzt. Die Anfangsabfahrt wird auch dann geladen, wenn sie
+außerhalb der ausgewählten Berner Haltestellen liegt. Die Auflösung bleibt zunächst
+Diagnose: unbekannte Binärfelder werden dadurch nicht für Displaywarnungen zugelassen.
+Dokumentation der unterschiedlichen Kennungsräume:
+https://opentransportdata.swiss/en/homogenitaet-der-id-innerhalb-der-gtfs-dienste/
