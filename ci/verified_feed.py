@@ -15,7 +15,7 @@ def text_of(value):
 
 def build_feed(report, alerts, now, source_timestamp=None):
     # Source records have already passed strict full-dataset timestamp validation.
-    source_timestamp=now if source_timestamp is None else source_timestamp
+    # Missing provenance must never make an old feed appear freshly generated.
     if type(source_timestamp) is not int or not now-900 < source_timestamp <= now+120:
         raise ValueError('source no longer fresh')
     expiry=min(now+900,source_timestamp+900)

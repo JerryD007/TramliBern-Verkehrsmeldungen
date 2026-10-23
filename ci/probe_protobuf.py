@@ -41,7 +41,9 @@ def main():
     response.raise_for_status()
     (root/'protobuf-freshness-probe.pb').write_bytes(response.content)
     stamp=header_timestamp(response.content);now=int(time.time())
-    result={'diagnostic_only':True,'timestamp':stamp,'fetched_at':now,'age_seconds':now-stamp,'fresh':now-900<=stamp<=now+120}
+    result={'diagnostic_only':True,'timestamp':stamp,'fetched_at':now,'age_seconds':now-stamp,'fresh':now-900<stamp<=now+120}
+    from source_observation import observe_source
+    result['acquisition'] = observe_source(response.content, response.headers, stamp, now)
     (root/'protobuf-freshness-probe.json').write_text(json.dumps(result,indent=2))
     print(json.dumps(result))
 if __name__=='__main__':main()

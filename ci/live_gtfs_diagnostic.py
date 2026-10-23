@@ -37,6 +37,25 @@ CONTROLS = {"Bern, Liebegg":"ch:1:sloid:90035", "Ostermundigen, Rüti":"ch:1:slo
 def fetch_inputs(token, root):
     import requests
     session = requests.Session()
+    # Download to disk: GTFS static is typically >100 MB compressed.
+    archive_path = root / "gtfs-static.zip"
+    static_resolved_url = None
+    sha = hashlib.sha256()
+    size = 0
+    with session.get(STATIC_URL, stream=True, timeout=(30, 240), allow_redirects=True) as resp:
+        resp.raise_for_status()
+        static_resolved_url = resp.url.split("?")[0]
+        with archive_path.open("wb") as f:
+            for chunk in resp.iter_content(1024 * 1024):
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > 350_000_000:
+                    raise ValueError("GTFS archive unexpectedly large")
+                f.write(chunk)
+                sha.update(chunk)
+    # Fetch realtime AFTER the large static download, so transfer time cannot
+    # consume the alert freshness budget. Keep the original source timestamp.
     resp = session.get(SA_URL, headers={
         "Authorization": "Bearer " + token,
         "User-Agent": "TramliBern-3.2-ReadOnly-GitHub-Diagnostic",
@@ -50,24 +69,13 @@ def fetch_inputs(token, root):
     Path("reports/real-gtfs-source.pb").write_bytes(resp.content)
     payload = protobuf_payload(resp.content)
     Path("reports/real-gtfs-source.json").write_text(json.dumps(payload), encoding="utf-8")
-    # Download to disk: GTFS static is typically >100 MB compressed.
-    archive_path = root / "gtfs-static.zip"
-    sha = hashlib.sha256()
-    size = 0
-    with session.get(STATIC_URL, stream=True, timeout=(30, 240), allow_redirects=True) as resp:
-        resp.raise_for_status()
-        with archive_path.open("wb") as f:
-            for chunk in resp.iter_content(1024 * 1024):
-                if not chunk:
-                    continue
-                size += len(chunk)
-                if size > 350_000_000:
-                    raise ValueError("GTFS archive unexpectedly large")
-                f.write(chunk)
-                sha.update(chunk)
+    from source_observation import observe_source
+    observation = observe_source(resp.content, resp.headers,
+                                 int(payload['header']['timestamp']), int(time.time()))
+    Path('reports/source-observation.json').write_text(json.dumps(observation, indent=2))
     freshness_error = None
     try:
-        alerts = decode_alerts(payload)  # Recheck after downloading static data.
+        alerts = decode_alerts(payload)  # Validate the freshly acquired source against the local clock.
     except ValueError as exc:
         if not str(exc).startswith('stale or future GTFS-SA header:'): raise
         # Preserve useful historical joins, but publication below still enforces
@@ -75,7 +83,7 @@ def fetch_inputs(token, root):
         freshness_error = str(exc)
         alerts = decode_alerts(payload, now=int(payload['header']['timestamp']))
     return alerts, archive_path, {"source_url": STATIC_URL, "bytes": size,
-                                  "sha256": sha.hexdigest(), "resolved_url":resp.url.split("?")[0], "source_timestamp":int(payload["header"]["timestamp"]), "freshness_error":freshness_error}
+                                  "sha256": sha.hexdigest(), "resolved_url":static_resolved_url, "source_observation":observation, "source_timestamp":int(payload["header"]["timestamp"]), "freshness_error":freshness_error}
 
 
 def iter_table(zf, name):

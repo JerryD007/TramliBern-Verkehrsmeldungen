@@ -138,7 +138,7 @@ Kein automatisches Merge, kein Flash auf ein Gerät.
 - https://opentransportdata.swiss/en/homogenitaet-der-id-innerhalb-der-gtfs-dienste/
 
 Die Schweizer JSON-Schnittstelle ist für Tests vorgesehen. Für regulären
-Produktivbetrieb sind Protobuf-Anbindung, kontinuierliche sichere Feed-Erneuerung,
+Produktivbetrieb sind kontinuierliche sichere Feed-Erneuerung,
 weitere Städte/Halte sowie reale positive Trip-/Abschnittsnachweise noch offen.
 Ein grüner Workflow allein ist ausdrücklich kein fachlicher Zuordnungsnachweis.
 
@@ -168,3 +168,31 @@ Quelle: https://opentransportdata.swiss/de/vorankuendigung-gtfs-sa-aufteilung-de
 
 Stetige Feed-Erneuerung, weitere Haltestellen und reale positive Fahrt-/Abschnitts-
 nachweise bleiben offen. Keine Freigabe für Dauerbetrieb durch diese Umstellung.
+
+
+## Aktualitätsnachweis und Abrufreihenfolge (23.10.2026)
+
+Der große statische Fahrplan wird nun vor dem Echtzeitfeed geladen. Dadurch
+verbraucht dessen Download keine Restlaufzeit des Warnfeeds. Veröffentlichung
+prüft weiterhin den unveränderten Originalzeitstempel nach der Zuordnungsprüfung.
+`build_feed` lehnt auch einen fehlenden Quellzeitstempel ab; ein implizites Ersetzen
+mit der aktuellen Uhrzeit ist ausgeschlossen.
+
+`source-observation.json` und die unabhängige Fehlerprobe protokollieren SHA256,
+Abrufzeit, Alter beim Abruf und eine beschränkte Auswahl von HTTP-Cache-Headern.
+Authorization und Cookies werden nicht archiviert. Ein frisches HTTP-Date oder
+Age=0 gilt ausdrücklich nicht als Nachweis aktueller Inhalte. Diese Diagnose
+unterscheidet eine bereits alte Quelle von Alterung während der Verarbeitung.
+
+Das offizielle Schweizer Profil 0.17, Abschnitt 11.2.4.2, bezeichnet den Timestamp
+als Erstellungszeit des Feed-Inhalts. Daraus folgt keine belegte Ausnahme, um
+mehrere Stunden alte Daten als aktuell zu veröffentlichen. Die 15-Minuten-Grenze
+bleibt eine bewusst konservative Projektregel, keine zugesicherte Betreiber-SLA.
+Quelle: https://opentransportdata.swiss/wp-content/uploads/2026/07/GTFS_Profil_Switzerland_Version_0_17_en.pdf
+
+Die automatischen Tests prüfen zusätzlich Abrufreihenfolge, erhaltene Originalbytes,
+unveränderte Quellzeitstempel, fehlende/falsche Zeitstempel und sichere HTTP-Protokolle.
+Periodische Actions laufen laut GitHub nur auf dem Default-Zweig. Ein reines
+`schedule:` im Testzweig würde den Dauerbetrieb daher nicht herstellen. Noch kein
+externer Scheduler eingerichtet; bestehende Workflows und main bleiben unverändert.
+Quelle: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
