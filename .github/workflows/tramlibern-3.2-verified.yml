@@ -31,6 +31,7 @@ jobs:
       - run: python ci/live_gtfs_diagnostic.py
         env:
           OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+          TRAMLI_COMPARE_JSON: '1'
       - name: Independently recheck source freshness after a live failure
         if: failure()
         continue-on-error: true
@@ -39,16 +40,7 @@ jobs:
           OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
       - name: Publish short-lived test feed on this test branch only
         if: success() && github.ref == 'refs/heads/test/tramlibern-3.2-verified'
-        run: |
-          mkdir -p data
-          cp reports/alerts-v2.json data/alerts-v2.json
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/alerts-v2.json
-          if ! git diff --cached --quiet; then
-            git commit -m 'Refresh verified 3.2 test feed'
-            git push origin HEAD:refs/heads/test/tramlibern-3.2-verified
-          fi
+        run: bash ci/publish_test_feed.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:

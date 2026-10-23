@@ -5,12 +5,17 @@ https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/pull/2
 
 ## Stand vom 23.10.2026
 
-Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 123 automatische Tests
+Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 141 automatische Tests
 bestehen, einschließlich eines echten positiven Schweizer Störungsfalls und
 negativer Kontrollen für alle fünf gewünschten Berner Haltestellen.
-**Noch keine Freigabe für einen dauerhaften Warnbetrieb:** Der jüngste Live-Abruf
-lieferte einen veralteten Quellzeitstempel und wurde korrekt abgewiesen.
+**Noch keine Freigabe für einen dauerhaften Warnbetrieb:** Lauf 39890999298
+bestand am 23.10.2026 alle 130 damaligen Tests, Kompilierung und den Live-Abgleich.
+Die Quelle war aktuell: 521 gültige aktive Entitäten, 40.635 Selektoren, eine
+bestätigte Kontrollzuordnung und keine bestätigte Warnung für die fünf Zielhalte.
+Ein leerer, kurzlebiger Testfeed wurde korrekt auf dem Testzweig veröffentlicht.
 Die Testwarnversorgung benötigt erfolgreiche, regelmäßig erneuerte Cloud-Läufe.
+Der eigenständige Refresh-Workflow und eine getrennte Zeitplan-Datei sind vorbereitet;
+Aktivierung und verbleibende Grenzen stehen in [CLOUD-3.2.md](CLOUD-3.2.md).
 Eine erfolgreiche Kompilierung bestätigt keine Display-, Touch- oder WLAN-Funktion
 auf dem Gerät. Es fand kein Zugriff auf den physischen ESP32 statt.
 
