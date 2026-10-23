@@ -5,7 +5,7 @@ https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/pull/2
 
 ## Stand vom 23.10.2026
 
-Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 110 automatische Tests
+Die neue 3.2-TEST-Firmware ist vollständig kompiliert. 123 automatische Tests
 bestehen, einschließlich eines echten positiven Schweizer Störungsfalls und
 negativer Kontrollen für alle fünf gewünschten Berner Haltestellen.
 **Noch keine Freigabe für einen dauerhaften Warnbetrieb:** Der jüngste Live-Abruf
@@ -141,3 +141,30 @@ Die Schweizer JSON-Schnittstelle ist für Tests vorgesehen. Für regulären
 Produktivbetrieb sind Protobuf-Anbindung, kontinuierliche sichere Feed-Erneuerung,
 weitere Städte/Halte sowie reale positive Trip-/Abschnittsnachweise noch offen.
 Ein grüner Workflow allein ist ausdrücklich kein fachlicher Zuordnungsnachweis.
+
+
+## Fortsetzung: Binäranbindung am 23.10.2026
+
+Der Live-Abgleich liest jetzt die offizielle Protobuf-Antwort. Rohbytes werden
+als `real-gtfs-source.pb` zusätzlich zum lesbaren Diagnoseabbild archiviert.
+Die gemeinsame Kennungs-/Gültigkeitsprüfung bleibt unverändert. Neue Tests prüfen
+unbekannte Felder in Feed, Header, Alert, Zeitraum und verschachtelter Fahrt:
+Kein unbekannter Selektor darf durch das Entfernen einer Einschränkung zu einer
+Warnung werden. Unbekannte übergeordnete Bedingungen sperren die betroffene Meldung
+beziehungsweise den ganzen Feed.
+
+Ein echter Binärausschnitt bestätigt den Liebegg-Selektor. Die historische
+Binärquelle enthält außerdem Trip-Zusatzfelder mit Feldnummer 7, die von der
+Standardbibliothek nicht erkannt werden. Diese werden bewusst nicht als
+`originalTripId` geraten: die aktuelle Betreiberbeschreibung für GTFS-RT nennt
+hierfür Feldnummer 8. Solche Fahrtselektoren bleiben bis zur eindeutigen
+Schema-Klärung unverifizierbar. Die bereits getestete JSON-Instanzprüfung bleibt
+für historische Diagnosen erhalten; der Binärpfad verwirft keine Zusatzbedingungen.
+
+Die am 24.08.2026 angekündigten neuen `impact_period`/`communication_period`
+und `originalStopId` werden noch nicht interpretiert. Unbekannte Binärfelder
+werden sicher gesperrt statt als uneingeschränkt gültige Meldung behandelt.
+Quelle: https://opentransportdata.swiss/de/vorankuendigung-gtfs-sa-aufteilung-der-feeds-und-weitere-neuerungen/
+
+Stetige Feed-Erneuerung, weitere Haltestellen und reale positive Fahrt-/Abschnitts-
+nachweise bleiben offen. Keine Freigabe für Dauerbetrieb durch diese Umstellung.

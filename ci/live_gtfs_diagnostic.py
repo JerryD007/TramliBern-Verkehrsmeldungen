@@ -15,7 +15,7 @@ import time
 import zipfile
 
 
-SA_URL = "https://api.opentransportdata.swiss/la/gtfs-sa/?format=json"
+SA_URL = "https://api.opentransportdata.swiss/la/gtfs-sa"
 STATIC_URL = "https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink"
 # Device screenshots, confirmed IDs; these are selectors to evaluate, not feed mappings.
 SELECTED = {
@@ -41,12 +41,14 @@ def fetch_inputs(token, root):
         "Authorization": "Bearer " + token,
         "User-Agent": "TramliBern-3.2-ReadOnly-GitHub-Diagnostic",
         "Accept-Encoding": "gzip, deflate",
-        "Accept": "application/json",
+        "Accept": "application/octet-stream",
         "Cache-Control": "no-cache",
     }, timeout=120)
     resp.raise_for_status()
-    payload = resp.json()
+    from protobuf_decode import protobuf_payload
     Path("reports").mkdir(exist_ok=True)
+    Path("reports/real-gtfs-source.pb").write_bytes(resp.content)
+    payload = protobuf_payload(resp.content)
     Path("reports/real-gtfs-source.json").write_text(json.dumps(payload), encoding="utf-8")
     # Download to disk: GTFS static is typically >100 MB compressed.
     archive_path = root / "gtfs-static.zip"
