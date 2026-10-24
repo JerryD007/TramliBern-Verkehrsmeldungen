@@ -18,6 +18,7 @@ jobs:
       - run: bash ci/install.sh
       - run: |
           mkdir -p reports/TramliBern
+          echo 'esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=default,PSRAM=disabled' > reports/board.txt
           cp firmware/TramliBern/TramliBern.ino reports/TramliBern/
           set -o pipefail
           arduino-cli compile --fqbn 'esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=default,PSRAM=disabled' --output-dir reports/TramliBern firmware/TramliBern 2>&1 | tee reports/compile.log
@@ -26,7 +27,7 @@ jobs:
           echo "TramliBern SLIM TEST - Commit $GITHUB_SHA" > reports/BUILD.txt
           cd reports
           sha256sum TramliBern/* > SHA256SUMS.txt
-          zip -r TramliBern-SLIM-TEST.zip TramliBern memory.md SLIM-TEST.md BUILD.txt SHA256SUMS.txt
+          zip -r TramliBern-SLIM-TEST.zip TramliBern memory.md SLIM-TEST.md BUILD.txt SHA256SUMS.txt board.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
