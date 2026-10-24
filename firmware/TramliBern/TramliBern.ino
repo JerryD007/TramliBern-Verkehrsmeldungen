@@ -489,7 +489,7 @@ void drawBoard() {
   layout += WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   if (layout == previousLayout) {
     drawHeader();
-    if (WiFi.status() == WL_CONNECTED && stopCount) drawDepartureRows();
+    if (WiFi.status() == WL_CONNECTED) drawDepartureRows();
     return;
   }
   previousLayout = layout;
@@ -506,9 +506,6 @@ void drawBoard() {
     drawLine("WLAN nicht verbunden", 12, 60, WHITE);
     drawLine("Setup: TRAMLI-BERN-2", 12, 93, AMBER);
     drawLine("Browser: 192.168.4.1", 12, 123, WHITE);
-  } else if (!stopCount) {
-    drawLine("Haltestellen auswaehlen", 12, 60, AMBER);
-    drawLine("Browser: " + WiFi.localIP().toString(), 12, 95, WHITE);
   } else {
     for (int position = 0; position < (activePage == 2 ? 1 : STOPS_PER_PAGE); ++position) {
       int i = activePage * STOPS_PER_PAGE + position;
@@ -522,7 +519,12 @@ void drawBoard() {
   gfx->drawFastHLine(10, 267, 460, AMBER);
   String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   drawLine("Konfiguration: " + address, 12, 276, WHITE, 1);
-  drawLine(String(activePage + 1) + "/3", 448, 276, AMBER, 1);
+  for (int page = 0; page < PAGE_COUNT; ++page) {
+    int x = 320 + page * 50;
+    gfx->fillRect(x, 270, 46, 24, page == activePage ? AMBER : BLACK);
+    gfx->drawRect(x, 270, 46, 24, AMBER);
+    drawLine(String(page + 1), x + 17, 274, page == activePage ? BLACK : WHITE, 2);
+  }
   gfx->drawFastHLine(10, 295, 460, AMBER);
 }
 
@@ -650,7 +652,7 @@ String pageStart(const String &title) {
   html += "<nav aria-label='Navigation'><a href='/'>Haltestellen</a><a href='/boards'>Meine Boards</a><a href='/settings'>Einstellungen</a></nav>";
   return html;
 }
-String pageEnd() { return "<footer>Trämli Bern · Lokale Bedienung · Version 2.9 TEST · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
+String pageEnd() { return "<footer>Trämli Bern · Lokale Bedienung · Version SLIM TEST · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
 void sendPage(String html, int code = 200) {
   server.sendHeader("Cache-Control", "no-store");
   server.send(code, "text/html; charset=utf-8", html + pageEnd());
@@ -687,6 +689,11 @@ void setupRoutes() {
   // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
   server.on("/", HTTP_GET, []() {
     String html = pageStart("Meine Haltestellen");
+    html += "<section class='card'><h2>Seite frei wählen</h2><div class='row'>";
+    for (int page = 0; page < PAGE_COUNT; ++page) {
+      html += "<form action='/page' method='post'><input type='hidden' name='page' value='" + String(page) + "'><button" + String(page == activePage ? " aria-current='page'" : " class='subtle'") + ">Seite " + String(page + 1) + (page == activePage ? " ✓" : "") + "</button></form>";
+    }
+    html += "</div><p class='hint'>Auch leere Seiten sind direkt auswählbar. Unten einen freien Platz einrichten. Jede Stadt merkt sich ihre Seite.</p></section>";
     html += "<section class='card'><h2>Stadt auswählen</h2><p>Aktuelle Stadt: <b>" + String(CITY_LABELS[activeCity]) + "</b></p>";
     html += "<form action='/city' method='post'><label for='city'>Stadt</label><select id='city' name='city' style='width:100%;padding:12px;margin:7px 0 15px'>";
     for (int i = 0; i < CITY_COUNT; ++i)
@@ -1068,6 +1075,13 @@ void handleTouchTap(int rawX, int rawY) {
   if (x < 0 || y < 0) return;
   Serial.printf("Touch raw %d,%d -> px %d,%d | mode %d\n", rawX, rawY, x, y, touchMode);
   if (!touchMenuOpen) {
+    // Direct page selection also works for empty pages.
+    if (y >= 270 && y < 295 && x >= 320 && x < 470) {
+      selectPage((x - 320) / 50);
+      lastRefresh = 0;
+      drawBoard();
+      return;
+    }
     // Blauer Button: naechste Stadt. Die gespeicherten Haltestellen sind getrennt.
     if (x >= CITY_BUTTON_X && x < CITY_BUTTON_X + CITY_BUTTON_W &&
         y >= CITY_BUTTON_Y && y < CITY_BUTTON_Y + CITY_BUTTON_H) {
