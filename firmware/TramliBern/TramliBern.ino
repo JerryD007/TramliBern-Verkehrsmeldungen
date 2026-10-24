@@ -391,6 +391,17 @@ String cityStopKey(int city, int index) {
 String cityCountKey(int city) {
   return city == 0 ? "count" : "c" + String(city) + "n";
 }
+// Jede Stadt merkt sich ihre zuletzt gewaehlte Seite in Preferences.
+String cityPageKey(int city) { return "c" + String(city) + "page"; }
+void restoreCityPage() {
+  const uint8_t saved = prefs.getUChar(cityPageKey(activeCity).c_str(), 0);
+  activePage = saved < PAGE_COUNT ? saved : 0;
+}
+void selectPage(int page) {
+  if (page < 0 || page >= PAGE_COUNT || page == activePage) return;
+  activePage = page;
+  prefs.putUChar(cityPageKey(activeCity).c_str(), (uint8_t)page);
+}
 void loadCityStops() {
   stopCount = prefs.getUChar(cityCountKey(activeCity).c_str(), 0);
   if (stopCount > MAX_STOPS) stopCount = MAX_STOPS;
@@ -415,6 +426,7 @@ void loadSettings() {
   activeCity = prefs.getUChar("city", 0);
   if (activeCity < 0 || activeCity >= CITY_COUNT) activeCity = 0;
   loadCityStops();
+  restoreCityPage();
 }
 void saveStops() {
   resetStopData();
@@ -428,8 +440,8 @@ void changeCity(int city) {
   activeCity = city;
   prefs.putUChar("city", activeCity);
   loadCityStops();
+  restoreCityPage();
   resetStopData();
-  activePage = 0;
   lastRefresh = 0;
   statusText = "Lade Abfahrten";
   if (!touchMenuOpen) drawBoard();
@@ -1036,7 +1048,7 @@ void setupRoutes() {
     String value = server.arg("page");
     if (value.length() != 1 || value[0] < '0' || value[0] > '2') { showMessage("Ungueltige Seite."); return; }
     page = value.toInt();
-    activePage = page;
+    selectPage(page);
     lastRefresh = 0;
     drawBoard();
     redirectHome();
@@ -1055,7 +1067,7 @@ void setupRoutes() {
       stops[index] = stops[slot];
       stops[slot] = temp;
       saveStops();
-      activePage = slot / STOPS_PER_PAGE;
+      selectPage(slot / STOPS_PER_PAGE);
       lastRefresh = 0;
       drawBoard();
     }
@@ -1328,7 +1340,7 @@ void handleTouchTap(int rawX, int rawY) {
     // Tasten-Tippen schaltet Seite 1 -> 2 -> 3 -> 1; Swipe bleibt bestehen.
     if (x >= PAGE_BUTTON_X && x < PAGE_BUTTON_X + PAGE_BUTTON_W &&
         y >= PAGE_BUTTON_Y && y < PAGE_BUTTON_Y + PAGE_BUTTON_H) {
-      activePage = (activePage + 1) % PAGE_COUNT;
+      selectPage((activePage + 1) % PAGE_COUNT);
       lastRefresh = 0;
       drawBoard();
       return;
@@ -1433,7 +1445,7 @@ void checkSwipe() {
   if (!touchMenuOpen && abs(dx) > 650 && abs(dx) > abs(dy)) {
     waitRelease = true;
     int next = constrain(activePage + (dx < 0 ? 1 : -1), 0, PAGE_COUNT - 1);
-    if (next != activePage) { activePage = next; drawBoard(); lastRefresh = 0; }
+    if (next != activePage) { selectPage(next); drawBoard(); lastRefresh = 0; }
     return;
   }
   if (abs(dx) > 180 || abs(dy) > 180) moved = true; // kein Tippen bei Wischgeste
