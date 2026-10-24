@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - run: python3 ci/test_slim_storage.py
       - uses: arduino/setup-arduino-cli@v2
         with:
           version: '1.5.1'
@@ -22,8 +23,10 @@ jobs:
           arduino-cli compile --fqbn 'esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=default,PSRAM=disabled' --output-dir reports/TramliBern firmware/TramliBern 2>&1 | tee reports/compile.log
           python3 ci/memory_report.py 0
           cp SLIM-TEST.md reports/
+          echo "TramliBern SLIM TEST - Commit $GITHUB_SHA" > reports/BUILD.txt
           cd reports
-          zip -r TramliBern-SLIM-TEST.zip TramliBern memory.md SLIM-TEST.md
+          sha256sum TramliBern/* > SHA256SUMS.txt
+          zip -r TramliBern-SLIM-TEST.zip TramliBern memory.md SLIM-TEST.md BUILD.txt SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

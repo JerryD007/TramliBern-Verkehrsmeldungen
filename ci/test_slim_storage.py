@@ -1,0 +1,71 @@
+"""Compile and execute the actual firmware storage functions with fake NVS."""
+from pathlib import Path
+import subprocess,tempfile
+s=Path('firmware/TramliBern/TramliBern.ino').read_text()
+def function(name):
+    import re
+    m=re.search(r'(?:String|void) '+name+r'\([^)]*\)\s*\{',s);assert m,name
+    start=m.start();pos=m.end();level=1
+    while level:
+        if s[pos]=='{': level+=1
+        if s[pos]=='}': level-=1
+        pos+=1
+    return s[start:pos]
+code=r'''
+#include <string>
+#include <map>
+#include <cassert>
+#include <cstdint>
+using std::string;
+struct String : string {
+ using string::string;
+ String()=default;
+ String(const string& s):string(s){}
+ String(int n):string(std::to_string(n)){}
+};
+struct FakePrefs {
+ std::map<string,String> strings; std::map<string,int> numbers;
+ uint8_t getUChar(const char* k,int d){return numbers.count(k)?numbers[k]:d;}
+ void putUChar(const char*k,uint8_t v){numbers[k]=v;}
+ bool getBool(const char*k,bool d){return numbers.count(k)?numbers[k]:d;}
+ void putBool(const char*k,bool v){numbers[k]=v;}
+ String getString(const char*k,const char*d){return strings.count(k)?strings[k]:String(d);}
+ void putString(const char*k,String v){strings[k]=v;}
+} prefs;
+constexpr int MAX_STOPS=5,PAGE_COUNT=3;
+int activeCity=0,activePage=0,stopCount=0;
+String stops[MAX_STOPS];
+void resetStopData(){}
+'''
+for name in ['cityStopKey','cityCountKey','cityPageKey','restoreCityPage','selectPage','loadCityStops','saveStops']:code+=function(name)+'\n'
+code+=r'''
+int main(){
+ // Legacy settings migrate without changing their slots.
+ prefs.putUChar("count",2);prefs.putString("stop0","A");prefs.putString("stop1","B");
+ loadCityStops();assert(stopCount==2 && stops[0]=="A" && stops[1]=="B");
+ // Configure page 3 only, persist, erase RAM, restore.
+ for(auto &s:stops)s="";stops[4]="Paul Klee";saveStops();selectPage(2);
+ for(auto &s:stops)s="";activePage=0;loadCityStops();restoreCityPage();
+ assert(stopCount==1 && stops[4]=="Paul Klee" && stops[0].empty() && activePage==2);
+ // A second city has independent data and remembered page.
+ activeCity=1;loadCityStops();restoreCityPage();assert(stopCount==0 && activePage==0);
+ stops[2]="Zurich";saveStops();selectPage(1);
+ activeCity=0;loadCityStops();restoreCityPage();assert(activePage==2 && stops[4]=="Paul Klee");
+ activeCity=1;loadCityStops();restoreCityPage();assert(activePage==1 && stops[2]=="Zurich");
+ // Delete one slot without moving another.
+ stops[4]="Other";saveStops();stops[2]="";saveStops();loadCityStops();
+ assert(stopCount==1 && stops[2].empty() && stops[4]=="Other");
+ prefs.putUChar(cityPageKey(1).c_str(),99);restoreCityPage();assert(activePage==0);
+ selectPage(-1);selectPage(3);assert(activePage==0);
+}
+'''
+with tempfile.TemporaryDirectory() as d:
+ p=Path(d);(p/'test.cpp').write_text(code)
+ subprocess.run(['g++','-std=c++17',str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+ subprocess.run([str(p/'test')],check=True)
+for forbidden in ['ALERTS_BASE','serviceAlertsTick','alerts-status','mappedSloid','AlertSafety.h']:
+ assert forbidden not in s,forbidden
+assert 'selectPage((activePage + 1) % PAGE_COUNT)' in s
+assert 'selectPage(next)' in s
+assert 'restoreCityPage();' in s
+print('PASS: real storage functions: legacy migration, sparse slots, city isolation, restart, deletion, page bounds; alert removal')
