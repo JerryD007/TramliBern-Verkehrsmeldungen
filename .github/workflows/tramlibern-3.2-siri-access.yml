@@ -1,0 +1,23 @@
+name: TramliBern SIRI access diagnostic
+on:
+  workflow_dispatch:
+  push:
+    branches: ['test/tramlibern-3.2-verified']
+    paths: ['ci/probe_siri_access.py', '.github/workflows/tramlibern-3.2-siri-access.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 ci/probe_siri_access.py
+        env:
+          OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: siri-access-evidence
+          path: reports/siri-access.json
+          retention-days: 14
