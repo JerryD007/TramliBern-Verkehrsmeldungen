@@ -4,7 +4,7 @@ import subprocess,tempfile
 s=Path('firmware/TramliBern/TramliBern.ino').read_text()
 def function(name):
     import re
-    m=re.search(r'(?:String|void) '+name+r'\([^)]*\)\s*\{',s);assert m,name
+    m=re.search(r'(?:String|void|int) '+name+r'\([^)]*\)\s*\{',s);assert m,name
     start=m.start();pos=m.end();level=1
     while level:
         if s[pos]=='{': level+=1
@@ -32,14 +32,25 @@ struct FakePrefs {
  String getString(const char*k,const char*d){return strings.count(k)?strings[k]:String(d);}
  void putString(const char*k,String v){strings[k]=v;}
 } prefs;
-constexpr int MAX_STOPS=5,PAGE_COUNT=3;
+constexpr int MAX_STOPS=5,PAGE_COUNT=3,STOPS_PER_PAGE=2;
+int lastRefresh=123;
 int activeCity=0,activePage=0,stopCount=0;
 String stops[MAX_STOPS];
 void resetStopData(){}
 '''
-for name in ['cityStopKey','cityCountKey','cityPageKey','restoreCityPage','selectPage','loadCityStops','saveStops']:code+=function(name)+'\n'
+for name in ['cityStopKey','cityCountKey','cityPageKey','restoreCityPage','selectPage','loadCityStops','saveStops','firstFreeSlotOnPage','removeStopAt']:code+=function(name)+'\n'
 code+=r'''
 int main(){
+ // Empty board: the selected page supplies the default, never page 1.
+ assert(firstFreeSlotOnPage(0)==0);
+ assert(firstFreeSlotOnPage(1)==2);
+ assert(firstFreeSlotOnPage(2)==4);
+ assert(firstFreeSlotOnPage(-1)==-1 && firstFreeSlotOnPage(3)==-1);
+ stops[2]="A";assert(firstFreeSlotOnPage(1)==3);
+ stops[3]="B";assert(firstFreeSlotOnPage(1)==-1);
+ stops[4]="C";assert(firstFreeSlotOnPage(2)==-1);
+ for(auto &s:stops)s="";
+
  // Legacy settings migrate without changing their slots.
  prefs.putUChar("count",2);prefs.putString("stop0","A");prefs.putString("stop1","B");
  loadCityStops();assert(stopCount==2 && stops[0]=="A" && stops[1]=="B");
@@ -53,8 +64,10 @@ int main(){
  activeCity=0;loadCityStops();restoreCityPage();assert(activePage==2 && stops[4]=="Paul Klee");
  activeCity=1;loadCityStops();restoreCityPage();assert(activePage==1 && stops[2]=="Zurich");
  // Delete one slot without moving another.
- stops[4]="Other";saveStops();stops[2]="";saveStops();loadCityStops();
- assert(stopCount==1 && stops[2].empty() && stops[4]=="Other");
+ stops[4]="Other";saveStops();removeStopAt(2);loadCityStops();
+ assert(stopCount==1 && stops[2].empty() && stops[4]=="Other" && activePage==1 && lastRefresh==0);
+ removeStopAt(-1);removeStopAt(5);assert(stopCount==1 && stops[4]=="Other");
+ removeStopAt(4);loadCityStops();assert(stopCount==0 && firstFreeSlotOnPage(2)==4);
  prefs.putUChar(cityPageKey(1).c_str(),99);restoreCityPage();assert(activePage==0);
  selectPage(-1);selectPage(3);assert(activePage==0);
 }

@@ -234,6 +234,19 @@ void saveStops() {
   for (int i = 0; i < MAX_STOPS; ++i)
     prefs.putString(cityStopKey(activeCity, i).c_str(), stops[i]);
 }
+// Never silently fall back to a different page when its places are occupied.
+int firstFreeSlotOnPage(int page) {
+  if (page < 0 || page >= PAGE_COUNT) return -1;
+  for (int slot = page * STOPS_PER_PAGE; slot < MAX_STOPS && slot < (page + 1) * STOPS_PER_PAGE; ++slot)
+    if (!stops[slot].length()) return slot;
+  return -1;
+}
+void removeStopAt(int index) {
+  if (index < 0 || index >= MAX_STOPS) return;
+  stops[index] = "";
+  saveStops();
+  lastRefresh = 0;
+}
 void drawBoard(); // Der Stadtwechsel benutzt die unveraenderte Anzeige-Funktion.
 void changeCity(int city) {
   if (city < 0 || city >= CITY_COUNT || city == activeCity) return;
@@ -730,7 +743,14 @@ void setupRoutes() {
     html += "<form action='/refresh' method='post'><button class='subtle'>Anzeige aktualisieren</button></form></section>";
     html += "<section class='card'><h2>Haltestelle hinzufügen</h2>";
     if (stopCount >= MAX_STOPS) html += "<p class='notice'>Alle fünf Plätze sind belegt. Entferne zuerst eine Haltestelle, um eine andere hinzuzufügen.</p>";
-    else html += "<form action='/search' method='get'><label for='q'>Name der Haltestelle</label><input id='q' name='q' type='text' minlength='2' maxlength='100' placeholder='z. B. Bahnhof' required><button class='full'>Haltestelle suchen</button></form>";
+    else {
+      int target = firstFreeSlotOnPage(activePage);
+      html += "<form action='/search' method='get'><label>Zielplatz</label><select name='slot' required>";
+      html += "<option value=''" + String(target < 0 ? " selected" : "") + " disabled>Bitte freien Platz wählen</option>";
+      for (int slot = 0; slot < MAX_STOPS; ++slot) if (!stops[slot].length())
+        html += "<option value='" + String(slot) + "'" + (slot == target ? " selected" : "") + ">Seite " + String(slot / STOPS_PER_PAGE + 1) + ", Platz " + String(slot % STOPS_PER_PAGE + 1) + "</option>";
+      html += "</select><label for='q'>Name der Haltestelle</label><input id='q' name='q' type='text' minlength='2' maxlength='100' placeholder='z. B. Bahnhof' required><button class='full'>Haltestelle suchen</button></form>";
+    }
     html += "</section><p class='hint'>Die Einstellungen gelten für das oben angezeigte Board. Unter „Meine Boards“ wechselst du zu einem anderen Display.</p>";
     sendPage(html);
   });
@@ -746,6 +766,13 @@ void setupRoutes() {
   });
   server.on("/search", HTTP_GET, []() {
     String q = server.arg("q"); q.trim();
+    int target = firstFreeSlotOnPage(activePage);
+    if (server.hasArg("slot")) {
+      String value = server.arg("slot");
+      if (value.length() != 1 || value[0] < '0' || value[0] > '4') { showMessage("Bitte einen Zielplatz wählen."); return; }
+      target = value.toInt();
+    }
+    if (target < 0 || stops[target].length()) { showMessage("Zielplatz belegt. Bitte einen freien Platz wählen."); return; }
     String html = pageStart("Suchergebnisse");
     html += "<section class='card'><h2>" + escapeHtml(q) + "</h2><ul>";
     if (q.length() >= 2 && q.length() <= 100 && WiFi.status() == WL_CONNECTED) {
@@ -763,7 +790,7 @@ void setupRoutes() {
           else if (stopCount < MAX_STOPS) {
             html += "<form action='/add' method='post'><input type='hidden' name='name' value='" + escapeHtml(name) + "'><label>Zielplatz</label><select name='slot'>";
             for (int slot = 0; slot < MAX_STOPS; ++slot) if (!stops[slot].length())
-              html += "<option value='" + String(slot) + "'>Seite " + String(slot / STOPS_PER_PAGE + 1) + ", Platz " + String(slot % STOPS_PER_PAGE + 1) + "</option>";
+              html += "<option value='" + String(slot) + "'" + (slot == target ? " selected" : "") + ">Seite " + String(slot / STOPS_PER_PAGE + 1) + ", Platz " + String(slot % STOPS_PER_PAGE + 1) + "</option>";
             html += "</select><button>Hinzufügen</button></form>";
           }
           else html += "<small>5 Plätze belegt</small>";
@@ -821,7 +848,7 @@ void setupRoutes() {
   server.on("/remove", HTTP_POST, []() {
     int index;
     if (!readIndex(MAX_STOPS, index)) { showMessage("Ungültige Auswahl. Bitte Seite neu öffnen."); return; }
-    stops[index] = ""; saveStops(); lastRefresh = 0; redirectHome();
+    removeStopAt(index); drawBoard(); redirectHome();
   });
   server.on("/boards", HTTP_GET, []() {
     String html = pageStart("Meine Boards");
@@ -1007,7 +1034,12 @@ void drawTouchMenu() {
   String oldName = stops[touchEditIndex].length() ? stops[touchEditIndex] : "Freier Platz";
   drawLine(clip(oldName, 36), 12, 38, WHITE, 1);
   touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
-  if (touchMode == 1) {
+  if (touchMode == 3) {
+    drawLine("Haltestelle entfernen?", 12, 88, WHITE, 2);
+    drawLine("Andere Plaetze bleiben erhalten.", 12, 120, WHITE, 1);
+    touchButton("JA, ENTFERNEN", 12, 170, 220, 45);
+    touchButton("ZURUECK", 248, 170, 220, 45, WHITE);
+  } else if (touchMode == 1) {
     gfx->fillRect(10, 57, 460, 26, BLACK);
     gfx->drawRect(10, 57, 460, 26, AMBER);
     drawLine(clip(touchQuery.length() ? touchQuery : "Suchbegriff eingeben", 36), 16, 62, WHITE, 2);
@@ -1028,6 +1060,7 @@ void drawTouchMenu() {
     touchButton("LEER", 12, 251, 100, 35);
     touchButton("LOESCH", 126, 251, 120, 35);
     touchButton("SUCHE", 260, 251, 205, 35);
+    if (stops[touchEditIndex].length()) touchButton("HALTESTELLE ENTFERNEN", 12, 290, 454, 28, WHITE);
   } else {
     drawLine("Suchresultate antippen:", 12, 65, WHITE, 2);
     if (!touchMatchCount) drawLine("Keine Treffer - erneut suchen", 12, 100, AMBER, 2);
@@ -1111,6 +1144,17 @@ void handleTouchTap(int rawX, int rawY) {
     return;
   }
   if (y < 32 && x > 345) { closeTouchMenu(); return; }
+  if (touchMode == 3) {
+    if (y >= 170 && y < 215) {
+      if (x >= 12 && x < 232) { removeStopAt(touchEditIndex); closeTouchMenu(); }
+      else if (x >= 248 && x < 468) { touchMode = 1; drawTouchMenu(); }
+    }
+    return;
+  }
+  if (touchMode == 1 && y >= 290 && y < 318 && x >= 12 && x < 466 &&
+      touchEditIndex >= 0 && touchEditIndex < MAX_STOPS && stops[touchEditIndex].length()) {
+    touchMode = 3; drawTouchMenu(); return;
+  }
   if (touchMode == 2) {
     if (y >= 282) { touchMode = 1; drawTouchMenu(); return; }
     if (y >= 91 && y < 91 + 5*37) {

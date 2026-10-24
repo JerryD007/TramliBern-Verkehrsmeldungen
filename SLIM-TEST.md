@@ -25,3 +25,12 @@ Cloud-Kompilierung ersetzt keinen realen Touch-/WLAN-/Displaytest.
 Keine automatische Installation, kein Merge. Bestehende Testzweige und main
 bleiben unverändert. Die alten Server-Workflows werden nicht durch diese
 Firmware abgeschaltet; sie sind vom neuen Sketch vollständig entkoppelt.
+
+## Korrektur: Zielseite und Entfernen am Touchdisplay
+Vor der Haltestellensuche ist ein freier Platz der aktuell angezeigten Seite
+vorausgewählt. Der Zielplatz wird in die Suchergebnisse übernommen. Ist diese
+Seite voll, muss ein anderer freier Platz ausdrücklich gewählt werden.
+Am Board den Haltestellentitel antippen, unten HALTESTELLE ENTFERNEN wählen
+und mit JA, ENTFERNEN bestätigen. ZURUECK und ABBRUCH löschen nichts.
+LOESCH auf der Tastatur entfernt weiterhin nur ein Zeichen des Suchbegriffs.
+Die übrigen Haltestellen und die aktuelle Seite bleiben beim Entfernen erhalten.
