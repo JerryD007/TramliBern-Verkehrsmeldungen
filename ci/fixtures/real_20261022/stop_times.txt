@@ -1,0 +1,3 @@
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+.ojp-92-12.1.TA.1000.j26,10:41:00,10:41:00,ch:1:sloid:90035:0:1,12,0,0
+.ojp-92-12.1.TA.1000.j26,10:45:00,10:45:00,ch:1:sloid:90127:0:2,17,0,0

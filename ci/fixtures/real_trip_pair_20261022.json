@@ -1,0 +1,82 @@
+{
+  "source_artifact": 12463107076,
+  "json_sha256": "b2ae12be59585b6e93b20e6ad0a840f0dd89b77279ce968a9bae4ff82e218a54",
+  "binary_sha256": "97bfecab85d919ae881a51d6496643361bd3fec3e2613f4ce0467949894e7ed7",
+  "header_hex": "0a03322e30100018daeee9d606",
+  "entity_hex": "0a2430623762623634622d326631312d353939622d623864622d6530613233623661366531352aec060a0c08d783e6d6061090e3ead6062a4f0a02383222490a162e6f6a702d39312d342e312e54412e3530342e6a3236120830353a32373a30301a0832303236313032323a1b63683a313a736a7969643a3130303036313a31313431362d30303130023808420052c7010a2c0a26496e666f726d6174696f6e207a75205320342031313431362061622053742e2047616c6c656e120264650a2e0a28496e666f726d6174696f6e206f6e205320342031313431362066726f6d2053742e2047616c6c656e1202656e0a2d0a27496e666f726d617a696f6e69207375205320342031313431362064612053742e2047616c6c656e120269740a380a32496e666f726d6174696f6e20737572205320342031313431362061752064c3a9706172742064652053742e2047616c6c656e120266725aba040a7f0a79446572205a7567205320342031313431362066c3a4687274206162205261707065727377696c2053472077656974657220616c7320533430206e6163682045696e73696564656c6e2e2052656973656e646520696e205269636874756e672045696e73696564656c6e20626c656962656e20696d205a75672e120264650a8d010a86015468652053203420313134313620747261696e20636f6e74696e7565732066726f6d205261707065727377696c2053472061732053343020746f2045696e73696564656c6e2e2050617373656e676572732074726176656c6c696e6720746f2045696e73696564656c6e2073686f756c642072656d61696e206f6e2074686520747261696e2e1202656e0a83010a7d496c207472656e6f205320342031313431362070726f7365677565206461205261707065727377696c20534720636f6d65207472656e6f20533430207065722045696e73696564656c6e2e20492076696167676961746f7269207065722045696e73696564656c6e2072696d616e676f6e6f206e656c207472656e6f2e120269740aa0010a99014c6520747261696e2053203420313134313620636f6e74696e756520c3a020706172746972206465205261707065727377696c20534720636f6d6d6520747261696e2053343020c3a02064657374696e6174696f6e2064652045696e73696564656c6e2e204c657320766f7961676575727320706f75722045696e73696564656c6e2072657374656e742064616e73206c6520747261696e2e12026672",
+  "json": {
+    "header": {
+      "gtfsRealtimeVersion": "2.0",
+      "incrementality": "FULL_DATASET",
+      "timestamp": "1792702298"
+    },
+    "entity": [
+      {
+        "id": "0b7bb64b-2f11-599b-b8db-e0a23b6a6e15",
+        "alert": {
+          "activePeriod": [
+            {
+              "start": "1792639447",
+              "end": "1792717200"
+            }
+          ],
+          "informedEntity": [
+            {
+              "agencyId": "82",
+              "trip": {
+                "tripId": ".ojp-91-4.1.TA.504.j26",
+                "originalTripId": "ch:1:sjyid:100061:11416-001",
+                "startTime": "05:27:00",
+                "startDate": "20261022"
+              }
+            }
+          ],
+          "cause": "OTHER_CAUSE",
+          "effect": "UNKNOWN_EFFECT",
+          "url": {},
+          "headerText": {
+            "translation": [
+              {
+                "text": "Information zu S 4 11416 ab St. Gallen",
+                "language": "de"
+              },
+              {
+                "text": "Information on S 4 11416 from St. Gallen",
+                "language": "en"
+              },
+              {
+                "text": "Informazioni su S 4 11416 da St. Gallen",
+                "language": "it"
+              },
+              {
+                "text": "Information sur S 4 11416 au départ de St. Gallen",
+                "language": "fr"
+              }
+            ]
+          },
+          "descriptionText": {
+            "translation": [
+              {
+                "text": "Der Zug S 4 11416 fährt ab Rapperswil SG weiter als S40 nach Einsiedeln. Reisende in Richtung Einsiedeln bleiben im Zug.",
+                "language": "de"
+              },
+              {
+                "text": "The S 4 11416 train continues from Rapperswil SG as S40 to Einsiedeln. Passengers travelling to Einsiedeln should remain on the train.",
+                "language": "en"
+              },
+              {
+                "text": "Il treno S 4 11416 prosegue da Rapperswil SG come treno S40 per Einsiedeln. I viaggiatori per Einsiedeln rimangono nel treno.",
+                "language": "it"
+              },
+              {
+                "text": "Le train S 4 11416 continue à partir de Rapperswil SG comme train S40 à destination de Einsiedeln. Les voyageurs pour Einsiedeln restent dans le train.",
+                "language": "fr"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "note": "Unmodified entity and header excerpts from the official JSON and binary responses with identical timestamps; historical diagnostic only."
+}

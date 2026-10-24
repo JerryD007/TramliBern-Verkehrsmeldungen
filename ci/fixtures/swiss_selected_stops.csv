@@ -1,0 +1,23 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,platform_code,original_stop_id,didok
+ch:1:sloid:7061:0:1,"Bern, Brunnadernstrasse",46.94126322,7.46394898,,Parentch:1:sloid:7061,B,ch:1:sloid:7061:0:1,8507061
+ch:1:sloid:7061:0:2,"Bern, Brunnadernstrasse",46.94120803,7.46343694,,Parentch:1:sloid:7061,A,ch:1:sloid:7061:0:2,8507061
+ch:1:sloid:7061:0:2374,"Bern, Brunnadernstrasse",46.94117736,7.46372440,,Parentch:1:sloid:7061,,ch:1:sloid:7061:0:2374,8507061
+ch:1:sloid:7061:0:3,"Bern, Brunnadernstrasse",46.94140429,7.46534137,,Parentch:1:sloid:7061,C,ch:1:sloid:7061:0:3,8507061
+ch:1:sloid:7061:0:4,"Bern, Brunnadernstrasse",46.94084003,7.46318541,,Parentch:1:sloid:7061,D,ch:1:sloid:7061:0:4,8507061
+ch:1:sloid:7061:0:6,"Bern, Brunnadernstrasse",46.94013470,7.46312253,,Parentch:1:sloid:7061,,ch:1:sloid:7061:0:6,8507061
+ch:1:sloid:87480:0:2,"Bern, Ostring",46.94501050,7.47179127,,Parentch:1:sloid:87480,A,ch:1:sloid:87480:0:2,8587480
+ch:1:sloid:87480:0:5,"Bern, Ostring",46.94524354,7.47119839,,Parentch:1:sloid:87480,B,ch:1:sloid:87480:0:5,8587480
+ch:1:sloid:87480:0:6,"Bern, Ostring",46.94529874,7.47198890,,Parentch:1:sloid:87480,C,ch:1:sloid:87480:0:6,8587480
+ch:1:sloid:87481:0:1,"Bern, Burgernziel",46.94207894,7.46713800,,Parentch:1:sloid:87481,,ch:1:sloid:87481:0:1,8587481
+ch:1:sloid:87481:0:2,"Bern, Burgernziel",46.94191948,7.46673376,,Parentch:1:sloid:87481,,ch:1:sloid:87481:0:2,8587481
+ch:1:sloid:87481:0:3,"Bern, Burgernziel",46.94217093,7.46750631,,Parentch:1:sloid:87481,,ch:1:sloid:87481:0:3,8587481
+ch:1:sloid:87481:0:4,"Bern, Burgernziel",46.94207894,7.46679664,,Parentch:1:sloid:87481,,ch:1:sloid:87481:0:4,8587481
+ch:1:sloid:90090:0:1,"Bern, Giacomettistrasse",46.94531713,7.47321061,,Parentch:1:sloid:90090,,ch:1:sloid:90090:0:1,8590090
+ch:1:sloid:90090:0:2,"Bern, Giacomettistrasse",46.94516381,7.47326451,,Parentch:1:sloid:90090,,ch:1:sloid:90090:0:2,8590090
+ch:1:sloid:90127:0:2,"Bern, Zentrum Paul Klee",46.95079341,7.47283332,,Parentch:1:sloid:90127,,ch:1:sloid:90127:0:2,8590127
+ch:1:sloid:90127:0:3,"Bern, Zentrum Paul Klee",46.95072596,7.47240213,,Parentch:1:sloid:90127,,ch:1:sloid:90127:0:3,8590127
+Parentch:1:sloid:7061,"Bern, Brunnadernstrasse",46.94117736,7.46372440,1,,,ch:1:sloid:7061,8507061
+Parentch:1:sloid:87480,"Bern, Ostring",46.94512702,7.47146788,1,,,ch:1:sloid:87480,8587480
+Parentch:1:sloid:87481,"Bern, Burgernziel",46.94212187,7.46718292,1,,,ch:1:sloid:87481,8587481
+Parentch:1:sloid:90090,"Bern, Giacomettistrasse",46.94525581,7.47325553,1,,,ch:1:sloid:90090,8590090
+Parentch:1:sloid:90127,"Bern, Zentrum Paul Klee",46.95080568,7.47287824,1,,,ch:1:sloid:90127,8590127
