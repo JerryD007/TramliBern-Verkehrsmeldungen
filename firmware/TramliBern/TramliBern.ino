@@ -73,6 +73,20 @@ String rowCache[MAX_ROWS_PER_PAGE];
 String timeCache[MAX_ROWS_PER_PAGE];
 String stops[MAX_STOPS];
 int stopCount = 0;
+int stopSlots[MAX_STOPS] = {0,1,2,3,4};
+int stopAtSlot(int slot) {
+  for (int i = 0; i < stopCount; ++i)
+    if (stopSlots[i] == slot) return i;
+  return -1;
+}
+int firstFreeSlot() {
+  for (int slot = 0; slot < MAX_STOPS; ++slot)
+    if (stopAtSlot(slot) < 0) return slot;
+  return -1;
+}
+String slotKey(int city, int index) {
+  return "sl" + String(city) + "_" + String(index);
+}
 String wifiSsid, wifiPassword;
 String statusText = "Startet";
 uint32_t lastRefresh = 0;
@@ -213,8 +227,10 @@ String alertForActivePage() {
   if (!alertsValid || !clockReady) return "";
   const time_t now = time(nullptr);
   const int from = activePage * STOPS_PER_PAGE;
-  const int to = min(stopCount, from + (activePage == 2 ? 1 : STOPS_PER_PAGE));
-  for (int i = from; i < to; ++i) {
+  const int to = from + (activePage == 2 ? 1 : STOPS_PER_PAGE);
+  for (int slot = from; slot < to; ++slot) {
+    int i = stopAtSlot(slot);
+    if (i < 0) continue;
     if (!mappedComplete[i] || !mappedSloid[i].length()) continue;
     for (int a = 0; a < serviceAlertCount; ++a) {
       ServiceAlert &al = serviceAlerts[a];
@@ -381,6 +397,16 @@ void loadCityStops() {
   if (stopCount > MAX_STOPS) stopCount = MAX_STOPS;
   for (int i = 0; i < MAX_STOPS; ++i)
     stops[i] = i < stopCount ? prefs.getString(cityStopKey(activeCity, i).c_str(), "") : "";
+  bool occupied[MAX_STOPS] = {};
+  for (int i = 0; i < stopCount; ++i) {
+    int slot = prefs.getUChar(slotKey(activeCity, i).c_str(), i);
+    if (slot >= MAX_STOPS || occupied[slot]) {
+      slot = 0;
+      while (slot < MAX_STOPS && occupied[slot]) ++slot;
+    }
+    stopSlots[i] = slot;
+    occupied[slot] = true;
+  }
 }
 void resetStopData() {
   departureCount = 0;
@@ -406,6 +432,8 @@ void saveStops() {
   prefs.putUChar(cityCountKey(activeCity).c_str(), stopCount);
   for (int i = 0; i < MAX_STOPS; ++i)
     prefs.putString(cityStopKey(activeCity, i).c_str(), i < stopCount ? stops[i] : "");
+  for (int i = 0; i < stopCount; ++i)
+    prefs.putUChar(slotKey(activeCity, i).c_str(), stopSlots[i]);
 }
 void drawBoard(); // Der Stadtwechsel benutzt die unveraenderte Anzeige-Funktion.
 void changeCity(int city) {
@@ -606,11 +634,11 @@ void drawDepartureRows() {
   const int rowsPerStation = lastPage ? PAGE3_DEPARTURES : DEPARTURES_PER_STOP;
   const int spacing = lastPage ? 27 : 28;
   for (int position = 0; position < stationsOnPage; ++position) {
-    int station = activePage * STOPS_PER_PAGE + position;
+    int station = stopAtSlot(activePage * STOPS_PER_PAGE + position);
     const int headerY = 43 + position * 110;
     const int baseY = 66 + position * 110;
     const int cacheBase = lastPage ? 0 : position * DEPARTURES_PER_STOP;
-    if (station >= stopCount) {
+    if (station < 0) {
       drawOpaque("Haltestelle noch nicht eingerichtet", 12, headerY, 38, WHITE);
       for (int slot = 0; slot < rowsPerStation; ++slot) {
         int y = baseY + slot * spacing;
@@ -678,7 +706,7 @@ void drawBoard() {
   if (touchMenuOpen) return;
   static String previousLayout;
   String layout = String(activeCity) + ":" + String(WiFi.status() == WL_CONNECTED) + ":" + String(stopCount) + ":" + String(activePage) + ":" + String(touchExitRevision);
-  for (int i = 0; i < stopCount; ++i) layout += "|" + stops[i];
+  for (int i = 0; i < stopCount; ++i) layout += "|" + String(stopSlots[i]) + ":" + stops[i];
   layout += WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   if (layout == previousLayout) {
     drawHeader();
@@ -705,8 +733,8 @@ void drawBoard() {
     drawLine("Browser: " + WiFi.localIP().toString(), 12, 95, WHITE);
   } else {
     for (int position = 0; position < (activePage == 2 ? 1 : STOPS_PER_PAGE); ++position) {
-      int i = activePage * STOPS_PER_PAGE + position;
-      if (i >= stopCount) continue;
+      int i = stopAtSlot(activePage * STOPS_PER_PAGE + position);
+      if (i < 0) continue;
       String name = stops[i];
       name.replace(String(CITY_QUERIES[activeCity]) + ", ", "");
       drawLine(clip(name, 38), 12, 43 + position * 110, WHITE, 2);
@@ -946,16 +974,16 @@ void setupRoutes() {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
       html += "<form action='/page' method='post'><input type='hidden' name='page' value='" + String(page) + "'><button class='subtle'>Diese Seite anzeigen</button></form><ol>";
       for (int pos = 0; pos < (page == 2 ? 1 : STOPS_PER_PAGE); ++pos) {
-        int index = page * STOPS_PER_PAGE + pos;
-        if (index >= stopCount) {
+        int index = stopAtSlot(page * STOPS_PER_PAGE + pos);
+        if (index < 0) {
           html += "<li><span>Platz " + String(pos + 1) + ": Frei</span></li>";
           continue;
         }
         html += "<li><div><b>" + escapeHtml(stops[index]) + "</b><small class='muted'> · " + String(page == 2 ? 7 : 3) + " Abfahrten</small>";
         html += "<form action='/move' method='post'><input type='hidden' name='index' value='" + String(index) + "'>";
         html += "<label>Position</label><select name='slot' style='width:100%;padding:10px;margin:7px 0'>";
-        for (int target = 0; target < stopCount; ++target) {
-          html += "<option value='" + String(target) + "'" + (index == target ? " selected" : "") + ">Seite " + String(target / STOPS_PER_PAGE + 1) + ", Platz " + String(target % STOPS_PER_PAGE + 1) + "</option>";
+        for (int target = 0; target < MAX_STOPS; ++target) {
+          html += "<option value='" + String(target) + "'" + (stopSlots[index] == target ? " selected" : "") + ">Seite " + String(target / STOPS_PER_PAGE + 1) + ", Platz " + String(target % STOPS_PER_PAGE + 1) + "</option>";
         }
         html += "</select><button class='subtle'>Verschieben / Tauschen</button></form>";
         html += "<form action='/remove' method='post'><input type='hidden' name='index' value='" + String(index) + "'><button class='subtle'>Entfernen</button></form></div></li>";
@@ -963,11 +991,19 @@ void setupRoutes() {
       html += "</ol>";
     }
     if (!stopCount) html += "<p>Noch keine Haltestelle ausgewaehlt.</p>";
-    html += "<p class='hint'>" + String(stopCount) + " von 5 Haltestellen ausgewaehlt. Neue Haltestellen werden zunaechst der Reihe nach in freie Plaetze eingetragen.</p>";
+    html += "<p class='hint'>" + String(stopCount) + " von 5 Haltestellen ausgewaehlt. Neue Haltestellen koennen sofort auf jeder freien Seite eingerichtet werden.</p>";
     html += "<form action='/refresh' method='post'><button class='subtle'>Anzeige aktualisieren</button></form></section>";
     html += "<section class='card'><h2>Haltestelle hinzufügen</h2>";
     if (stopCount >= MAX_STOPS) html += "<p class='notice'>Alle fünf Plätze sind belegt. Entferne zuerst eine Haltestelle, um eine andere hinzuzufügen.</p>";
-    else html += "<form action='/search' method='get'><label for='q'>Name der Haltestelle</label><input id='q' name='q' type='text' minlength='2' maxlength='100' placeholder='z. B. Bahnhof' required><button class='full'>Haltestelle suchen</button></form>";
+    else {
+      html += "<form action='/search' method='get'><label for='slot'>Seite / Platz auswaehlen</label><select id='slot' name='slot'>";
+      for (int slot = 0; slot < MAX_STOPS; ++slot) {
+        if (stopAtSlot(slot) >= 0) continue;
+        html += "<option value='" + String(slot) + "'>Seite " + String(slot / 2 + 1) +
+          ", Platz " + String(slot % 2 + 1) + "</option>";
+      }
+      html += "</select><label for='q'>Name der Haltestelle</label><input id='q' name='q' type='text' minlength='2' maxlength='100' placeholder='z. B. Bahnhof' required><button class='full'>Haltestelle suchen</button></form>";
+    }
     html += "</section><p class='hint'>Die Einstellungen gelten für das oben angezeigte Board. Unter „Meine Boards“ wechselst du zu einem anderen Display.</p>";
     sendPage(html);
   });
@@ -983,6 +1019,12 @@ void setupRoutes() {
   });
   server.on("/search", HTTP_GET, []() {
     String q = server.arg("q"); q.trim();
+    int chosenSlot = firstFreeSlot();
+    if (server.hasArg("slot")) {
+      String v = server.arg("slot");
+      if (v.length() == 1 && v[0] >= '0' && v[0] <= '4' &&
+          stopAtSlot(v.toInt()) < 0) chosenSlot = v.toInt();
+    }
     String html = pageStart("Suchergebnisse");
     html += "<section class='card'><h2>" + escapeHtml(q) + "</h2><ul>";
     if (q.length() >= 2 && q.length() <= 100 && WiFi.status() == WL_CONNECTED) {
@@ -997,7 +1039,7 @@ void setupRoutes() {
           for (int i = 0; i < stopCount; ++i) if (stops[i] == name) selected = true;
           html += "<li><span>" + escapeHtml(name) + "</span>";
           if (selected) html += "<small>Ausgewählt</small>";
-          else if (stopCount < MAX_STOPS) html += "<form action='/add' method='post'><input type='hidden' name='name' value='" + escapeHtml(name) + "'><button>Hinzufügen</button></form>";
+          else if (stopCount < MAX_STOPS) html += "<form action='/add' method='post'><input type='hidden' name='name' value='" + escapeHtml(name) + "'><input type='hidden' name='slot' value='" + String(chosenSlot) + "'><button>Hinzufügen</button></form>";
           else html += "<small>5 Plätze belegt</small>";
           html += "</li>";
         }
@@ -1012,7 +1054,18 @@ void setupRoutes() {
     if (!name.length() || name.length() >= 100) { showMessage("Ungültiger Haltestellenname."); return; }
     for (int i = 0; i < stopCount; ++i) if (stops[i] == name) { redirectHome(); return; }
     if (stopCount >= MAX_STOPS) { showMessage("Es sind bereits fünf Haltestellen ausgewählt."); return; }
-    stops[stopCount++] = name; saveStops(); lastRefresh = 0; redirectHome();
+    int slot = firstFreeSlot();
+    if (server.hasArg("slot")) {
+      String v = server.arg("slot");
+      if (v.length() == 1 && v[0] >= '0' && v[0] <= '4' &&
+          stopAtSlot(v.toInt()) < 0) slot = v.toInt();
+    }
+    if (slot < 0) { showMessage("Kein freier Platz."); return; }
+    stopSlots[stopCount] = slot;
+    stops[stopCount++] = name;
+    saveStops();
+    activePage = slot / STOPS_PER_PAGE;
+    lastRefresh = 0; redirectHome();
   });
   // Web-App: aktive Anzeigeseite vom Handy aus wechseln.
   server.on("/page", HTTP_POST, []() {
@@ -1034,11 +1087,11 @@ void setupRoutes() {
     String value = server.arg("slot");
     if (value.length() != 1 || value[0] < '0' || value[0] > '4') { showMessage("Ungueltige Position."); return; }
     slot = value.toInt();
-    if (slot >= stopCount) { showMessage("Bitte zuerst die freien Plaetze mit Haltestellen fuellen."); return; }
-    if (slot != index) {
-      String temp = stops[index];
-      stops[index] = stops[slot];
-      stops[slot] = temp;
+    if (slot >= MAX_STOPS) { showMessage("Ungueltige Position."); return; }
+    if (slot != stopSlots[index]) {
+      int other = stopAtSlot(slot);
+      if (other >= 0) stopSlots[other] = stopSlots[index];
+      stopSlots[index] = slot;
       saveStops();
       activePage = slot / STOPS_PER_PAGE;
       lastRefresh = 0;
@@ -1049,7 +1102,10 @@ void setupRoutes() {
   server.on("/remove", HTTP_POST, []() {
     int index;
     if (!readIndex(stopCount, index)) { showMessage("Ungültige Auswahl. Bitte Seite neu öffnen."); return; }
-    for (int i = index; i < stopCount - 1; ++i) stops[i] = stops[i + 1];
+    for (int i = index; i < stopCount - 1; ++i) {
+      stops[i] = stops[i + 1];
+      stopSlots[i] = stopSlots[i + 1];
+    }
     --stopCount; saveStops(); lastRefresh = 0; redirectHome();
   });
   server.on("/boards", HTTP_GET, []() {
@@ -1233,7 +1289,8 @@ void drawTouchMenu() {
   drawLine("HALTESTELLE AENDERN", 12, 6, AMBER, 2);
   gfx->drawFastHLine(10, 30, 460, AMBER);
   if (touchEditIndex < 0 || touchEditIndex >= MAX_STOPS) return;
-  String oldName = touchEditIndex < stopCount ? stops[touchEditIndex] : "Freier Platz";
+  int editIndex = stopAtSlot(touchEditIndex);
+  String oldName = editIndex >= 0 ? stops[editIndex] : "Freier Platz";
   drawLine(clip(oldName, 36), 12, 38, WHITE, 1);
   touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
   if (touchMode == 1) {
@@ -1341,15 +1398,19 @@ void handleTouchTap(int rawX, int rawY) {
         String chosen = touchMatches[result];
         // Bereits verwendete Haltestellen nicht versehentlich doppelt speichern.
         for (int i=0; i<stopCount; ++i) {
-          if (i != touchEditIndex && stops[i] == chosen) {
+          if (stopSlots[i] != touchEditIndex && stops[i] == chosen) {
             touchMode = 1; drawTouchMenu();
             drawLine("Haltestelle bereits vorhanden", 12, 293, WHITE, 1);
             return;
           }
         }
-        if (touchEditIndex > stopCount) { closeTouchMenu(); return; }
-        if (touchEditIndex == stopCount) ++stopCount;
-        stops[touchEditIndex] = chosen;
+        int editIndex = stopAtSlot(touchEditIndex);
+        if (editIndex < 0) {
+          if (stopCount >= MAX_STOPS) { closeTouchMenu(); return; }
+          editIndex = stopCount++;
+          stopSlots[editIndex] = touchEditIndex;
+        }
+        stops[editIndex] = chosen;
         saveStops(); // Gleiches Preferences-System wie in der Web-App.
         lastRefresh = 0;
         closeTouchMenu();
