@@ -1,7 +1,7 @@
-name: TramliBern SLIM firmware
+name: TramliBern App Design firmware
 on:
   push:
-    branches: ['test/tramlibern-slim-free-pages']
+    branches: ['test/tramlibern-app-design']
   workflow_dispatch:
 permissions:
   contents: read
