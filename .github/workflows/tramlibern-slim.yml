@@ -1,0 +1,32 @@
+name: TramliBern SLIM firmware
+on:
+  push:
+    branches: ['test/tramlibern-slim-free-pages']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - run: bash ci/install.sh
+      - run: |
+          mkdir -p reports/TramliBern
+          cp firmware/TramliBern/TramliBern.ino reports/TramliBern/
+          set -o pipefail
+          arduino-cli compile --fqbn 'esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=default,PSRAM=disabled' --output-dir reports/TramliBern firmware/TramliBern 2>&1 | tee reports/compile.log
+          python3 ci/memory_report.py 0
+          cp SLIM-TEST.md reports/
+          cd reports
+          zip -r TramliBern-SLIM-TEST.zip TramliBern memory.md SLIM-TEST.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TramliBern-SLIM-TEST
+          path: reports/
+          retention-days: 30

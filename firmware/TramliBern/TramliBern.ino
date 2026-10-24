@@ -1,4 +1,3 @@
-#include "AlertSafety.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -180,210 +179,6 @@ bool getJson(const String &url, JsonDocument &doc) {
   return !error;
 }
 
-// 2.9: Verkehrsmeldungen ausschliesslich als optionale Erweiterung.
-// Keine API-Zugangsdaten auf dem ESP32; GitHub Pages liefert die aufbereiteten Daten.
-static const char *ALERTS_BASE =
-  "https://raw.githubusercontent.com/JerryD007/TramliBern-Verkehrsmeldungen/test/tramlibern-3.2-verified/data/";
-constexpr uint32_t ALERT_REFRESH_MS = 300000UL;
-constexpr uint32_t ALERT_RETRY_MS = 60000UL;
-constexpr uint32_t SLOID_STEP_MS = 3000UL;
-constexpr int MAX_ALERTS = 32;
-struct ServiceAlert {
-  String text;
-  String stopIds[12];
-  int count = 0;
-  time_t until = 0;
-};
-ServiceAlert serviceAlerts[MAX_ALERTS];
-int serviceAlertCount = 0;
-bool alertsValid = false;
-String alertFeedError = "Noch kein Feed-Abruf";
-time_t alertFeedGenerated = 0, alertFeedExpires = 0;
-uint32_t alertsFetchedAt = 0, alertsAttemptAt = 0;
-uint32_t sloidStepAt = 0;
-String mappedStation[MAX_STOPS], mappedSloid[MAX_STOPS];
-int mappedId[MAX_STOPS] = {};
-bool mappedComplete[MAX_STOPS] = {};
-uint32_t mappedRetryAt[MAX_STOPS] = {};
-
-bool exactStopMatch(const String &selected, const String &affected) {
-  return selected.length() && (affected == selected);
-}
-
-String alertForActivePage() {
-  if (!alertsValid || !clockReady) return "";
-  const time_t now = time(nullptr);
-  if (!verifiedFeedTime(now, alertFeedGenerated, alertFeedExpires)) return "";
-  const int from = activePage * STOPS_PER_PAGE;
-  const int to = min(stopCount, from + (activePage == 2 ? 1 : STOPS_PER_PAGE));
-  for (int i = from; i < to; ++i) {
-    if (!mappedComplete[i] || !mappedSloid[i].length()) continue;
-    for (int a = 0; a < serviceAlertCount; ++a) {
-      ServiceAlert &al = serviceAlerts[a];
-      if (al.until <= now) continue;
-      for (int j = 0; j < al.count; ++j) {
-        if (exactStopMatch(mappedSloid[i], al.stopIds[j])) {
-          String place = stops[i];
-          place.replace(String(CITY_QUERIES[activeCity]) + ", ", "");
-          return place + ": " + al.text;
-        }
-      }
-    }
-  }
-  return "";
-}
-
-// Die aktuell gewaehlten Haltestellen liefern die IDs. Kein fester Satz von 5 IDs.
-void invalidateChangedStopMappings() {
-  for (int i = 0; i < MAX_STOPS; ++i) {
-    String current = i < stopCount ? stops[i] : "";
-    if (mappedStation[i] == current) continue;
-    mappedStation[i] = current;
-    mappedId[i] = 0;
-    mappedSloid[i] = "";
-    mappedComplete[i] = false;
-    mappedRetryAt[i] = 0;
-  }
-}
-
-bool fetchAlertFeed() {
-  JsonDocument doc;
-  if (!getJson(String(ALERTS_BASE) + "alerts-lines.json", doc)) {
-    alertFeedError = "Feed-Abruf: " + lastHttpError;
-    return false;
-  }
-  if (!doc["schema"].is<int>() || doc["schema"].as<int>() != 3 ||
-      !doc["generated"].is<int64_t>() || !doc["expires"].is<int64_t>() ||
-      !doc["alerts"].is<JsonArray>() || doc["alerts"].size() > MAX_ALERTS) {
-    alertFeedError = "Kein gueltiger verifizierter 3.2-Testfeed";
-    return false;
-  }
-  const time_t now = time(nullptr);
-  if (now < 1700000000) {
-    alertFeedError = "ESP32-Uhrzeit noch nicht synchronisiert";
-    return false;
-  }
-  time_t generated = (time_t)(doc["generated"] | 0LL);
-  time_t expires = (time_t)(doc["expires"] | 0LL);
-  // Bei fehlender/alter Aktualisierung keine scheinbar aktuellen Meldungen zeigen.
-  if (!verifiedFeedTime(now, generated, expires)) {
-    alertFeedError = "Feed-Zeitstempel zu alt/ungueltig, Alter: " +
-      String((long long)(now - generated)) + " Sekunden";
-    Serial.println("Service Alerts: " + alertFeedError);
-    return false;
-  }
-  alertFeedGenerated = generated;
-  alertFeedExpires = expires;
-  serviceAlertCount = 0;
-  for (JsonObject row : doc["alerts"].as<JsonArray>()) {
-    if (serviceAlertCount >= MAX_ALERTS) break;
-    if (strcmp(row["verification"] | "", "line_relevance") != 0 ||
-        strcmp(row["scope"] | "", "line") != 0 ||
-        !row["start"].is<int64_t>() || !row["end"].is<int64_t>() ||
-        !row["text"].is<const char *>() || !row["stops"].is<JsonArray>() ||
-        row["stops"].size() > 12) continue;
-    String text = row["text"] | "";
-    text.trim();
-    if (!text.startsWith("Linienmeldung ")) continue;
-    time_t until = (time_t)(row["end"] | 0LL);
-    if (!verifiedAlertTime(now, row["start"].as<int64_t>(), until, expires)) continue;
-    ServiceAlert &a = serviceAlerts[serviceAlertCount];
-    a.text = text.substring(0, 180);
-    a.until = until;
-    a.count = 0;
-    for (JsonVariant v : row["stops"].as<JsonArray>()) {
-      if (a.count >= 12) break;
-      if (!v.is<const char *>() || !verifiedStationId(v.as<const char *>())) continue;
-      a.stopIds[a.count++] = v.as<String>();
-    }
-    if (a.count) ++serviceAlertCount;
-  }
-  alertsFetchedAt = millis();
-  alertsValid = true;
-  alertFeedError = "";
-  Serial.printf("Service Alerts: %d Meldungen gespeichert\n", serviceAlertCount);
-  return true;
-}
-
-// Die Bahnhofsuche liefert die DiDok-Stationsnummer, niemals direkt eine SLOID.
-bool resolveStationId(int i) {
-  JsonDocument doc;
-  String url = "https://transport.opendata.ch/v1/locations?type=station&query=" +
-    urlEncode(stops[i]) + "&fields%5B%5D=stations/name&fields%5B%5D=stations/id";
-  if (!getJson(url, doc) || !doc["stations"].is<JsonArray>()) return false;
-  int found = 0, id = 0;
-  for (JsonObject row : doc["stations"].as<JsonArray>()) {
-    String name = row["name"] | "";
-    String value = row["id"].as<String>();
-    if (name != stops[i] || value.length() != 7) continue;
-    bool numeric = true;
-    for (size_t k = 0; k < value.length(); ++k) if (!isDigit(value[k])) numeric = false;
-    if (!numeric) continue;
-    id = value.toInt();
-    ++found;
-  }
-  if (found != 1) {
-    Serial.println("SLOID: Stationsnummer nicht eindeutig fuer " + stops[i]);
-    return false;
-  }
-  mappedId[i] = id;
-  return true;
-}
-
-// GitHub verteilt DiDok in 256 nummerierte JSON-Dateien.
-bool resolveSloid(int i) {
-  int bucket = mappedId[i] % 256;
-  char suffix[8];
-  snprintf(suffix, sizeof(suffix), "%02x.json", bucket);
-  JsonDocument doc;
-  if (!getJson(String("https://jerryd007.github.io/TramliBern-Verkehrsmeldungen/ids/") + suffix, doc)) return false;
-  String key = String(mappedId[i]);
-  String sloid = doc[key].as<String>();
-  if (!sloid.startsWith("ch:1:sloid:")) {
-    Serial.println("SLOID: Keine eindeutige Kennung fuer " + key);
-    return false;
-  }
-  mappedSloid[i] = sloid;
-  mappedComplete[i] = true;
-  Serial.println(stops[i] + " -> " + sloid);
-  return true;
-}
-
-void serviceAlertsTick() {
-  invalidateChangedStopMappings();
-  if (touchMenuOpen || WiFi.status() != WL_CONNECTED || !clockReady) return;
-  uint32_t now = millis();
-  if (alertsValid && clockReady && !verifiedFeedTime(time(nullptr), alertFeedGenerated, alertFeedExpires)) {
-    alertsValid = false;
-    serviceAlertCount = 0;
-    alertFeedError = "Testfeed abgelaufen: neuen Cloud-Test ausfuehren";
-  }
-  uint32_t interval = alertsValid ? ALERT_REFRESH_MS : ALERT_RETRY_MS;
-  if (!alertsAttemptAt || now - alertsAttemptAt >= interval) {
-    alertsAttemptAt = now ? now : 1;
-    if (!fetchAlertFeed() && (!alertsFetchedAt || now - alertsFetchedAt > 3 * 3600000UL)) {
-      alertsValid = false;
-      serviceAlertCount = 0;
-    }
-    return; // pro Schleife hoechstens eine HTTPS-Anfrage
-  }
-  if (sloidStepAt && now - sloidStepAt < SLOID_STEP_MS) return;
-  for (int i = 0; i < stopCount; ++i) {
-    if (mappedComplete[i]) continue;
-    if (mappedRetryAt[i] && now - mappedRetryAt[i] < ALERT_RETRY_MS) continue;
-    sloidStepAt = now ? now : 1;
-    mappedRetryAt[i] = now ? now : 1;
-    if (!mappedId[i]) {
-      if (resolveStationId(i)) mappedRetryAt[i] = 0;
-    } else {
-      resolveSloid(i);
-    }
-    break;
-  }
-}
-
-
-
 // Jede Stadt hat eigene Haltestellen; BERN behaelt die alten gespeicherten Daten.
 String cityStopKey(int city, int index) {
   return city == 0 ? "stop" + String(index) : "c" + String(city) + "s" + String(index);
@@ -406,7 +201,9 @@ void loadCityStops() {
   stopCount = prefs.getUChar(cityCountKey(activeCity).c_str(), 0);
   if (stopCount > MAX_STOPS) stopCount = MAX_STOPS;
   for (int i = 0; i < MAX_STOPS; ++i)
-    stops[i] = i < stopCount ? prefs.getString(cityStopKey(activeCity, i).c_str(), "") : "";
+    stops[i] = (prefs.getBool("fixedSlots", false) || i < stopCount) ? prefs.getString(cityStopKey(activeCity, i).c_str(), "") : "";
+  stopCount = 0;
+  for (int i = 0; i < MAX_STOPS; ++i) if (stops[i].length()) ++stopCount;
 }
 void resetStopData() {
   departureCount = 0;
@@ -429,10 +226,13 @@ void loadSettings() {
   restoreCityPage();
 }
 void saveStops() {
+  stopCount = 0;
+  for (int i = 0; i < MAX_STOPS; ++i) if (stops[i].length()) ++stopCount;
+  prefs.putBool("fixedSlots", true);
   resetStopData();
   prefs.putUChar(cityCountKey(activeCity).c_str(), stopCount);
   for (int i = 0; i < MAX_STOPS; ++i)
-    prefs.putString(cityStopKey(activeCity, i).c_str(), i < stopCount ? stops[i] : "");
+    prefs.putString(cityStopKey(activeCity, i).c_str(), stops[i]);
 }
 void drawBoard(); // Der Stadtwechsel benutzt die unveraenderte Anzeige-Funktion.
 void changeCity(int city) {
@@ -517,9 +317,9 @@ void drawTramIcon(int x, int y) {
 // Warnungen zum Datenabruf sind keine Verkehrsmeldungen.
 String warningText() {
   if (WiFi.status() != WL_CONNECTED) return "WARNUNG: WLAN getrennt - keine aktuellen Abfahrten";
-  if (fetchFailed) return "Datenabruf gestoert - automatische Wiederholung. Alt = letzter Empfang, max. 3 Min. Keine Verkehrsmeldungen.";
-  if (!clockReady) return "WARNUNG: Uhrzeit wird synchronisiert - Verkehrsmeldungen nicht verfuegbar";
-  return alertsValid ? "Verkehrsmeldungen: Daten geladen" : "Verkehrsmeldungen: kein aktueller Feed";
+  if (fetchFailed) return "Datenabruf gestoert - automatische Wiederholung. Alt = letzter Empfang, max. 3 Min. ";
+  if (!clockReady) return "Uhrzeit wird synchronisiert";
+  return "";
 }
 
 // Text mit schwarzem Zeichenhintergrund ueberschreiben, nicht erst die Flaeche loeschen.
@@ -531,26 +331,6 @@ void drawOpaque(String text, int x, int y, int width, uint16_t color) {
   gfx->setTextColor(color, BLACK);
   gfx->setCursor(x, y);
   gfx->print(text);
-}
-
-// Service Alerts: keine pauschale Meldung anzeigen.
-// Echte haltestellenbezogene Meldungen benoetigen einen separaten GTFS-SA-Datenabruf.
-// Solange kein verifizierter Alert vorliegt, bleibt die Anzeigezeile leer.
-void drawWarning() {
-  static uint32_t previousRevision = UINT32_MAX;
-  static String previousText = "\x01";
-  String text = alertForActivePage();
-  // Keine passende Meldung = Zeile wirklich leer. Kein Fehlertext und kein Platzhalter.
-  if (previousRevision == screenRevision && previousText == text) return;
-  gfx->fillRect(12, 301, 456, 18, BLACK);
-  if (text.length()) {
-    gfx->setTextColor(AMBER, BLACK);
-    gfx->setTextSize(1);
-    gfx->setCursor(12, 304);
-    gfx->print(clip(text, 75));
-  }
-  previousText = text;
-  previousRevision = screenRevision;
 }
 
 // Nur der ABFAHRTEN-Button ist neu; Rest des Kopfs bleibt unveraendert.
@@ -637,7 +417,7 @@ void drawDepartureRows() {
     const int headerY = 43 + position * 110;
     const int baseY = 66 + position * 110;
     const int cacheBase = lastPage ? 0 : position * DEPARTURES_PER_STOP;
-    if (station >= stopCount) {
+    if (!stops[station].length()) {
       drawOpaque("Haltestelle noch nicht eingerichtet", 12, headerY, 38, WHITE);
       for (int slot = 0; slot < rowsPerStation; ++slot) {
         int y = baseY + slot * spacing;
@@ -705,12 +485,11 @@ void drawBoard() {
   if (touchMenuOpen) return;
   static String previousLayout;
   String layout = String(activeCity) + ":" + String(WiFi.status() == WL_CONNECTED) + ":" + String(stopCount) + ":" + String(activePage) + ":" + String(touchExitRevision);
-  for (int i = 0; i < stopCount; ++i) layout += "|" + stops[i];
+  for (int i = 0; i < MAX_STOPS; ++i) layout += "|" + stops[i];
   layout += WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   if (layout == previousLayout) {
     drawHeader();
     if (WiFi.status() == WL_CONNECTED && stopCount) drawDepartureRows();
-    if (!touchMenuOpen) drawWarning();
     return;
   }
   previousLayout = layout;
@@ -733,7 +512,7 @@ void drawBoard() {
   } else {
     for (int position = 0; position < (activePage == 2 ? 1 : STOPS_PER_PAGE); ++position) {
       int i = activePage * STOPS_PER_PAGE + position;
-      if (i >= stopCount) continue;
+      if (!stops[i].length()) continue;
       String name = stops[i];
       name.replace(String(CITY_QUERIES[activeCity]) + ", ", "");
       drawLine(clip(name, 38), 12, 43 + position * 110, WHITE, 2);
@@ -745,7 +524,6 @@ void drawBoard() {
   drawLine("Konfiguration: " + address, 12, 276, WHITE, 1);
   drawLine(String(activePage + 1) + "/3", 448, 276, AMBER, 1);
   gfx->drawFastHLine(10, 295, 460, AMBER);
-  drawWarning();
 }
 
 // Dokumentiertes ISO-8601-Feld prognosis.departure in Unixzeit umrechnen.
@@ -819,7 +597,7 @@ void fetchStop(int index) {
   int keep = 0;
   for (int i = 0; i < departureCount; ++i) {
     bool stillSelected = false;
-    for (int j = 0; j < stopCount; ++j) if (departures[i].station == stops[j]) stillSelected = true;
+    for (int j = 0; j < MAX_STOPS; ++j) if (departures[i].station == stops[j]) stillSelected = true;
     if (stillSelected && departures[i].station != stops[index]) departures[keep++] = departures[i];
   }
   departureCount = keep;
@@ -832,7 +610,7 @@ void fetchStop(int index) {
 
 void updateFetchStatus() {
   fetchFailed = false;
-  for (int i = 0; i < stopCount; ++i) if (stopFetchFailed[i]) fetchFailed = true;
+  for (int i = 0; i < MAX_STOPS; ++i) if (stopFetchFailed[i]) fetchFailed = true;
   statusText = fetchFailed ? "Abruf gestoert - automatische Wiederholung; alte Daten markiert" :
                departureCount ? "Aktuell" : "Keine Abfahrten gefunden";
   drawBoard();
@@ -840,19 +618,19 @@ void updateFetchStatus() {
 
 void refreshBoard() {
   if (WiFi.status() != WL_CONNECTED || !stopCount) { drawBoard(); return; }
-  for (int i = activePage * STOPS_PER_PAGE; i < min(stopCount, (activePage + 1) * STOPS_PER_PAGE); ++i) {
+  for (int i = activePage * STOPS_PER_PAGE; i < min(MAX_STOPS, (activePage + 1) * STOPS_PER_PAGE); ++i) {
     // Auch regulaere Aktualisierungen beachten den Fehler-Abstand.
     if (stopFetchFailed[i] && millis() - lastAttempt[i] < retryDelay[i]) continue;
-    fetchStop(i);
+    if (stops[i].length()) fetchStop(i);
   }
   updateFetchStatus();
 }
 
 void retryFailedStops() {
   if (WiFi.status() != WL_CONNECTED) return;
-  for (int i = activePage * STOPS_PER_PAGE; i < min(stopCount, (activePage + 1) * STOPS_PER_PAGE); ++i) {
+  for (int i = activePage * STOPS_PER_PAGE; i < min(MAX_STOPS, (activePage + 1) * STOPS_PER_PAGE); ++i) {
     if (stopFetchFailed[i] && millis() - lastAttempt[i] >= retryDelay[i]) {
-      fetchStop(i);
+      if (stops[i].length()) fetchStop(i);
       updateFetchStatus();
       break;
     }
@@ -907,54 +685,6 @@ bool readIndex(int limit, int &index) {
 void setupRoutes() {
   // TramliBern 3.0 TEST: Diagnose nur im lokalen Browser.
   // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
-  server.on("/alerts-status", HTTP_GET, []() {
-    String html = pageStart("Verkehrsmeldungen 3.2 TEST");
-    html += "<section class='card'><h2>Verkehrsmeldungen 3.2 TEST</h2>";
-    html += "<p>Stadt: <b>" + escapeHtml(String(CITY_LABELS[activeCity])) + "</b></p>";
-    html += "<p>Feed: <b>" + String(alertsValid ? "geladen" : "nicht aktuell") + "</b> &middot; Eintraege: " + String(serviceAlertCount) + "</p>";
-    if (!alertsValid)
-      html += "<p><b>Ursache:</b> " + escapeHtml(alertFeedError) + "</p>";
-    if (alertFeedGenerated && clockReady)
-      html += "<p>Stand der Quelle: " + String((long long)(time(nullptr) - alertFeedGenerated) / 60) + " Minuten alt</p>";
-    if (alertsFetchedAt && alertsValid)
-      html += "<p>Letzter Empfang vor " + String((millis() - alertsFetchedAt) / 1000) + " Sekunden</p>";
-    html += "<p>Aktuelle Displayseite: " + String(activePage + 1) + "/3</p>";
-    html += "<p>Passende Warnung: " + escapeHtml(alertForActivePage().length() ? alertForActivePage() : "(keine)") + "</p>";
-    html += "<p><b>Linienabgleich:</b> GTFS-Stammdaten-Pruefung im Testzweig. "
-            "Linienmeldung: Die Linie bedient einen ausgewaehlten Halt. Der Halt selbst muss nicht betroffen sein.</p>";
-    html += "</section><section class='card'><h2>Haltestellen und Meldungen</h2>";
-    time_t current = time(nullptr);
-    for (int i = 0; i < stopCount; ++i) {
-      int hits = 0;
-      if (alertsValid && verifiedFeedTime(current, alertFeedGenerated, alertFeedExpires) && mappedComplete[i]) {
-        for (int a = 0; a < serviceAlertCount; ++a) {
-          const ServiceAlert &al = serviceAlerts[a];
-          if (al.until <= current) continue;
-          for (int j = 0; j < al.count; ++j) {
-            if (exactStopMatch(mappedSloid[i], al.stopIds[j])) { ++hits; break; }
-          }
-        }
-      }
-      html += "<div style='display:block;width:100%;max-width:100%;box-sizing:border-box;min-width:0;overflow-wrap:anywhere;word-break:normal;padding:14px 0;border-bottom:1px solid #d8ddd2'>";
-      html += "<p><b>" + escapeHtml(stops[i]) + "</b></p>";
-      html += "<p style='overflow-wrap:anywhere'>SLOID: " + escapeHtml(mappedComplete[i] ? mappedSloid[i] : "noch nicht aufgeloest") + "</p>";
-      html += "<p>Passende Haltestellenmeldungen: " + String(hits) + "</p>";
-      String seenLines;
-      for (int d = 0; d < departureCount; ++d) {
-        if (departures[d].station != stops[i]) continue;
-        String line = departures[d].line;
-        if (!line.length()) continue;
-        String token = "|" + line + "|";
-        if (seenLines.indexOf(token) >= 0) continue;
-        seenLines += token;
-        html += "<p>Beobachtete Linie: <b>" + escapeHtml(line) + "</b> (Abfahrtsdaten, noch kein GTFS-Beweis)</p>";
-      }
-      html += "</div>";
-    }
-    html += "<p class='hint'>Linien aus Abfahrtsdaten sind nur Beobachtungen. Eine GTFS-Route muss exakt ueber route_id, trip_id und stop_id geprueft werden; selbst dann bleibt eine Streckenstoerung ohne Segmentdaten unbestaetigt.</p>";
-    html += "<p><a class='button subtle' href='/'>Zurueck</a></p></section>";
-    sendPage(html);
-  });
   server.on("/", HTTP_GET, []() {
     String html = pageStart("Meine Haltestellen");
     html += "<section class='card'><h2>Stadt auswählen</h2><p>Aktuelle Stadt: <b>" + String(CITY_LABELS[activeCity]) + "</b></p>";
@@ -963,25 +693,24 @@ void setupRoutes() {
       html += "<option value='" + String(i) + "'" + (activeCity == i ? " selected" : "") + ">" + escapeHtml(CITY_QUERIES[i]) + "</option>";
     html += "</select><button style='background:#175ac8'>Stadt wechseln</button></form>";
     html += "<p class='hint'>Jede Stadt speichert ihre eigenen Haltestellen. Deine Berner Haltestellen bleiben erhalten.</p></section>";
-    for (int i = 0; i < stopCount; ++i) {
+    for (int i = 0; i < MAX_STOPS; ++i) {
       if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
     }
     html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
-    html += "<p><a class='button subtle' href='/alerts-status'>Verkehrsmeldungen pruefen (3.2 TEST)</a></p>";
     html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
       html += "<form action='/page' method='post'><input type='hidden' name='page' value='" + String(page) + "'><button class='subtle'>Diese Seite anzeigen</button></form><ol>";
       for (int pos = 0; pos < (page == 2 ? 1 : STOPS_PER_PAGE); ++pos) {
         int index = page * STOPS_PER_PAGE + pos;
-        if (index >= stopCount) {
+        if (!stops[index].length()) {
           html += "<li><span>Platz " + String(pos + 1) + ": Frei</span></li>";
           continue;
         }
         html += "<li><div><b>" + escapeHtml(stops[index]) + "</b><small class='muted'> · " + String(page == 2 ? 7 : 3) + " Abfahrten</small>";
         html += "<form action='/move' method='post'><input type='hidden' name='index' value='" + String(index) + "'>";
         html += "<label>Position</label><select name='slot' style='width:100%;padding:10px;margin:7px 0'>";
-        for (int target = 0; target < stopCount; ++target) {
+        for (int target = 0; target < MAX_STOPS; ++target) {
           html += "<option value='" + String(target) + "'" + (index == target ? " selected" : "") + ">Seite " + String(target / STOPS_PER_PAGE + 1) + ", Platz " + String(target % STOPS_PER_PAGE + 1) + "</option>";
         }
         html += "</select><button class='subtle'>Verschieben / Tauschen</button></form>";
@@ -990,7 +719,7 @@ void setupRoutes() {
       html += "</ol>";
     }
     if (!stopCount) html += "<p>Noch keine Haltestelle ausgewaehlt.</p>";
-    html += "<p class='hint'>" + String(stopCount) + " von 5 Haltestellen ausgewaehlt. Neue Haltestellen werden zunaechst der Reihe nach in freie Plaetze eingetragen.</p>";
+    html += "<p class='hint'>" + String(stopCount) + " von 5 Haltestellen ausgewaehlt. Jeder Platz ist frei waehlbar. Leere Seiten bleiben leer.</p>";
     html += "<form action='/refresh' method='post'><button class='subtle'>Anzeige aktualisieren</button></form></section>";
     html += "<section class='card'><h2>Haltestelle hinzufügen</h2>";
     if (stopCount >= MAX_STOPS) html += "<p class='notice'>Alle fünf Plätze sind belegt. Entferne zuerst eine Haltestelle, um eine andere hinzuzufügen.</p>";
@@ -1021,10 +750,15 @@ void setupRoutes() {
           if (!name.length()) continue;
           if (n++ >= 20) break;
           bool selected = false;
-          for (int i = 0; i < stopCount; ++i) if (stops[i] == name) selected = true;
+          for (int i = 0; i < MAX_STOPS; ++i) if (stops[i] == name) selected = true;
           html += "<li><span>" + escapeHtml(name) + "</span>";
           if (selected) html += "<small>Ausgewählt</small>";
-          else if (stopCount < MAX_STOPS) html += "<form action='/add' method='post'><input type='hidden' name='name' value='" + escapeHtml(name) + "'><button>Hinzufügen</button></form>";
+          else if (stopCount < MAX_STOPS) {
+            html += "<form action='/add' method='post'><input type='hidden' name='name' value='" + escapeHtml(name) + "'><label>Zielplatz</label><select name='slot'>";
+            for (int slot = 0; slot < MAX_STOPS; ++slot) if (!stops[slot].length())
+              html += "<option value='" + String(slot) + "'>Seite " + String(slot / STOPS_PER_PAGE + 1) + ", Platz " + String(slot % STOPS_PER_PAGE + 1) + "</option>";
+            html += "</select><button>Hinzufügen</button></form>";
+          }
           else html += "<small>5 Plätze belegt</small>";
           html += "</li>";
         }
@@ -1037,9 +771,13 @@ void setupRoutes() {
   server.on("/add", HTTP_POST, []() {
     String name = server.arg("name"); name.trim();
     if (!name.length() || name.length() >= 100) { showMessage("Ungültiger Haltestellenname."); return; }
-    for (int i = 0; i < stopCount; ++i) if (stops[i] == name) { redirectHome(); return; }
+    for (int i = 0; i < MAX_STOPS; ++i) if (stops[i] == name) { redirectHome(); return; }
     if (stopCount >= MAX_STOPS) { showMessage("Es sind bereits fünf Haltestellen ausgewählt."); return; }
-    stops[stopCount++] = name; saveStops(); lastRefresh = 0; redirectHome();
+    String position = server.arg("slot");
+    if (position.length() != 1 || position[0] < '0' || position[0] > '4') { showMessage("Bitte einen Platz auswaehlen."); return; }
+    int slot = position.toInt();
+    if (stops[slot].length()) { showMessage("Dieser Platz ist inzwischen belegt."); return; }
+    stops[slot] = name; saveStops(); selectPage(slot / STOPS_PER_PAGE); lastRefresh = 0; drawBoard(); redirectHome();
   });
   // Web-App: aktive Anzeigeseite vom Handy aus wechseln.
   server.on("/page", HTTP_POST, []() {
@@ -1057,11 +795,11 @@ void setupRoutes() {
   server.on("/move", HTTP_POST, []() {
     if (!server.hasArg("slot")) { showMessage("Zielposition fehlt."); return; }
     int index, slot;
-    if (!readIndex(stopCount, index)) { showMessage("Ungueltige Haltestelle."); return; }
+    if (!readIndex(MAX_STOPS, index)) { showMessage("Ungueltige Haltestelle."); return; }
     String value = server.arg("slot");
     if (value.length() != 1 || value[0] < '0' || value[0] > '4') { showMessage("Ungueltige Position."); return; }
     slot = value.toInt();
-    if (slot >= stopCount) { showMessage("Bitte zuerst die freien Plaetze mit Haltestellen fuellen."); return; }
+
     if (slot != index) {
       String temp = stops[index];
       stops[index] = stops[slot];
@@ -1075,9 +813,8 @@ void setupRoutes() {
   });
   server.on("/remove", HTTP_POST, []() {
     int index;
-    if (!readIndex(stopCount, index)) { showMessage("Ungültige Auswahl. Bitte Seite neu öffnen."); return; }
-    for (int i = index; i < stopCount - 1; ++i) stops[i] = stops[i + 1];
-    --stopCount; saveStops(); lastRefresh = 0; redirectHome();
+    if (!readIndex(MAX_STOPS, index)) { showMessage("Ungültige Auswahl. Bitte Seite neu öffnen."); return; }
+    stops[index] = ""; saveStops(); lastRefresh = 0; redirectHome();
   });
   server.on("/boards", HTTP_GET, []() {
     String html = pageStart("Meine Boards");
@@ -1260,7 +997,7 @@ void drawTouchMenu() {
   drawLine("HALTESTELLE AENDERN", 12, 6, AMBER, 2);
   gfx->drawFastHLine(10, 30, 460, AMBER);
   if (touchEditIndex < 0 || touchEditIndex >= MAX_STOPS) return;
-  String oldName = touchEditIndex < stopCount ? stops[touchEditIndex] : "Freier Platz";
+  String oldName = stops[touchEditIndex].length() ? stops[touchEditIndex] : "Freier Platz";
   drawLine(clip(oldName, 36), 12, 38, WHITE, 1);
   touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
   if (touchMode == 1) {
@@ -1367,15 +1104,14 @@ void handleTouchTap(int rawX, int rawY) {
       if (result >= 0 && result < touchMatchCount) {
         String chosen = touchMatches[result];
         // Bereits verwendete Haltestellen nicht versehentlich doppelt speichern.
-        for (int i=0; i<stopCount; ++i) {
+        for (int i=0; i<MAX_STOPS; ++i) {
           if (i != touchEditIndex && stops[i] == chosen) {
             touchMode = 1; drawTouchMenu();
             drawLine("Haltestelle bereits vorhanden", 12, 293, WHITE, 1);
             return;
           }
         }
-        if (touchEditIndex > stopCount) { closeTouchMenu(); return; }
-        if (touchEditIndex == stopCount) ++stopCount;
+        if (touchEditIndex < 0 || touchEditIndex >= MAX_STOPS) { closeTouchMenu(); return; }
         stops[touchEditIndex] = chosen;
         saveStops(); // Gleiches Preferences-System wie in der Web-App.
         lastRefresh = 0;
@@ -1492,7 +1228,6 @@ analogSetPinAttenuation(34, ADC_11db);
 void loop() {
   server.handleClient();
   checkSwipe();
-  serviceAlertsTick();
   static bool wasConnected = false;
   bool connected = WiFi.status() == WL_CONNECTED;
   if (connected != wasConnected) {
@@ -1518,8 +1253,8 @@ void loop() {
   static uint32_t lastWarning = 0;
   if (millis() - lastWarning >= 220) {
     lastWarning = millis();
-    if (!touchMenuOpen) drawWarning();
   }
   delay(5);
 
 }
+
