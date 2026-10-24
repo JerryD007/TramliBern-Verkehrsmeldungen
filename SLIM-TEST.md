@@ -34,3 +34,9 @@ Am Board den Haltestellentitel antippen, unten HALTESTELLE ENTFERNEN wählen
 und mit JA, ENTFERNEN bestätigen. ZURUECK und ABBRUCH löschen nichts.
 LOESCH auf der Tastatur entfernt weiterhin nur ein Zeichen des Suchbegriffs.
 Die übrigen Haltestellen und die aktuelle Seite bleiben beim Entfernen erhalten.
+
+## Stadtliste am Board
+Den blauen Stadtknopf antippen: Alle 13 Städte erscheinen als Liste in zwei
+Spalten. Die aktuelle Stadt ist blau markiert. Stadt antippen zum Wechseln;
+ABBRUCH schliesst die Liste ohne Wechsel. Jede Stadt behält ihre Haltestellen
+und ihre zuletzt gewählte Seite.

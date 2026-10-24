@@ -64,7 +64,7 @@ String stationCache[STOPS_PER_PAGE];
 uint32_t screenRevision = 0;
 uint32_t touchExitRevision = 0;
 bool touchMenuOpen = false;
-int touchMode = 0; // 0 Tafel, 1 Tastatur, 2 Trefferliste
+int touchMode = 0; // 0 Tafel, 1 Tastatur, 2 Trefferliste, 3 Entfernen, 4 Stadtliste
 int touchEditIndex = -1;
 String touchQuery;
 String touchMatches[5];
@@ -1026,6 +1026,27 @@ void touchButton(const String &label, int x, int y, int w, int h, uint16_t color
   drawLine(label, textX, y + (h - 16) / 2, color, 2);
 }
 
+// Two columns, seven rows. Gaps and the unused final cell are not selectable.
+int cityAtTouch(int x, int y) {
+  if (x < 12 || x >= 468 || y < 43 || y >= 302) return -1;
+  int column = (x - 12) / 234;
+  int row = (y - 43) / 37;
+  if ((x - 12) % 234 >= 222 || (y - 43) % 37 >= 33) return -1;
+  int city = row * 2 + column;
+  return city < CITY_COUNT ? city : -1;
+}
+void drawCityMenu() {
+  gfx->fillScreen(BLACK);
+  drawLine("STADT AUSWAEHLEN", 12, 6, AMBER, 2);
+  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
+  gfx->drawFastHLine(10, 33, 460, AMBER);
+  for (int city = 0; city < CITY_COUNT; ++city) {
+    int x = 12 + (city % 2) * 234;
+    int y = 43 + (city / 2) * 37;
+    if (city == activeCity) gfx->fillRoundRect(x, y, 222, 33, 4, BUTTON_BLUE);
+    touchButton(CITY_LABELS[city], x, y, 222, 33, WHITE);
+  }
+}
 void drawTouchMenu() {
   gfx->fillScreen(BLACK);
   drawLine("HALTESTELLE AENDERN", 12, 6, AMBER, 2);
@@ -1115,10 +1136,12 @@ void handleTouchTap(int rawX, int rawY) {
       drawBoard();
       return;
     }
-    // Blauer Button: naechste Stadt. Die gespeicherten Haltestellen sind getrennt.
+    // Blauer Button: direkte Auswahl aus der Stadtliste.
     if (x >= CITY_BUTTON_X && x < CITY_BUTTON_X + CITY_BUTTON_W &&
         y >= CITY_BUTTON_Y && y < CITY_BUTTON_Y + CITY_BUTTON_H) {
-      changeCity((activeCity + 1) % CITY_COUNT);
+      touchMenuOpen = true;
+      touchMode = 4;
+      drawCityMenu();
       return;
     }
     // Tasten-Tippen schaltet Seite 1 -> 2 -> 3 -> 1; Swipe bleibt bestehen.
@@ -1144,6 +1167,11 @@ void handleTouchTap(int rawX, int rawY) {
     return;
   }
   if (y < 32 && x > 345) { closeTouchMenu(); return; }
+  if (touchMode == 4) {
+    int city = cityAtTouch(x, y);
+    if (city >= 0) { changeCity(city); closeTouchMenu(); }
+    return;
+  }
   if (touchMode == 3) {
     if (y >= 170 && y < 215) {
       if (x >= 12 && x < 232) { removeStopAt(touchEditIndex); closeTouchMenu(); }

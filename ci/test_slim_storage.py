@@ -32,15 +32,29 @@ struct FakePrefs {
  String getString(const char*k,const char*d){return strings.count(k)?strings[k]:String(d);}
  void putString(const char*k,String v){strings[k]=v;}
 } prefs;
-constexpr int MAX_STOPS=5,PAGE_COUNT=3,STOPS_PER_PAGE=2;
+constexpr int MAX_STOPS=5,PAGE_COUNT=3,STOPS_PER_PAGE=2,CITY_COUNT=13;
 int lastRefresh=123;
 int activeCity=0,activePage=0,stopCount=0;
 String stops[MAX_STOPS];
 void resetStopData(){}
 '''
-for name in ['cityStopKey','cityCountKey','cityPageKey','restoreCityPage','selectPage','loadCityStops','saveStops','firstFreeSlotOnPage','removeStopAt']:code+=function(name)+'\n'
+for name in ['cityStopKey','cityCountKey','cityPageKey','restoreCityPage','selectPage','loadCityStops','saveStops','firstFreeSlotOnPage','removeStopAt','cityAtTouch']:code+=function(name)+'\n'
 code+=r'''
 int main(){
+ // Every visible city opens its own index; gaps and blank cells do nothing.
+ for(int city=0;city<CITY_COUNT;++city){
+   int x=12+(city%2)*234, y=43+(city/2)*37;
+   assert(cityAtTouch(x,y)==city);
+   assert(cityAtTouch(x+221,y+32)==city);
+   assert(cityAtTouch(x+222,y+16)==-1);
+   assert(cityAtTouch(x+110,y+33)==-1);
+ }
+ assert(cityAtTouch(300,280)==-1);
+ assert(cityAtTouch(20,20)==-1);
+ assert(cityAtTouch(-1,80)==-1);
+ assert(cityAtTouch(480,80)==-1);
+ assert(cityAtTouch(20,320)==-1);
+
  // Empty board: the selected page supplies the default, never page 1.
  assert(firstFreeSlotOnPage(0)==0);
  assert(firstFreeSlotOnPage(1)==2);
