@@ -1,0 +1,19 @@
+services:
+  siri:
+    build:
+      context: ../..
+      dockerfile: service/siri/Dockerfile
+    restart: unless-stopped
+    environment:
+      OPENTRANSPORT_API_TOKEN: ${OPENTRANSPORT_API_TOKEN:?runtime secret required}
+    ports:
+      - "127.0.0.1:8080:8080"
+    mem_limit: 256m
+    cpus: 1.0
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

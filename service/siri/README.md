@@ -1,112 +1,112 @@
-# SIRI-SX-Abfragedienst – Forschungsprototyp, 23.10.2026
+# TramliBern SIRI-SX-Dienst – Stand 24.10.2026
 
-Dieser separate Dienst verarbeitet das normative `PublishingAction`-Profil wie
-im offiziellen SIRI-Monitor dokumentiert. Er ist **noch kein Ersatz des
-Firmwarefeeds** und wurde **nicht öffentlich bereitgestellt**. Main, Firmware,
-3.1-Sicherung und bestehende Workflows werden durch diese Dateien nicht geändert.
+**Nicht produktiv freigegeben.** Der Dienst ist implementiert und kontrolliert
+getestet, aber nicht öffentlich gehostet und nicht an die Firmware angeschlossen.
+Die neue Live-Prüfung mit dem vorhandenen GitHub-Secret liefert auf **beiden**
+offiziellen SIRI-Endpunkten HTTP 403. Das belegt eine Zugriffsablehnung, nicht deren
+genaue Ursache. Keine weiteren Tokens aus Screenshots oder öffentlichen Beispielen
+werden benutzt. Zugriff prüfen: https://api-manager.opentransportdata.swiss/
 
-## Bereits ausgeführt
+Nachweis am 24.10.2026, 08:08 Uhr Europe/Zurich:
+https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/actions/runs/40068999229
+Artefakt: `siri-access-evidence`, ID 12550835243. Der Test gibt ausschließlich
+HTTP-Status, Zeitpunkte und sichere Zähler aus, niemals den Token oder Fehlerbody.
 
-Der Produktions-XML-Endpunkt aus der Monitor-Konfiguration war am 23.10.2026
-ohne Authentifizierung erreichbar (HTTP 200). 90.247.725 Byte, 1.183 Situationen,
-Quellzeit 16:59:52 UTC. SHA256 und historisches Prüfergebnis stehen in
-`ci/fixtures/siri/evidence-20261023.json`.
-Der Parser arbeitet inkrementell, hält nicht das gesamte XML im Speicher und
-extrahierte 998 unterstützte Linien-Datensätze. 14 sehr große Situationen wurden
-wegen Ressourcenlimits ausdrücklich ausgelassen. Das ist keine vollständige
-Abdeckung aller Schweizer Störungen.
+## Implementierter Datenweg
 
-Realer positiver Nachweis: BERNMOBIL, `ch:1:sboid:100626`, Linie `85:827:12`,
-Liebegg `ch:1:sloid:90035`, Richtung `H`, gültig 19.–26.10.2026. Die kleine
-XML-Fixture enthält die echte, unverändert inhaltlich serialisierte Situation;
-der umgebende Siri-Envelope wurde für den historischen Test konstruiert.
-Die Tests werten sie am historischen Quellzeitpunkt aus, nicht als heutige Warnung.
+`runtime.py` betreibt genau zwei Hintergrundabrufe in einem Prozess:
 
-## Schnittstelle
+- `/la/siri-sx`: alle 12 Stunden; nach Fehler frühestens nach 30 Minuten.
+- `/la/siri-sx-unplanned`: alle 60 Sekunden nach Abschluss des vorherigen Abrufs.
+- HTTP-Anfragen bedienen ausschließlich den atomar ausgetauschten Speicher-Cache;
+  sie starten keinen großen Download und verändern keinen Quellzeitstempel.
+- Vollständige ungeplante Snapshots ersetzen den vorherigen Snapshot. Verschwundene
+  ungeplante Ereignisse werden nicht aus dem alten Vollfeed wiederhergestellt.
+- Neuere Versionen und Rücknahmen haben Vorrang; gleichversionige Widersprüche,
+  doppelte IDs und ungültige Daten sperren die betreffende Situation.
+- Rücknahmen geplanter Ereignisse bleiben bis zur passenden neueren Vollversion
+  erhalten. Ein neuer Download mit alter Ereignisversion darf sie nicht aufheben.
+- Beide Quellen sind erforderlich: ungeplant maximal 15 Minuten alt, Vollsnapshot
+  maximal 24 Stunden alt. Diese getrennten Grenzen folgen dem empfohlenen seltenen
+  Vollabruf; sie sind Projektregeln und keine Betreiber-SLA. Bei Erwerb eines neuen
+  Snapshots gilt zunächst ebenfalls die 15-Minuten-Prüfung. Bereits alte Quelldaten
+  werden nicht durch den Abruf frisch.
+- Fehlende/veraltete Quelle: HTTP 503; keine Behauptung einer störungsfreien Lage.
+  Nach Prozessneustart bleibt der Dienst gesperrt, bis beide Quellen geladen sind.
+
+Der Parser wertet ausschließlich den unterstützten normativen `PublishingAction`-
+Teil aus. Unterstützt sind veröffentlichte Linien-/StopPlace-Aktionen mit explizitem
+Betreiber, LineRef, deutschem Kurztext, Gültigkeit und Veröffentlichungsfenstern.
+Fahrtbezogene Scopes werden nicht zu Linienmeldungen erweitert. DTD/Entities,
+zu tiefe XML-Bäume, unvollständige Dokumente und Ressourcenüberschreitungen werden
+abgefangen. Sehr große einzelne Situationen werden mit Zähler ausgelassen; daher
+wird keine vollständige Schweizer Störungsabdeckung zugesagt.
+
+## ESP32-kompakte HTTP-Schnittstelle
 
 `GET /v1/line-messages?operator_ref=ch:1:sboid:100626&line_ref=85:827:12`
 
-Antwort: `schema=tramlibern.siri.lines.v1`, Original-Quellzeit, Ablauf,
-`Linienmeldung 12: …`, originale Betreiber-/Linien-/Situationskennungen,
-angegebene Richtung und angegebene Halte. Die Antwort sagt ausdrücklich
-`selected_stop_relevance=not_verified`. Keine Zuordnung per bloßer Liniennummer.
-Dieses Schema ist absichtlich nicht Firmware-Schema 3; SIRI-LineRef wird niemals
-als GTFS-route_id ausgegeben. Die Firmware muss es derzeit ablehnen.
+Schema `tramlibern.siri.lines.v1`, originale Quellzeitpunkte, Ablauf, Kennungen und
+Text `Linienmeldung 12: …`. Maximal 32 Meldungen/22.000 Byte, `Cache-Control: no-store`.
+Richtung und angegebene Halte bleiben als Quelldaten erhalten. Die Ausgabe sagt
+weiterhin `selected_stop_relevance=not_verified`: Es gibt noch keine freigegebene
+SIRI-LineRef-/GTFS-/Haltestellenbrücke. Keine Zuordnung anhand einer Liniennummer,
+kein Umdeuten der SIRI-LineRef als GTFS-route_id. Das Schema ist absichtlich nicht
+Firmware-Schema 3; bestehende Firmware darf diesen Prototyp nicht übernehmen.
 
-HTTP 503 bei fehlendem, altem oder ungültigem Feed; ein Fehler wird niemals als
-bestätigte störungsfreie Lage ausgegeben. HTTP 200 mit leeren Meldungen bedeutet
-nur: keine passende Meldung im unterstützten Teil dieses Snapshots.
-Alle Antworten maximal 22.000 Byte/32 Meldungen, `Cache-Control: no-store`.
-Quellalter maximal 15 Minuten, Zukunftstoleranz 120 Sekunden. Abruf und
-HTTP-Abfrage erneuern den Originalzeitstempel nicht. Endzeit ist exklusiv.
+## Tatsächliche Nachweise
 
-Unterstützt: veröffentlichte Situationen, explizite Linien im PublishingScope
-`line` oder `stopPlace`, deutscher Kurztext, Gültigkeit sowie Veröffentlichungs-
-fenster auf Situation und Aktion. Fahrtbezogene PublishingScopes werden nicht
-zu Linienwarnungen erweitert. Nicht alle Erweiterungen des Schweizer Profils
-sind implementiert; deshalb keine Produktionsfreigabe. Mehrdeutige doppelte
-Situationen werden unterdrückt, defekte Zeiträume schließen die Situation aus.
-DTD/Entities, unvollständige Dokumente und Ressourcenüberschreitungen werden
-abgefangen. Fehlerhafte Downloads ersetzen keinen vollständigen Cache.
+Am 23.10.2026 war der Produktions-XML-Spiegel aus der offiziellen Monitor-Konfiguration
+ohne Authentifizierung erreichbar. 90.247.725 Byte, 1.183 Situationen, Quellzeit
+16:59:52 UTC, 998 unterstützte Linien-Datensätze, 14 wegen Größenlimits ausgelassene
+Situationen. SHA256 und Ergebnis: `ci/fixtures/siri/evidence-20261023.json`.
+Dieser Spiegel ist eine Forschungsquelle ohne hier belegten Polling-/Betriebsvertrag,
+kein Ersatz für die jetzt abgelehnte offizielle API-Berechtigung.
 
-## Start und Betrieb
+Realer positiver Fall: BERNMOBIL `ch:1:sboid:100626`, Linie `85:827:12`, Liebegg
+`ch:1:sloid:90035`, Richtung H, gültig 19.–26.10.2026. Die XML-Fixture enthält die
+inhaltlich unveränderte, neu serialisierte Situation in einem konstruierten
+Replay-Envelope. Alle Replay-Tests verwenden ausdrücklich die damalige Zeit.
+Dies beweist die Linienmeldung, noch nicht ihre Relevanz für Zentrum Paul Klee.
 
-Historischer Offline-Test:
+52 SIRI-Tests prüfen Parser, Versionen, Rücknahmen, Ablauf, Abrufintervalle, Fehler-
+Wartezeiten und einen echten lokalen HTTP-Aufruf mit historischem Replay.
+Die automatischen Tests laufen im bestehenden Testzweig und zusätzlich im neuen
+SIRI-Testworkflow. Live-Zugriff ist ein eigener, derzeit scheiternder Nachweis.
 
-```
-python -m unittest discover -s ci -p 'test_siri_service.py' -v
-SIRI_SNAPSHOT_PATH=/absolute/path/to/source.xml python -m service.siri.app
-```
-
-Container aus dem Repository-Root:
+## Start / Container
 
 ```
-docker build -f service/siri/Dockerfile -t tramlibern-siri .
-docker run --rm -p 8080:8080 -e SIRI_SOURCE_URL=https://tools.opentransportdata.swiss/data/siri-sx/siri_sx-latest-prod.xml -e SIRI_INTERVAL=3600 tramlibern-siri
+python -m unittest discover -s ci -p 'test_siri*.py' -v
+docker compose -f service/siri/compose.yaml up --build -d
 ```
 
-Das ist **Forschungsbetrieb**: der ungesicherte Aktualisierungsvertrag des
-Monitor-Spiegels rechtfertigt kein minutenschnelles Polling. Der Prototyp erlaubt
-dort höchstens stündliches Laden und verweigert danach veraltete Antworten.
-Dieser Modus kann folglich keine durchgehende Warnversorgung liefern.
-Der HTTP-Request des ESP32 löst keinen 90-MB-Download aus; ein einziger Hintergrund-
-thread lädt, validiert und ersetzt den Cache atomar. Nur ein Prozess/Replica
-betreiben; mehrere Instanzen würden Abruflimits vervielfachen. Vor öffentlichen
-Betrieb HTTPS-Terminierung und Ressourcen-/Anfragelimits des Hosts einrichten.
-Keine Zugangsschlüssel in URL, Firmware, Git oder Antwort; optionaler API-Token
-nur als Laufzeitsecret. Redirects sind gesperrt, erlaubte Quell-URLs fest begrenzt.
+`OPENTRANSPORT_API_TOKEN` muss als Laufzeitsecret verfügbar sein, niemals in Git,
+Firmware oder URLs. `compose.yaml` bindet nur `127.0.0.1:8080`, setzt Speicher-/CPU-
+Grenzen, startet bei Absturz neu und verwendet einen unprivilegierten Benutzer.
+Öffentlicher Betrieb benötigt zusätzlich TLS-Terminierung und einen Host. Genau
+**ein** Worker/Replica; mehrere Instanzen würden die Datenabrufe vervielfachen.
+Docker-Start ist noch kein Nachweis gültiger API-Rechte oder dauerhafter Datenversorgung.
 
-## Was für den produktiven direkten Weg noch fehlt
+## Noch offen, kein Firmware-Update
 
-1. **Offizieller getrennter Abruf:** Der Cookbook empfiehlt vollständige Daten
-   ein-/wenige Male täglich und `/la/siri-sx-unplanned` laufend. Der Adapter
-   erlaubt diese URLs mit vorhandenem Laufzeitsecret, aber ihre Berechtigung
-   wurde hier nicht nachgewiesen. Ein Modus mit nur dem ungeplanten Feed deckt
-   geplante Baustellen nicht ab. Die versionierte Zusammenführung beider Feeds
-   einschließlich Rücknahmen muss vor Freigabe implementiert und real getestet
-   werden. Keinen neuen Token vom Nutzer verlangen, bevor bestehender
-   serverseitiger Zugang geprüft wurde.
-2. **Exakte Linien-Halt-Brücke:** Die fünf GTFS-Halte sind bekannt, SIRI-LineRef
-   und SBOID brauchen jedoch eine separat belegte Verbindung zu den
-   Fahrplanlinien. Nummer 12 allein reicht nicht. Der Liebegg-Fall belegt die
-   offizielle Linienmeldung, nicht automatisch die Relevanz für Zentrum Paul Klee.
-3. **Hosting:** Kein dauerhaft laufender Container-Host wurde in dieser Sitzung
-   bereitgestellt. Das verfügbare Sites-Hosting führt JavaScript/Cloudflare
-   Workers aus, nicht diesen Python-Container. Ein öffentlicher Service benötigt
-   passenden Host oder einen separat getesteten Streaming-Worker-Port. GitHub
-   Actions ist hier CI, kein dauerhafter Webserver.
-4. **Firmware:** Erst nach HTTPS-Endpunkt, belegter Linien-Halt-Brücke und
-   Dauerprüfung einen kompakten Adapter integrieren und den Sketch kompilieren.
-   Keine neue Firmware allein aufgrund erfolgreicher Parser-Tests hochladen.
+1. Funktionierender Zugriff auf beide offiziellen APIs. Der vorhandene Schlüssel
+   wurde benutzt; ein neuer Schlüssel wird nicht ohne Ursache verlangt.
+2. Belegte SIRI-Linie–GTFS-Linie–Haltestelle-Beziehungen für die fünf Zielhalte.
+3. Passender dauerhafter Host. Das verfügbare Sites-Hosting kann JavaScript-Workers,
+   aber nicht diesen Python-Container starten. Eine Worker-Portierung wäre eine
+   zusätzliche Implementierung mit eigener Speicher-/Streaming- und Zugriffskontrolle.
+4. Reale Dauerprüfung und anschließend Firmware-Adapter, vollständiger Build und
+   kompilierte Testfirmware. Kein Zugriff oder Flash am physischen ESP32.
+
+Main, bestehende Verkehrsworkflows und 3.1-Sicherung bleiben unverändert.
 
 ## Referenzen
 
 - https://opentransportdata.swiss/de/cookbook/event-cookbook/siri-sx/
+- https://api-manager.opentransportdata.swiss/portal/catalogue-products/tedp_siri_sx_unplanned-1
 - https://github.com/openTdataCH/siri-sx-situation-monitor
-- Dort: `apps/siri-sx-demo-client/ts/config/app_config.ts` und
-  `models/pt_situation_element.ts` (main, geprüft 23.10.2026).
+  (`app_config.ts` und `pt_situation_element.ts`, geprüft 23.10.2026).
 
-Der offizielle Monitor dient als Strukturreferenz; sein TypeScript-Code wurde
-nicht kopiert. Eigene Python-Implementierung. Primäre Auswahl aus
-`PublishAtScope/Affects`, nicht aus den optionalen, nicht empfohlenen
-`PtSituation/Affects` oder `Consequences/Affects`.
+Eigene Python-Implementierung; kein Monitor-TypeScript kopiert. Die Quelle empfiehlt
+PublishingAction statt optionalem PtSituation/Affects oder Consequences/Affects.

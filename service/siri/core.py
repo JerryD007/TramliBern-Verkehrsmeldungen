@@ -91,6 +91,7 @@ def parse_stream(stream):
     parser = expat.ParserCreate(namespace_separator='}')
     stack, nodes, rows, times, statuses = [], [], [], [], []
     seen, duplicates = set(), set()
+    entities = {}
     capture = None
     situation_count = 0
     situation_bytes = 0
@@ -172,10 +173,21 @@ def parse_stream(stream):
                 if sid in seen:
                     duplicates.add(sid)
                 seen.add(sid)
+                entity = {'id':sid, 'blocked':True, 'rows':[]}
                 try:
-                    rows.extend(extract(node))
+                    version = text(node, 'Version')
+                    planned = text(node, 'Planned')
+                    if not version.isdecimal() or planned not in ('true','false'):
+                        raise ValueError('missing version or planned flag')
+                    entity.update(version=int(version), planned=planned == 'true',
+                                  progress=text(node,'Progress'),
+                                  participant=text(node,'ParticipantRef'))
+                    entity['rows'] = extract(node)
+                    entity['blocked'] = False
+                    rows.extend(entity['rows'])
                 except (ValueError, OverflowError):
-                    pass  # Bad periods suppress the entire situation.
+                    pass  # Keep an explicit blocking marker to prevent resurrection.
+                entities[sid] = entity
                 if len(rows) > 20000:
                     raise ValueError('record limit')
         stack.pop()
@@ -198,7 +210,9 @@ def parse_stream(stream):
     if not times or any(s != 'true' for s in statuses):
         raise ValueError('invalid source status/timestamp')
     return dict(source_timestamp=min(times), situations=situation_count,
-                bytes=size, oversized_situations=skipped, rows=[r for r in rows if r['situation_id'] not in duplicates])
+                bytes=size, oversized_situations=skipped,
+                entities={k:v for k,v in entities.items() if k not in duplicates},
+                blocked_ids=sorted(duplicates), rows=[r for r in rows if r['situation_id'] not in duplicates])
 
 
 def response(snapshot, now, operator_ref, line_ref):

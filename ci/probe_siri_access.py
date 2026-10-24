@@ -20,7 +20,7 @@ for url in (FULL,UNPLANNED):
             with urllib.request.build_opener(NoRedirect()).open(request,timeout=90) as reply:
                 item['http_status']=reply.status
                 snapshot=parse_stream(reply)
-                item.update({k:v for k,v in snapshot.items() if k!='rows'})
+                item.update({k:v for k,v in snapshot.items() if k in ('source_timestamp','situations','bytes','oversized_situations')})
                 item['supported_rows']=len(snapshot['rows'])
                 item['source_age_seconds']=int(time.time())-snapshot['source_timestamp']
         except urllib.error.HTTPError as e: item['http_status']=e.code

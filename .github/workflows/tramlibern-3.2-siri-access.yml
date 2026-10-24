@@ -7,6 +7,27 @@ on:
 permissions:
   contents: read
 jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s ci -p 'test_siri*.py' -v
+      - run: docker build -f service/siri/Dockerfile -t tramlibern-siri-test .
+      - name: Check cold-start HTTP safety in built container
+        run: |
+          docker run -d --name siri-test -p 127.0.0.1:8080:8080 tramlibern-siri-test
+          trap 'docker rm -f siri-test' EXIT
+          for attempt in $(seq 1 20); do
+            status=$(curl -s -o /tmp/siri-response.json -w '%{http_code}' 'http://127.0.0.1:8080/v1/line-messages?operator_ref=ch:1:sboid:100626&line_ref=85:827:12' || true)
+            if [ "$status" = 503 ]; then
+              python3 -c 'import json; d=json.load(open("/tmp/siri-response.json")); assert d["alerts"] == [] and "error" in d'
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs siri-test
+          exit 1
   probe:
     runs-on: ubuntu-24.04
     timeout-minutes: 8

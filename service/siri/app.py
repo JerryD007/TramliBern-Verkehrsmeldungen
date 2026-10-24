@@ -8,7 +8,8 @@ from .core import parse_stream, response
 
 
 class Application:
-    def __init__(self):
+    def __init__(self, state=None):
+        self.state = state
         self.snapshot = None
         self.lock = threading.Lock()
 
@@ -30,6 +31,8 @@ class Application:
                 q = parse_qs(environ.get('QUERY_STRING',''), keep_blank_values=True, max_num_fields=4)
                 if set(q) != {'operator_ref','line_ref'} or any(len(v)!=1 or not v[0] or len(v[0])>160 for v in q.values()):
                     status, result = '400 Bad Request', {'error':'exact operator_ref and line_ref required'}
+                elif self.state is not None:
+                    result = self.state.line_response(int(time.time()),q['operator_ref'][0],q['line_ref'][0])
                 elif self.snapshot is None:
                     status, result = '503 Service Unavailable', {'error':'source unavailable','alerts':[]}
                 else:

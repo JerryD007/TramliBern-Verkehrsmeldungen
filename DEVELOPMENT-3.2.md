@@ -218,3 +218,21 @@ beschränkt. Andere Halte und Städte erhalten dadurch noch keine Linienmeldunge
 Stop-bezogene Selektoren außerhalb der geladenen Fahrplanfamilien bleiben ohne
 Verbindungsnachweis ausgeschlossen. Keine vollständige Störungsabdeckung zugesagt.
 Firmware 3.1 bleibt auf dem Gerät; kein Flash und keine Änderung an main.
+
+
+## SIRI-Dienst: Fortsetzung 24.10.2026
+
+Getrennte periodische Abrufe (vollständig/ungeplant), atomarer Cache,
+Versionierung/Rücknahmen und Neustart-/Ablaufsperren sind im Dienst implementiert.
+52 SIRI-Tests bestehen lokal einschließlich historischem HTTP-Replay.
+Der Container und seine sichere 503-Antwort ohne Quelldaten werden im neuen
+SIRI-Testworkflow unabhängig von der API-Verfügbarkeit geprüft.
+
+**Nicht fertig und nicht produktiv freigegeben:** Der vorhandene API-Zugang
+lieferte am 24.10.2026 um 08:08 Uhr Europe/Zurich bei beiden offiziellen
+SIRI-Endpunkten HTTP 403. Der genaue Ablehnungsgrund ist nicht bestätigt.
+Nachweis: https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/actions/runs/40068999229
+Es fehlen weiterhin die belegte SIRI-Linien-/Haltestellenbrücke, öffentliches
+Hosting und die daran anschließende Firmwareprüfung. Keine Umstellung der
+installierten Firmware und keine Änderungen an main in dieser Fortsetzung.
+Details und Startkonfiguration: [service/siri/README.md](service/siri/README.md).
