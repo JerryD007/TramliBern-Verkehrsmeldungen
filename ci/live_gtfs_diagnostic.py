@@ -14,9 +14,8 @@ import tempfile
 import time
 import zipfile
 
-import requests
 
-SA_URL = "https://api.opentransportdata.swiss/la/gtfs-sa/?format=json"
+SA_URL = "https://api.opentransportdata.swiss/la/gtfs-sa"
 STATIC_URL = "https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink"
 # Device screenshots, confirmed IDs; these are selectors to evaluate, not feed mappings.
 SELECTED = {
@@ -29,67 +28,23 @@ SELECTED = {
 SLOID = re.compile(r"ch:1:sloid:\d+(?::\d+)*\Z")
 
 
-def decode_alerts(payload):
-    """Extract original selectors, preserving their identity and intent."""
-    if not isinstance(payload, dict) or not isinstance(payload.get("entity"), list):
-        raise ValueError("Unexpected Swiss GTFS-SA JSON envelope")
-    out = []
-    now = int(time.time())
-    for entity in payload["entity"]:
-        if not isinstance(entity, dict) or not isinstance(entity.get("alert"), dict):
-            continue
-        alert = entity["alert"]
-        periods = alert.get("activePeriod") or []
-        if periods:
-            active = False
-            for p in periods:
-                if not isinstance(p, dict):
-                    continue
-                try:
-                    start, end = int(p.get("start") or 0), int(p.get("end") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if start <= now and (not end or end >= now):
-                    active = True
-            if not active:
-                continue
-        selectors = []
-        for s in alert.get("informedEntity") or []:
-            if not isinstance(s, dict):
-                continue
-            # API's JSON is not standardised: preserve original selector keys.
-            fields = {k: s.get(k) for k in ("agencyId", "routeId", "tripId", "stopId", "directionId")
-                      if s.get(k) is not None}
-            trip = s.get("trip")
-            if isinstance(trip, dict) and trip.get("tripId"):
-                fields["tripId"] = trip["tripId"]
-                if trip.get("routeId") and not fields.get("routeId"):
-                    fields["routeId"] = trip["routeId"]
-                if trip.get("directionId") is not None:
-                    fields["directionId"] = trip["directionId"]
-            if fields:
-                selectors.append(fields)
-        if selectors:
-            out.append({"id": str(entity.get("id", ""))[:100], "selectors": selectors})
-    return out
+from alert_decode import decode_alerts
+from gtfs_alert_segments import read_gtfs, evaluate_selector
+
+CONTROLS = {"Bern, Liebegg":"ch:1:sloid:90035", "Ostermundigen, Rüti":"ch:1:sloid:90052"}
 
 
 def fetch_inputs(token, root):
+    import requests
     session = requests.Session()
-    resp = session.get(SA_URL, headers={
-        "Authorization": "Bearer " + token,
-        "User-Agent": "TramliBern-3.2-ReadOnly-GitHub-Diagnostic",
-        "Accept-Encoding": "gzip, deflate",
-        "Accept": "application/json",
-    }, timeout=120)
-    resp.raise_for_status()
-    alerts = decode_alerts(resp.json())
     # Download to disk: GTFS static is typically >100 MB compressed.
     archive_path = root / "gtfs-static.zip"
+    static_resolved_url = None
     sha = hashlib.sha256()
     size = 0
     with session.get(STATIC_URL, stream=True, timeout=(30, 240), allow_redirects=True) as resp:
         resp.raise_for_status()
+        static_resolved_url = resp.url.split("?")[0]
         with archive_path.open("wb") as f:
             for chunk in resp.iter_content(1024 * 1024):
                 if not chunk:
@@ -99,8 +54,54 @@ def fetch_inputs(token, root):
                     raise ValueError("GTFS archive unexpectedly large")
                 f.write(chunk)
                 sha.update(chunk)
+    # Fetch realtime AFTER the large static download, so transfer time cannot
+    # consume the alert freshness budget. Keep the original source timestamp.
+    resp = session.get(SA_URL, headers={
+        "Authorization": "Bearer " + token,
+        "User-Agent": "TramliBern-3.2-ReadOnly-GitHub-Diagnostic",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "application/octet-stream",
+        "Cache-Control": "no-cache",
+    }, timeout=120)
+    resp.raise_for_status()
+    from protobuf_decode import protobuf_payload
+    Path("reports").mkdir(exist_ok=True)
+    Path("reports/real-gtfs-source.pb").write_bytes(resp.content)
+    payload = protobuf_payload(resp.content)
+    Path("reports/real-gtfs-source.json").write_text(json.dumps(payload), encoding="utf-8")
+    from source_observation import observe_source
+    observation = observe_source(resp.content, resp.headers,
+                                 int(payload['header']['timestamp']), int(time.time()))
+    Path('reports/source-observation.json').write_text(json.dumps(observation, indent=2))
+    if os.environ.get('TRAMLI_COMPARE_JSON') == '1':
+        # Second API request (at most two/minute): official JSON is diagnostic only.
+        companion = session.get(SA_URL + '/?format=json', headers={
+            'Authorization': 'Bearer ' + token,
+            'User-Agent': 'TramliBern-3.2-Schema-Diagnostic',
+            'Cache-Control': 'no-cache'}, timeout=120)
+        companion.raise_for_status()
+        Path('reports/official-json-companion.json').write_bytes(companion.content)
+        from trip_diagnostic import compare_trip_encodings, json_trip_observations
+        companion_payload = companion.json()
+        comparison, paired = compare_trip_encodings(resp.content, companion_payload)
+        Path('reports/trip-encoding-comparison.json').write_text(json.dumps(comparison, indent=2))
+        Path('reports/paired-trip-observations.json').write_text(json.dumps(paired))
+        # Independently inspect the official JSON snapshot even if the API caches
+        # return different generations. This cannot authorize binary warnings.
+        Path('reports/json-trip-observations.json').write_text(json.dumps({
+            'source_timestamp': companion_payload['header']['timestamp'],
+            'rows': json_trip_observations(companion_payload)}))
+    freshness_error = None
+    try:
+        alerts = decode_alerts(payload)  # Validate the freshly acquired source against the local clock.
+    except ValueError as exc:
+        if not str(exc).startswith('stale or future GTFS-SA header:'): raise
+        # Preserve useful historical joins, but publication below still enforces
+        # the ORIGINAL timestamp against the current clock and must fail closed.
+        freshness_error = str(exc)
+        alerts = decode_alerts(payload, now=int(payload['header']['timestamp']))
     return alerts, archive_path, {"source_url": STATIC_URL, "bytes": size,
-                                  "sha256": sha.hexdigest()}
+                                  "sha256": sha.hexdigest(), "resolved_url":static_resolved_url, "source_observation":observation, "source_timestamp":int(payload["header"]["timestamp"]), "freshness_error":freshness_error}
 
 
 def iter_table(zf, name):
@@ -108,111 +109,112 @@ def iter_table(zf, name):
         yield from csv.DictReader(io.TextIOWrapper(fp, encoding="utf-8-sig", newline=""))
 
 
-def stop_matches(selected, stop):
-    return stop == selected or stop.startswith(selected + ":")
-
-
 def crosscheck(alerts, archive_path, metadata):
-    """Conservative exact-ID join using streaming CSVs; no publication."""
-    routes_requested = set()
-    trips_requested = set()
-    stops_requested = set(SELECTED.values())
-    for e in alerts:
-        for s in e["selectors"]:
-            if isinstance(s.get("routeId"), str):
-                routes_requested.add(s["routeId"])
-            if isinstance(s.get("tripId"), str):
-                trips_requested.add(s["tripId"])
-    with zipfile.ZipFile(archive_path) as zf:
-        expected = {"routes.txt", "trips.txt", "stop_times.txt", "stops.txt"}
-        if not expected.issubset(zf.namelist()):
-            raise ValueError("Static GTFS missing required tables")
-        known_routes = {r.get("route_id") for r in iter_table(zf, "routes.txt")
-                        if r.get("route_id") in routes_requested}
-        # Stops can be platform SLOIDs and differ from station IDs.
-        stops = {r["stop_id"] for r in iter_table(zf, "stops.txt")
-                 if r.get("stop_id") and any(stop_matches(st, r["stop_id"])
-                                           for st in stops_requested)}
-        trip_routes = {}
-        directions = {}
-        for row in iter_table(zf, "trips.txt"):
-            tid, rid = row.get("trip_id"), row.get("route_id")
-            if tid and (rid in known_routes or tid in trips_requested):
-                trip_routes[tid] = rid
-                directions[tid] = row.get("direction_id")
-        trip_stops = {}
-        for row in iter_table(zf, "stop_times.txt"):
-            tid, stop = row.get("trip_id"), row.get("stop_id")
-            if tid in trip_routes and stop in stops:
-                trip_stops.setdefault(tid, set()).add(stop)
-    results = []
-    counts = {"explicit_stop": 0, "route_candidate": 0,
-              "not_matched": 0, "unverifiable": 0}
-    examined_selectors = sum(len(e["selectors"]) for e in alerts)
-    identified_route_ids = sorted({s["routeId"] for e in alerts
-        for s in e["selectors"] if isinstance(s.get("routeId"), str)})
-    explicit_stop_selectors = sum(1 for e in alerts for s in e["selectors"]
-        if isinstance(s.get("stopId"), str))
-    # In a zero-hit result, distinguish "none affected" from incompatible IDs.
-    route_ids_in_static = len(set(identified_route_ids) & known_routes)
-    diagnostic = {
-        "examined_selectors": examined_selectors,
-        "distinct_alert_route_ids": len(identified_route_ids),
-        "alert_route_ids_found_in_static": route_ids_in_static,
-        "explicit_stop_selectors": explicit_stop_selectors,
-        "selected_gtfs_stops_found": len(stops),
-        "matched_selected_stop_route_candidates": 0,
-    }
-    for name, selected in SELECTED.items():
+    selectors = [s for e in alerts for s in e['selectors']]
+    requested={s['tripId'] for s in selectors if isinstance(s.get('tripId'),str)}
+    json_observations = None
+    observation_path = Path('reports/json-trip-observations.json')
+    if os.environ.get('TRAMLI_COMPARE_JSON') == '1' and observation_path.exists():
+        json_observations = json.loads(observation_path.read_text())
+        requested.update(row['selector']['tripId'] for row in json_observations['rows']
+                         if isinstance(row['selector'].get('tripId'), str))
+    g = read_gtfs(archive_path, list(SELECTED.values())+list(CONTROLS.values()), requested)
+    paired_path = Path('reports/paired-trip-observations.json')
+    if os.environ.get('TRAMLI_COMPARE_JSON') == '1' and paired_path.exists():
+        from trip_diagnostic import inspect_trip_instances
+        diagnostic = inspect_trip_instances(g, json.loads(paired_path.read_text()))
+        Path('reports/trip-instance-diagnostic.json').write_text(json.dumps(diagnostic, indent=2))
+    if json_observations is not None:
+        from trip_diagnostic import inspect_trip_instances
+        diagnostic = inspect_trip_instances(g, json_observations['rows'])
+        diagnostic.update(input_format='official_json_diagnostic_only',
+                          source_timestamp=json_observations['source_timestamp'])
+        Path('reports/json-trip-instance-diagnostic.json').write_text(json.dumps(diagnostic, indent=2))
+    ids = {k: {s[k] for s in selectors if isinstance(s.get(k), str)}
+           for k in ('routeId','tripId','stopId')}
+    compatibility = {k: {'total':len(ids[k]), 'found':len(ids[k] & set(table)),
+                         'missing_sample':sorted(ids[k]-set(table))[:40]}
+                     for k,table in [('routeId',g.routes),('tripId',g.trips),('stopId',g.stops)]}
+    counts = {k:0 for k in ('explicit_stop','route_candidate','not_matched','unverifiable')}
+    translation = dict(confirmed_stop='explicit_stop',candidate='route_candidate',
+                       no_match='not_matched',unverifiable='unverifiable')
+    control_matches=[]
+    for name,stop in CONTROLS.items():
         for e in alerts:
-            for sel in e["selectors"]:
-                s, route, trip = sel.get("stopId"), sel.get("routeId"), sel.get("tripId")
-                status, reason = "not_matched", "selector does not match selected stop"
-                if isinstance(s, str) and stop_matches(selected, s):
-                    # Explicitly targeted, but static mapping may use parent station vs platform.
-                    if s not in stops:
-                        status, reason = "unverifiable", "explicit stop in alert absent from static stops"
-                    elif route and route not in known_routes:
-                        status, reason = "unverifiable", "routeId not in selected static version"
-                    elif trip and trip not in trip_routes:
-                        status, reason = "unverifiable", "tripId not in selected static version"
-                    elif trip and route and trip_routes[trip] != route:
-                        status, reason = "unverifiable", "routeId and tripId conflict"
-                    elif trip and s not in trip_stops.get(trip, set()):
-                        status, reason = "unverifiable", "trip does not visit explicit stop in static GTFS"
-                    elif route and not trip and not any(
-                        rid == route and s in trip_stops.get(tid, set())
-                        for tid, rid in trip_routes.items()):
-                        status, reason = "unverifiable", "route does not visit explicit stop in static GTFS"
-                    else:
-                        status, reason = "explicit_stop", "alert explicitly targets selected stop"
-                elif s is None and (route or trip):
-                    # A route can call at a stop while disruption is elsewhere.
-                    candidate_trips = ([trip] if trip else
-                                       [tid for tid, rid in trip_routes.items() if rid == route])
-                    if any(any(stop_matches(selected, st)
-                               for st in trip_stops.get(tid, set())) for tid in candidate_trips):
-                        status, reason = "route_candidate", "no explicit stop or affected segment"
-                if status != "not_matched":
-                    counts[status] += 1
-                    results.append({"stop": name, "status": status, "reason": reason,
-                                    "alert_id": e["id"],
-                                    "selector": {k: v for k, v in sel.items()
-                                                 if k in ("agencyId", "routeId", "tripId", "stopId", "directionId")}})
-    diagnostic["matched_selected_stop_route_candidates"] = counts["route_candidate"]
-    return {
-        "source": "opentransportdata.swiss",
-        "quality": diagnostic,
-        "checked_at_utc_epoch": int(time.time()),
-        "static": metadata,
-        "selected_stops": SELECTED,
-        "active_alert_entities": len(alerts),
-        "counts": counts,
-        "matches": results[:400],
-        "note": ("Diagnostic only. route_candidate is NOT a confirmed disruption. "
-                 "Static GTFS and live GTFS-SA versions may differ. "
-                 "No changes to production alerts.json or ESP32."),
-    }
+            for sel in e['selectors']:
+                if not sel.get('stopId') or not (g.family(sel['stopId']) & g.family(stop)): continue
+                status,reason=evaluate_selector(g,sel,stop)
+                control_matches.append(dict(stop=name,selected_id=stop,alert_id=e['id'],status=status,reason=reason,selector=sel))
+    from line_messages import line_match
+    line_matches=[]
+    results=[]
+    reasons={}
+    selected_evidence={}
+    for name, selected in SELECTED.items():
+        family=g.family(selected)
+        serving={g.trips[t]['route_id'] for t,visits in g.visits.items()
+                 if set(visits.values()) & family}
+        selected_evidence[name]={'id':selected,'static_name':g.stops.get(g.resolve_stop(selected),{}).get('stop_name'),
+            'resolved_static_id':g.resolve_stop(selected),'platforms':sorted(family),'serving_routes':sorted(serving),
+            'alert_routes_intersection':sorted(serving & ids['routeId'])}
+        cache={}
+        for e in alerts:
+            for sel in e['selectors']:
+                line=line_match(g,sel,selected)
+                if line:
+                    line_matches.append(dict(stop=name,alert_id=e['id'],**line))
+                key=json.dumps(sel,sort_keys=True)
+                if key not in cache: cache[key]=evaluate_selector(g,sel,selected)
+                status,reason=cache[key]
+                status=translation[status]
+                counts[status]+=1
+                reasons[reason]=reasons.get(reason,0)+1
+                if status in ('explicit_stop','route_candidate'):
+                    results.append(dict(stop=name,status=status,reason=reason,alert_id=e['id'],selector=sel))
+    # Export an exact-row subset for reproducible real-data joins, not synthetic evidence.
+    output=Path('reports')
+    output.mkdir(exist_ok=True)
+    selected_ids=set().union(*(g.family(s) for s in list(SELECTED.values())+list(CONTROLS.values())))
+    trip_ids=set(g.visits)
+    route_ids={g.trips[t]['route_id'] for t in trip_ids}
+    with zipfile.ZipFile(archive_path) as source, zipfile.ZipFile(output/'real-gtfs-selected.zip','w',zipfile.ZIP_DEFLATED) as dest:
+        filters={'stops.txt':('stop_id',selected_ids),'trips.txt':('trip_id',trip_ids),
+                 'routes.txt':('route_id',route_ids),'stop_times.txt':('stop_id',selected_ids)}
+        for name,(key,allowed) in filters.items():
+            if name == 'stop_times.txt':
+                stream=io.StringIO()
+                fields=list(g.time_rows[0]) if g.time_rows else ['trip_id','stop_id','stop_sequence']
+                writer=csv.DictWriter(stream,fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(g.time_rows)
+                dest.writestr(name,stream.getvalue())
+                continue
+            with source.open(name) as src:
+                reader=csv.DictReader(io.TextIOWrapper(src,encoding='utf-8-sig',newline=''))
+                with dest.open(name,'w') as target:
+                    writer_stream=io.TextIOWrapper(target,encoding='utf-8',newline='')
+                    writer=csv.DictWriter(writer_stream,fieldnames=reader.fieldnames)
+                    writer.writeheader()
+                    for row in reader:
+                        if row.get(key) in allowed: writer.writerow(row)
+                    writer_stream.flush()
+                    writer_stream.detach()
+    quality={'examined_selectors':len(selectors), 'distinct_alert_route_ids':len(ids['routeId']),
+        'alert_route_ids_found_in_static':compatibility['routeId']['found'],
+        'explicit_stop_selectors':sum('stopId' in s for s in selectors),
+        'selected_gtfs_stops_found':len(set().union(*(g.family(s) for s in SELECTED.values()))),
+        'matched_selected_stop_route_candidates':counts['route_candidate'],
+        'trip_selectors':sum('tripId' in s for s in selectors),
+        'stop_ids_resolved_via_original_stop_id':sum(s not in g.stops and g.resolve_stop(s) is not None for s in ids['stopId'])}
+    with zipfile.ZipFile(archive_path) as z:
+        metadata['feed_info']=list(iter_table(z,'feed_info.txt')) if 'feed_info.txt' in z.namelist() else []
+    return dict(source='opentransportdata.swiss',quality=quality,compatibility=compatibility,
+        selected_evidence=selected_evidence,reason_counts=reasons,counts=counts,control_matches=control_matches,
+        checked_at_utc_epoch=int(time.time()),static=metadata,selected_stops=SELECTED,
+        trip_instance_samples=[dict(trip_id=t,static=g.trips[t],first_departure=g.first_departures.get(t)) for t in sorted(requested & set(g.trips))[:20]],
+        active_alert_entities=sum('validation_error' not in a for a in alerts),matches=results,line_matches=line_matches,
+        rejected_alerts=[a for a in alerts if 'validation_error' in a],
+        note='Diagnostic at source time if stale; freshness_error blocks publication. Unknown IDs and candidate routes are not warnings.')
 
 
 def main():
@@ -229,6 +231,7 @@ def main():
     summary = [
         "# TramliBern 3.2 – Live GTFS diagnostic",
         "",
+        "Historical diagnostic only; publication blocked: " + info["freshness_error"] if info.get("freshness_error") else "Source was fresh at acquisition; publication rechecks current age.",
         f"Live alert entities with selectors: {report['active_alert_entities']}",
         f"GTFS archive SHA256: {info['sha256']}",
         f"GTFS archive bytes: {info['bytes']}",
@@ -242,6 +245,8 @@ def main():
         f"Those exact route IDs found in GTFS-static: {report['quality']['alert_route_ids_found_in_static']}",
         f"Selectors with explicit stop ID: {report['quality']['explicit_stop_selectors']}",
         f"Selected GTFS stop IDs found: {report['quality']['selected_gtfs_stops_found']}",
+        "", f"Confirmed live control selectors: {sum(m['status']=='confirmed_stop' for m in report['control_matches'])}",
+        f"Quarantined invalid alert entities: {len(report['rejected_alerts'])}",
         "", "Route-only candidates are NOT confirmed affected stops.",
                 "Static feed compatibility and affected route segments still require verification.",
                 "No production data or firmware changed."]
@@ -250,6 +255,21 @@ def main():
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write("\n".join(summary)+"\n")
     print("\n".join(summary))
+    # Publishable test output is separate from the diagnostic and excludes controls.
+    from verified_feed import build_feed, build_line_feed
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    date=datetime.fromtimestamp(info['source_timestamp'],ZoneInfo('Europe/Zurich')).strftime('%Y%m%d')
+    feed_info=info.get('feed_info',[])
+    if len(feed_info)!=1 or not feed_info[0].get('feed_start_date','99999999')<=date<=feed_info[0].get('feed_end_date',''):
+        raise ValueError('static feed validity does not cover source date')
+    if any(not e['resolved_static_id'] for e in report['selected_evidence'].values()):
+        raise ValueError('a selected station is unresolved')
+    feed=build_feed(report,alerts,int(time.time()),info['source_timestamp'])
+    (output/'alerts-v2.json').write_text(json.dumps(feed,ensure_ascii=False),encoding='utf-8')
+    lines=build_line_feed(report,alerts,int(time.time()),info['source_timestamp'])
+    (output/'alerts-lines.json').write_text(json.dumps(lines,ensure_ascii=False),encoding='utf-8')
+
 
 
 if __name__ == "__main__":

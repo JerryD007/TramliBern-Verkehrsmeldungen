@@ -1,0 +1,17 @@
+{
+  "source_alert_artifact": "https://github.com/JerryD007/TramliBern-Verkehrsmeldungen/actions/runs/39816450561/artifacts/12441354368",
+  "source_timestamp": "1792687244",
+  "static_2026_sha256": "3c521698af71f2fda37ae9ac748eda0107f923305615bd25383bc5976df8c3d4",
+  "static_2027_url": "https://data.opentransportdata.swiss/dataset/10155d9d-5625-43a4-988c-88a69b3874ac/resource/15bf5204-c67e-4b02-b165-5ade3e71e33a/download/gtfs_fp2027_20261021.zip",
+  "routes_2027_full_member_sha256": "b858fb593bd0b88a595726767f0575eab9fb71f81a4d3309c45b9965a6899111",
+  "scope": "Unmodified CSV field values; selected rows only. Historical replay at source header time, NOT current live publication. Selected stop_times omit other stops; not usable to infer initial departure.",
+  "fixture_sha256": {
+    "routes.txt": "3a054bbac8918f979d3c227e0fa573012c770099226293752d9eb8aa1ad9f72a",
+    "routes_2027.csv": "e29dea07a5d89c33f90a20cd1771ebb75700e74d94254cf989971f9b4fc255ac",
+    "alert.json": "386fbb5c7cc3c8807dc701e8c285bd4a4729d05df497be7e6b1bf8339fddadc5",
+    "stop_times.txt": "efa7f0cec4925ce250e6d764f0b44ab45e62fbf89625c39dcfb6c3bf61738761",
+    "trips.txt": "49beea5a15d4de028bdeb7123d3493ab128f315dd784e2e013a1b7f1f487789a",
+    "replay.json": "48fbe049f4b6744f9168560d6bbea78c91ae6d397258ef6ce3dc593b26ced1d6",
+    "stops.txt": "b606fb0557f762ab6c8e61651f3a4d4b0e5fece68f8e62815ac1fbb7b827e4d1"
+  }
+}

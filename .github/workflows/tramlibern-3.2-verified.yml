@@ -1,0 +1,72 @@
+name: TramliBern 3.2 verification and firmware
+on:
+  push:
+    branches: ['test/tramlibern-3.2-verified']
+    paths-ignore: ['data/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tramlibern-32-verified-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regressions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install -r ci/requirements-live.txt
+      - run: python3 -m unittest discover -s ci -p 'test_*.py' -v
+  live:
+    needs: regressions
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r ci/requirements-live.txt
+      - run: python ci/live_gtfs_diagnostic.py
+        env:
+          OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+          TRAMLI_COMPARE_JSON: '1'
+      - name: Independently recheck source freshness after a live failure
+        if: failure()
+        continue-on-error: true
+        run: python ci/probe_protobuf.py
+        env:
+          OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+      - name: Publish short-lived test feed on this test branch only
+        if: success() && github.ref == 'refs/heads/test/tramlibern-3.2-verified'
+        run: bash ci/publish_test_feed.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-gtfs-evidence
+          path: reports/
+          retention-days: 14
+  refresh_smoke:
+    needs: live
+    permissions:
+      contents: write
+    uses: ./.github/workflows/tramlibern-3.2-refresh.yml
+    secrets:
+      OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - run: bash ci/install.sh
+      - run: bash ci/compile.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firmware-and-memory
+          path: reports/
+          retention-days: 30

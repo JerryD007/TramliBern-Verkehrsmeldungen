@@ -1,0 +1,39 @@
+name: TramliBern 3.2 isolated feed refresh
+on:
+  workflow_call:
+    secrets:
+      OPENTRANSPORT_API_TOKEN:
+        required: true
+  push:
+    branches: ['test/tramlibern-3.2-verified']
+    paths: ['data/refresh-request.json']
+permissions:
+  contents: write
+concurrency:
+  group: tramlibern-32-feed-refresh
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/tramlibern-3.2-verified
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r ci/requirements-live.txt
+      - run: python -m unittest discover -s ci -p 'test_*.py'
+      - name: Verify current source against original schedule
+        run: python ci/live_gtfs_diagnostic.py
+        env:
+          OPENTRANSPORT_API_TOKEN: ${{ secrets.OPENTRANSPORT_API_TOKEN }}
+      - name: Publish only to the test branch
+        run: bash ci/publish_test_feed.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: refresh-failure-${{ github.run_id }}
+          path: reports/
+          retention-days: 3

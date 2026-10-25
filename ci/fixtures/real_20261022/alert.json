@@ -1,0 +1,77 @@
+{
+  "header": {
+    "gtfsRealtimeVersion": "2.0",
+    "incrementality": "FULL_DATASET",
+    "timestamp": "1792687244"
+  },
+  "entity": [
+    {
+      "id": "c3b86af6-6649-536e-a2cc-fe8249ad546a",
+      "alert": {
+        "activePeriod": [
+          {
+            "start": "1792378800",
+            "end": "1792972800"
+          }
+        ],
+        "informedEntity": [
+          {
+            "agencyId": "827",
+            "routeId": "92-12-j26-1",
+            "stopId": "ch:1:sloid:90035",
+            "directionId": 0
+          },
+          {
+            "agencyId": "827",
+            "routeId": "92-12-j27-1",
+            "stopId": "ch:1:sloid:90035",
+            "directionId": 0
+          }
+        ],
+        "cause": "CONSTRUCTION",
+        "effect": "UNKNOWN_EFFECT",
+        "url": {},
+        "headerText": {
+          "translation": [
+            {
+              "text": "Die Haltestelle Bern, Liebegg ist in Richtung Bern, Zentrum Paul Klee verschoben.",
+              "language": "de"
+            },
+            {
+              "text": "Stop Bern, Liebegg has been moved in the direction of Bern, Zentrum Paul Klee",
+              "language": "en"
+            },
+            {
+              "text": "La fermata Bern, Liebegg è stata spostata in direzione di Bern, Zentrum Paul Klee.",
+              "language": "it"
+            },
+            {
+              "text": "L'arrêt Bern, Liebegg est déplacé direction Bern, Zentrum Paul Klee.",
+              "language": "fr"
+            }
+          ]
+        },
+        "descriptionText": {
+          "translation": [
+            {
+              "text": "Der Grund dafür sind Bauarbeiten. Die Einschränkung dauert von 19.10.2026, 05:00 bis 26.10.2026, 01:00. Betroffen ist die Linie 12. Bitte benützen Sie die provisorische Haltestelle 30 Meter weiter Richtung Seminar.",
+              "language": "de"
+            },
+            {
+              "text": "This is due to construction work. The restriction lasts from 19.10.2026, 05:00 until 26.10.2026, 01:00. Line 12 is affected. Please use the temporary stop 30 meters away direction Seminar.",
+              "language": "en"
+            },
+            {
+              "text": "La causa sono lavori. La limitazione durerà dal 19.10.2026, 05:00 al 26.10.2026, 01:00. È interessata la linea 12. i prega di utilizzare la fermata provvisoria 30 metri più avanti verso Seminar.",
+              "language": "it"
+            },
+            {
+              "text": "Des travaux en sont la cause. La restriction dure du 19.10.2026, 05:00 au 26.10.2026, 01:00. La ligne 12 est concernée. Veuillez vous rendre à l'arrêt provisoire 30 mètres plus loin direction Seminar.",
+              "language": "fr"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

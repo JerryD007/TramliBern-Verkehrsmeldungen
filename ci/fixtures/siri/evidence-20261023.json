@@ -1,0 +1,34 @@
+{
+  "source_timestamp": 1792774792,
+  "situations": 1183,
+  "bytes": 90247725,
+  "oversized_situations": 14,
+  "parsed_line_records": 998,
+  "source_url": "https://tools.opentransportdata.swiss/data/siri-sx/siri_sx-latest-prod.xml",
+  "sha256": "71b26a04a0c67d80ac4b9deefeeedffbc70c6353a815908cfbd49c4429be4886",
+  "line12_historical_response": {
+    "schema": "tramlibern.siri.lines.v1",
+    "source_timestamp": 1792774792,
+    "expires_at": 1792775692,
+    "status": "ok",
+    "coverage": "supported_publishing_actions_only",
+    "alerts": [
+      {
+        "situation_id": "ch:1:sstid:100626:6ac8b7317614880006e1544a:",
+        "action_id": "1",
+        "operator_ref": "ch:1:sboid:100626",
+        "line_ref": "85:827:12",
+        "line": "12",
+        "text": "Linienmeldung 12: Bern, Liebegg Richtung Bern, Zentrum Paul Klee verschoben",
+        "scope": "line",
+        "selected_stop_relevance": "not_verified",
+        "reported_scope": "stopPlace",
+        "reported_direction": "H",
+        "reported_stop_refs": [
+          "ch:1:sloid:90035"
+        ],
+        "expires_at": 1792775692
+      }
+    ]
+  }
+}
