@@ -532,6 +532,8 @@ void drawBoard() {
   gfx->drawFastHLine(10, 267, 460, AMBER);
   String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   drawLine("Konfiguration: " + address, 12, 276, WHITE, 1);
+  gfx->fillRoundRect(235, 270, 78, 24, 3, BUTTON_BLUE);
+  drawLine("MENU", 250, 274, WHITE, 2);
   for (int page = 0; page < PAGE_COUNT; ++page) {
     int x = 320 + page * 50;
     gfx->fillRect(x, 270, 46, 24, page == activePage ? AMBER : BLACK);
@@ -1087,6 +1089,34 @@ void drawCityMenu() {
     touchButton(CITY_LABELS[city], x, y, 222, 33, WHITE);
   }
 }
+void drawMainMenu() {
+  gfx->fillScreen(BLACK);
+  drawLine("TRAMLIBERN MENU", 12, 8, AMBER, 2);
+  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
+  gfx->drawFastHLine(10, 35, 460, AMBER);
+  touchButton("HALTESTELLE", 30, 65, 420, 48);
+  touchButton("STADT WAEHLEN", 30, 130, 420, 48);
+  touchButton("DIAGNOSE", 30, 195, 420, 48);
+  drawLine("Seite " + String(activePage+1) + " / 3", 12, 285, WHITE, 2);
+}
+void drawBoardDiagnostic() {
+  gfx->fillScreen(BLACK);
+  drawLine("ABFAHRTS DIAGNOSE", 12, 8, AMBER, 2);
+  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
+  drawLine(WiFi.status() == WL_CONNECTED ? "WLAN: VERBUNDEN" : "WLAN: GETRENNT", 12, 52, WHITE, 2);
+  drawLine(clip(statusText, 34), 12, 86, AMBER, 1);
+  for (int pos = 0; pos < (activePage == 2 ? 1 : 2); ++pos) {
+    int i = activePage*2 + pos;
+    if (!stops[i].length()) continue;
+    int y = 125 + pos*83;
+    drawLine(clip(stops[i], 32), 12, y, WHITE, 1);
+    if (lastSuccess[i]) {
+      drawLine("Letzter Erfolg vor " + String((millis() - lastSuccess[i])/60000UL) + " Min", 12, y+19, AMBER, 1);
+    } else drawLine("Noch keine Daten", 12, y+19, AMBER, 1);
+    if (stopFetchFailed[i]) drawLine("FEHLER: Bitte Handy-Diagnose pruefen", 12, y+37, WHITE, 1);
+  }
+  drawLine("Weitere Details in der Web-App /diagnose", 12, 292, WHITE, 1);
+}
 void drawTouchMenu() {
   gfx->fillScreen(BLACK);
   drawLine("HALTESTELLE AENDERN", 12, 6, AMBER, 2);
@@ -1169,6 +1199,9 @@ void handleTouchTap(int rawX, int rawY) {
   if (x < 0 || y < 0) return;
   Serial.printf("Touch raw %d,%d -> px %d,%d | mode %d\n", rawX, rawY, x, y, touchMode);
   if (!touchMenuOpen) {
+    if (y >= 270 && y < 295 && x >= 235 && x < 313) {
+      touchMenuOpen = true; touchMode = 5; drawMainMenu(); return;
+    }
     // Direct page selection also works for empty pages.
     if (y >= 270 && y < 295 && x >= 320 && x < 470) {
       selectPage((x - 320) / 50);
@@ -1207,6 +1240,21 @@ void handleTouchTap(int rawX, int rawY) {
     return;
   }
   if (y < 32 && x > 345) { closeTouchMenu(); return; }
+  if (touchMode == 6) { closeTouchMenu(); return; }
+  if (touchMode == 5) {
+    if (x >= 30 && x < 450 && y >= 65 && y < 113) {
+      touchEditIndex = activePage * 2;
+      touchQuery = "";
+      touchMode = 1; drawTouchMenu(); return;
+    }
+    if (x >= 30 && x < 450 && y >= 130 && y < 178) {
+      touchMode = 4; drawCityMenu(); return;
+    }
+    if (x >= 30 && x < 450 && y >= 195 && y < 243) {
+      touchMode = 6; drawBoardDiagnostic(); return;
+    }
+    return;
+  }
   if (touchMode == 4) {
     int city = cityAtTouch(x, y);
     if (city >= 0) { changeCity(city); closeTouchMenu(); }
