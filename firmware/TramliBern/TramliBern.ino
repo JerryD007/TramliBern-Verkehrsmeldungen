@@ -74,6 +74,56 @@ String timeCache[MAX_ROWS_PER_PAGE];
 String stops[MAX_STOPS];
 int stopCount = 0;
 String wifiSsid, wifiPassword;
+constexpr int MAX_WIFI_PROFILES = 4;
+String wifiNames[MAX_WIFI_PROFILES], wifiPasswords[MAX_WIFI_PROFILES];
+int wifiProfileCount = 0, preferredWiFi = 0;
+uint32_t wifiRetryAt = 0;
+void loadWiFiProfiles() {
+  wifiProfileCount = 0;
+  String oldName = prefs.getString("ssid", "");
+  String oldPass = prefs.getString("pass", "");
+  if (oldName.length()) {
+    wifiNames[0] = oldName; wifiPasswords[0] = oldPass; wifiProfileCount = 1;
+  }
+  for (int i = 0; i < MAX_WIFI_PROFILES; ++i) {
+    String name = prefs.getString(("wf"+String(i)+"n").c_str(), "");
+    if (!name.length()) continue;
+    bool present = false;
+    for (int j=0; j<wifiProfileCount; ++j) if (wifiNames[j] == name) present=true;
+    if (!present && wifiProfileCount < MAX_WIFI_PROFILES) {
+      wifiNames[wifiProfileCount]=name;
+      wifiPasswords[wifiProfileCount++]=prefs.getString(("wf"+String(i)+"p").c_str(), "");
+    }
+  }
+}
+void saveWiFiProfile(const String &name, const String &pass) {
+  if (!name.length() || name.length()>32 || pass.length()>63) return;
+  int i = -1;
+  for (int j=0; j<wifiProfileCount; ++j) if (wifiNames[j]==name) i=j;
+  if (i<0) i=wifiProfileCount<MAX_WIFI_PROFILES ? wifiProfileCount++ : MAX_WIFI_PROFILES-1;
+  wifiNames[i]=name; wifiPasswords[i]=pass; preferredWiFi=i;
+  for (int j=0; j<MAX_WIFI_PROFILES; ++j) {
+    prefs.putString(("wf"+String(j)+"n").c_str(), j<wifiProfileCount ? wifiNames[j] : "");
+    prefs.putString(("wf"+String(j)+"p").c_str(), j<wifiProfileCount ? wifiPasswords[j] : "");
+  }
+  prefs.putString("ssid",name); prefs.putString("pass",pass);
+  wifiSsid=name; wifiPassword=pass;
+}
+bool trySavedWiFi(uint32_t timeoutMs=4500) {
+  if (WiFi.status()==WL_CONNECTED) return true;
+  for (int p=0; p<wifiProfileCount; ++p) {
+    int i = (preferredWiFi+p)%wifiProfileCount;
+    WiFi.disconnect();
+    WiFi.begin(wifiNames[i].c_str(), wifiPasswords[i].c_str());
+    uint32_t started=millis();
+    while (WiFi.status()!=WL_CONNECTED && millis()-started<timeoutMs) delay(150);
+    if (WiFi.status()==WL_CONNECTED) {
+      wifiSsid=wifiNames[i]; wifiPassword=wifiPasswords[i]; preferredWiFi=i;
+      return true;
+    }
+  }
+  return false;
+}
 String statusText = "Startet";
 uint32_t lastRefresh = 0;
 struct Departure {
@@ -220,6 +270,7 @@ void loadSettings() {
   prefs.begin("tramli-bern", false);
   wifiSsid = prefs.getString("ssid", "");
   wifiPassword = prefs.getString("pass", "");
+  loadWiFiProfiles();
   activeCity = prefs.getUChar("city", 0);
   if (activeCity < 0 || activeCity >= CITY_COUNT) activeCity = 0;
   loadCityStops();
@@ -941,6 +992,10 @@ void setupRoutes() {
     String html = pageStart("Einstellungen");
     html += "<section class='card'><h2>Name dieses Boards</h2><form action='/device' method='post'><label for='boardname'>Name</label><input id='boardname' name='name' maxlength='60' value='" + escapeHtml(boardLabel()) + "' required><button class='full'>Namen speichern</button></form></section>";
     html += "<section class='card'><details><summary>WLAN ändern</summary><p class='hint'>Nur ausfüllen, wenn du das WLAN wechseln möchtest. Nach dem Speichern startet das Board neu; seine IP-Adresse kann sich ändern.</p><form action='/wifi' method='post'><label for='ssid'>WLAN-Name</label><input id='ssid' name='ssid' maxlength='32' value='" + escapeHtml(wifiSsid) + "' required><label for='pass'>WLAN-Passwort neu eingeben</label><input id='pass' name='pass' type='password' maxlength='63' autocomplete='new-password'><p class='hint'>Leer lassen nur für ein WLAN ohne Passwort.</p><label><input type='checkbox' name='confirm' value='yes' required style='display:inline;width:auto;min-height:0'> WLAN-Wechsel und Neustart bestätigen</label><p><button class='full'>WLAN speichern und neu starten</button></p></form></details></section>";
+    html += "<section class='card'><h2>Gespeicherte WLAN-Netze</h2>";
+    for (int i=0; i<wifiProfileCount; ++i)
+      html += "<p>" + escapeHtml(wifiNames[i]) + (WiFi.SSID()==wifiNames[i] ? " (verbunden)" : "") + "</p>";
+    html += "<p class='hint'>Bis zu vier WLAN-Netze. Neue Netze lassen sich oben speichern.</p></section>";
     sendPage(html);
   });
   server.on("/device", HTTP_POST, []() {
@@ -952,7 +1007,7 @@ void setupRoutes() {
     String ssid = server.arg("ssid"), pass = server.arg("pass");
     if (server.arg("confirm") != "yes") { showMessage("Bitte WLAN-Wechsel bestätigen."); return; }
     if (ssid.length() && ssid.length() <= 32 && pass.length() <= 63) {
-      prefs.putString("ssid", ssid); prefs.putString("pass", pass);
+      saveWiFiProfile(ssid, pass);
       sendPage(pageStart("WLAN gespeichert") + "<section class='card'><p>Das Board startet jetzt neu. Verbinde dein Handy mit dem gewählten WLAN und öffne die Adresse, die auf dem Display angezeigt wird.</p><p>Falls die Verbindung fehlschlägt: mit TRAMLI-BERN-2 verbinden und http://192.168.4.1 öffnen.</p></section>");
       delay(500); ESP.restart();
     } else showMessage("Ungültiger WLAN-Name oder Passwort.");
@@ -1377,11 +1432,7 @@ analogSetPinAttenuation(34, ADC_11db);
   drawLine("Bern Abfahrtstafel", 12, 20, AMBER);
   loadSettings();
   WiFi.mode(WIFI_STA);
-  if (wifiSsid.length()) {
-    WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-    uint32_t started = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - started < 12000) delay(200);
-  }
+  trySavedWiFi();
   if (WiFi.status() != WL_CONNECTED) {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("TRAMLI-BERN-2");
@@ -1413,6 +1464,10 @@ void loop() {
       WiFi.softAP("TRAMLI-BERN-2");
     }
     if (!touchMenuOpen) drawBoard();
+  }
+  if (!connected && !touchMenuOpen && millis() - wifiRetryAt >= 90000UL) {
+    wifiRetryAt = millis();
+    trySavedWiFi(2500);
   }
   if (!touchMenuOpen && connected && (lastRefresh == 0 || millis() - lastRefresh >= REFRESH_MS)) {
     refreshBoard();
