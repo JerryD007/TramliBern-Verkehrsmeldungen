@@ -698,6 +698,46 @@ bool readIndex(int limit, int &index) {
 }
 
 void setupRoutes() {
+  server.on("/diagnose", HTTP_GET, []() {
+    String html = pageStart("Abfahrtsdiagnose");
+    bool connected = WiFi.status() == WL_CONNECTED;
+    html += "<section class='card'><h2>Verbindung</h2>";
+    html += "<p><b>WLAN:</b> " + String(connected ? "Verbunden" : "Nicht verbunden") + "</p>";
+    if (connected) html += "<p><b>IP:</b> " + WiFi.localIP().toString() + "</p>";
+    else html += "<p class='notice'>Keine WLAN-Verbindung.</p>";
+    html += "<p><b>Abfahrten:</b> " + escapeHtml(statusText) + "</p></section>";
+    html += "<section class='card'><h2>Letztes Laden und Datenalter</h2>";
+    int count = 0;
+    for (int i = 0; i < MAX_STOPS; ++i) {
+      if (!stops[i].length()) continue;
+      ++count;
+      html += "<div style='display:block;overflow-wrap:anywhere;padding:14px 0;border-bottom:1px solid #dce1d4'>";
+      html += "<p><b>" + escapeHtml(stops[i]) + "</b> - Seite " + String(i / 2 + 1) + "</p>";
+      if (lastSuccess[i]) {
+        uint32_t age = (millis() - lastSuccess[i]) / 1000UL;
+        String ageText = age < 60 ? String(age) + " Sekunden" :
+                         age < 3600 ? String(age / 60) + " Minuten" :
+                         String(age / 3600) + " Stunden " + String((age % 3600) / 60) + " Minuten";
+        html += "<p>Letztes erfolgreiches Laden: vor <b>" + ageText + "</b></p>";
+        html += "<p>Alter der gespeicherten Daten: " + ageText + "</p>";
+      } else html += "<p>Noch keine erfolgreichen Daten seit dem Neustart</p>";
+      if (stopFetchFailed[i]) {
+        String problem = stopErrors[i];
+        if (problem.indexOf("HTTP -") >= 0) problem = "Netzwerk- oder Zeitproblem beim Abruf";
+        else if (problem.indexOf("HTTP 5") >= 0) problem = "Datenserver voruebergehend gestoert";
+        else if (problem.indexOf("JSON:") >= 0) problem = "Antwort vom Server unlesbar";
+        html += "<p class='notice'><b>Fehler:</b> " + escapeHtml(problem) + "</p>";
+        html += "<p>Automatische Wiederholung: maximal " + String(retryDelay[i]/1000UL) + " Sekunden Abstand</p>";
+      } else if (lastSuccess[i]) html += "<p><b>Status:</b> Abruf erfolgreich</p>";
+      else html += "<p><b>Status:</b> Noch nicht geladen</p>";
+      html += "</div>";
+    }
+    if (!count) html += "<p>Keine Haltestelle eingerichtet.</p>";
+    html += "<p class='hint'>Zeitangaben gelten seit dem letzten Neustart des Boards.</p>";
+    html += "<p><a class='button subtle' href='/'>Zurueck</a></p></section>";
+    sendPage(html);
+  });
+
   // TramliBern 3.0 TEST: Diagnose nur im lokalen Browser.
   // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
   server.on("/", HTTP_GET, []() {
@@ -716,7 +756,7 @@ void setupRoutes() {
     for (int i = 0; i < MAX_STOPS; ++i) {
       if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
     }
-    html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
+    html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p><a class='button subtle' href='/diagnose'>Abfahrtsdiagnose ansehen</a></p>";
     html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
