@@ -1151,8 +1151,8 @@ void drawMainMenu() {
   gfx->drawFastHLine(10, 35, 460, AMBER);
   touchButton("HALTESTELLE", 30, 65, 420, 48);
   touchButton("STADT WAEHLEN", 30, 130, 420, 48);
-  touchButton("DIAGNOSE", 30, 195, 420, 48);
-  drawLine("Seite " + String(activePage+1) + " / 3", 12, 285, WHITE, 2);
+  touchButton("DIAGNOSE", 30, 195, 420, 43);
+  touchButton("WLAN", 30, 252, 420, 43);
 }
 void drawBoardDiagnostic() {
   gfx->fillScreen(BLACK);
@@ -1171,6 +1171,19 @@ void drawBoardDiagnostic() {
     if (stopFetchFailed[i]) drawLine("FEHLER: Bitte Handy-Diagnose pruefen", 12, y+37, WHITE, 1);
   }
   drawLine("Weitere Details in der Web-App /diagnose", 12, 292, WHITE, 1);
+}
+void drawSavedWiFiMenu() {
+  gfx->fillScreen(BLACK);
+  drawLine("GESPEICHERTE WLAN", 12, 7, AMBER, 2);
+  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
+  gfx->drawFastHLine(10, 35, 460, AMBER);
+  for (int i=0; i<wifiProfileCount; ++i) {
+    String caption=wifiNames[i];
+    if (WiFi.status()==WL_CONNECTED && WiFi.SSID()==wifiNames[i]) caption+=" *";
+    touchButton(clip(caption, 30), 12, 52+i*52, 456, 46, WHITE);
+  }
+  if (!wifiProfileCount) drawLine("Noch kein WLAN gespeichert", 12, 95, WHITE, 2);
+  drawLine("Neue WLAN: Web-App / Einstellungen", 12, 283, WHITE, 1);
 }
 void drawTouchMenu() {
   gfx->fillScreen(BLACK);
@@ -1296,6 +1309,21 @@ void handleTouchTap(int rawX, int rawY) {
   }
   if (y < 32 && x > 345) { closeTouchMenu(); return; }
   if (touchMode == 6) { closeTouchMenu(); return; }
+  if (touchMode == 7) {
+    if (x >= 12 && x < 468 && y >= 52 && y < 52+52*wifiProfileCount) {
+      int index=(y-52)/52;
+      if ((y-52)%52 < 46 && index >= 0 && index < wifiProfileCount) {
+        preferredWiFi=index;
+        WiFi.disconnect();
+        closeTouchMenu();
+        wifiRetryAt=millis();
+        trySavedWiFi(5500);
+        lastRefresh=0;
+        drawBoard();
+      }
+    }
+    return;
+  }
   if (touchMode == 5) {
     if (x >= 30 && x < 450 && y >= 65 && y < 113) {
       touchEditIndex = activePage * 2;
@@ -1307,6 +1335,9 @@ void handleTouchTap(int rawX, int rawY) {
     }
     if (x >= 30 && x < 450 && y >= 195 && y < 243) {
       touchMode = 6; drawBoardDiagnostic(); return;
+    }
+    if (x >= 30 && x < 450 && y >= 252 && y < 295) {
+      touchMode = 7; drawSavedWiFiMenu(); return;
     }
     return;
   }
