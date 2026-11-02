@@ -1,0 +1,40 @@
+name: TramliBern SLIM complete Czech download
+
+on:
+  push:
+    branches: ['test/tramlibern-slim-diagnostics']
+    paths:
+      - 'NAVOD_CZ_SLIM.md'
+      - 'firmware/TramliBern/TramliBern.ino'
+      - '.github/workflows/tramlibern-slim-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch preserved pre-change backup
+        run: |
+          git fetch origin refs/heads/backup/tramlibern-slim-free-pages-20261102:refs/remotes/origin/backup/tramlibern-slim-free-pages-20261102
+      - name: Create complete source, Czech guide and backup ZIP
+        run: |
+          set -euo pipefail
+          mkdir -p package/TramliBern package/Zaloha_pred_upravami/TramliBern
+          cp firmware/TramliBern/TramliBern.ino package/TramliBern/TramliBern.ino
+          git show origin/backup/tramlibern-slim-free-pages-20261102:firmware/TramliBern/TramliBern.ino > package/Zaloha_pred_upravami/TramliBern/TramliBern.ino
+          cp NAVOD_CZ_SLIM.md package/NAVOD_CZ.md
+          sha256sum package/TramliBern/TramliBern.ino package/Zaloha_pred_upravami/TramliBern/TramliBern.ino > package/KONTROLNI_SOUBORY_SHA256.txt
+          cd package
+          zip -r -q ../TramliBern-SLIM-CZ-balik.zip .
+          cd ..
+          unzip -t TramliBern-SLIM-CZ-balik.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TramliBern-SLIM-CZ-balik
+          path: TramliBern-SLIM-CZ-balik.zip
+          if-no-files-found: error
+          retention-days: 90
