@@ -1,4 +1,4 @@
-name: TramliBern RC27 - compile ESP32
+name: TramliBern RC28 - compile ESP32
 on:
   push:
     branches:
@@ -6,6 +6,7 @@ on:
     paths:
       - RC27_SOURCE_UPLOAD.zip
       - .github/workflows/tramlibern-rc27-build.yml
+      - .github/rc28_patch.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -30,10 +31,9 @@ jobs:
           arduino-cli lib install "ArduinoJson@7.4.2"
           arduino-cli lib install "GFX Library for Arduino@1.6.0"
           arduino-cli lib install "XPT2046_Touchscreen@1.4"
-      - name: Forward declaration correction (RC27)
-        run: |
-          sed -i '/^void setScreenSleep(bool sleeping) {/i void applyBrightness();' src/TramliBern/TramliBern.ino
-      - name: Compile original RC27 sources
+      - name: Apply RC28 changes to original HomeCross sources
+        run: python3 .github/rc28_patch.py src/TramliBern/TramliBern.ino
+      - name: Compile RC28 HomeCross
         run: |
           mkdir -p build
           arduino-cli compile --jobs 1 --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs --output-dir build --export-binaries src/TramliBern
@@ -46,11 +46,11 @@ jobs:
       - name: Package output
         run: |
           mkdir -p deliver
-          cp build/TramliBern.ino.bin deliver/TramliBern_RC27.ino.bin
-          sha256sum deliver/TramliBern_RC27.ino.bin > deliver/SHA256SUMS.txt
+          cp build/TramliBern.ino.bin deliver/TramliBern_RC28.ino.bin
+          sha256sum deliver/TramliBern_RC28.ino.bin > deliver/SHA256SUMS.txt
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TramliBern_RC27_compiled_bin
+          name: TramliBern_RC28_compiled_bin
           path: deliver/
           if-no-files-found: error
