@@ -5,6 +5,7 @@ on:
       - test/tramlibern-4.0-rc27-build
     paths:
       - RC27_SOURCE_UPLOAD.zip
+      - .github/workflows/tramlibern-rc27-build.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,6 +30,9 @@ jobs:
           arduino-cli lib install "ArduinoJson@7.4.2"
           arduino-cli lib install "GFX Library for Arduino@1.6.0"
           arduino-cli lib install "XPT2046_Touchscreen@1.4"
+      - name: Forward declaration correction (RC27)
+        run: |
+          sed -i '/^void setScreenSleep(bool sleeping) {/i void applyBrightness();' src/TramliBern/TramliBern.ino
       - name: Compile original RC27 sources
         run: |
           mkdir -p build
