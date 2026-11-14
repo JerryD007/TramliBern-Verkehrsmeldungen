@@ -30,7 +30,7 @@ jobs:
           from pathlib import Path
           import re
           log=Path('reports/compile.log').read_text(errors='replace')
-          lines=['TramliBern 3.3.1 OTA SAFE ESP32 results']
+          lines=['TramliBern 3.4 MENU/WIFI/NIGHT ESP32 results']
           for name,pattern in [
             ('Flash',r'Sketch uses (\d+) bytes.*?Maximum is (\d+) bytes'),
             ('Static RAM',r'Global variables use (\d+) bytes.*?Maximum is (\d+) bytes')]:
@@ -38,8 +38,7 @@ jobs:
               if not match: raise SystemExit('Missing ESP32 memory report: '+name)
               used,limit=map(int,match.groups())
               lines.append(f'{name}: {used} / {limit}; free {limit-used}; used {100*used/limit:.2f}%')
-          fw=Path('reports/build/TramliBern.ino.bin
-            firmware/TramliBern/TramliBern.ino')
+          fw=Path('reports/build/TramliBern.ino.bin')
           if not fw.exists(): raise SystemExit('Firmware .ino.bin missing')
           app_partition=1966080
           size=fw.stat().st_size
@@ -57,9 +56,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: TramliBern-3.3.1-OTA-SAFE-APP
+          name: TramliBern-3.4-MENU-WIFI-NIGHT-BUILD
           path: |
             reports/build/TramliBern.ino.bin
+            firmware/TramliBern/TramliBern.ino
             reports/TESTY_KOMPILACE.txt
             reports/board.txt
             reports/source-sha256.txt
