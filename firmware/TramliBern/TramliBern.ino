@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#define TRAMLIBERN_VERSION "3.3.1-OTA-SAFE-TEST"
+#define TRAMLIBERN_VERSION "3.4-WIFI-MENU-DISPLAY-TEST"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -83,6 +83,7 @@ String profileSsid[WIFI_PROFILE_MAX], profilePassword[WIFI_PROFILE_MAX];
 uint8_t profileCount=0, profilePreferred=0, profileTrying=0;
 bool wifiAttemptPending=false, fallbackAP=false;
 uint32_t wifiAttemptAt=0, wifiNextTryAt=0, wifiSwitchAt=0;
+String wifiLastIssue=""; uint32_t wifiFailureCount=0;
 
 void loadWiFiProfiles() {
   profileCount=0;
@@ -150,6 +151,7 @@ void startWiFiAttempt() {
   if(!profileCount)return;
   profileTrying=profilePreferred%profileCount;
   WiFi.mode(fallbackAP?WIFI_AP_STA:WIFI_STA);
+  wifiLastIssue="Zkousim pripojeni k "+profileSsid[profileTrying];
   WiFi.begin(profileSsid[profileTrying].c_str(),profilePassword[profileTrying].c_str());
   wifiAttemptAt=millis();wifiAttemptPending=true;
 }
@@ -165,6 +167,7 @@ void wifiTick() {
       profilePreferred=profileTrying;
       wifiSsid=profileSsid[profilePreferred];
       wifiPassword=profilePassword[profilePreferred];
+      wifiLastIssue="";
     }
     wifiAttemptPending=false;
     if(fallbackAP) {WiFi.softAPdisconnect(true);fallbackAP=false;WiFi.mode(WIFI_STA);}
@@ -174,6 +177,8 @@ void wifiTick() {
   if(wifiAttemptPending) {
     if(now-wifiAttemptAt<6500UL)return;
     wifiAttemptPending=false;
+    ++wifiFailureCount;
+    wifiLastIssue="Spojeni se nezdarilo, zkousim dalsi Wi-Fi";
     if(profileCount)profilePreferred=(profileTrying+1)%profileCount;
     if(profilePreferred==0 && !fallbackAP) {
       WiFi.mode(WIFI_AP_STA);
@@ -196,6 +201,36 @@ bool displayAutoOff = false; // OFF by default, even after first installation
 uint16_t displayIdleMinutes = 10;
 uint32_t displayLastActivity = 0;
 bool wakeTouchWaitRelease = false;
+bool brightnessPwmEnabled=false,brightnessPwmAttached=false,nightEnabled=false;
+uint8_t dayBrightness=85,nightBrightness=25,nightFrom=22,nightTo=7;
+bool batteryWarningEnabled=false;
+uint16_t batteryThresholdMv=3500;
+uint32_t nextLightCheck=0;
+bool isNightNow() {
+  if(!nightEnabled || time(nullptr)<1700000000 || nightFrom==nightTo)return false;
+  time_t current=time(nullptr);tm ti;localtime_r(&current,&ti);
+  int h=ti.tm_hour;
+  return nightFrom<nightTo ? (h>=nightFrom&&h<nightTo):(h>=nightFrom||h<nightTo);
+}
+void applyBacklight() {
+  if(!brightnessPwmEnabled) {
+    if(brightnessPwmAttached){ledcDetach(BACKLIGHT_PIN);brightnessPwmAttached=false;pinMode(BACKLIGHT_PIN,OUTPUT);}
+    digitalWrite(BACKLIGHT_PIN,displaySleeping?LOW:HIGH);return;
+  }
+  if(!brightnessPwmAttached) {
+    if(!ledcAttach(BACKLIGHT_PIN,1000,8)) {
+      brightnessPwmEnabled=false;pinMode(BACKLIGHT_PIN,OUTPUT);
+      digitalWrite(BACKLIGHT_PIN,displaySleeping?LOW:HIGH);return;
+    }
+    brightnessPwmAttached=true;
+  }
+  int level=displaySleeping?0:(isNightNow()?nightBrightness:dayBrightness);
+  ledcWrite(BACKLIGHT_PIN,(uint32_t)level*255/100);
+}
+bool batteryIsLow(float voltage) {
+  return batteryWarningEnabled && voltage>=3.0f && voltage<=4.3f
+         && (int)(voltage*1000.0f)<batteryThresholdMv;
+}
 uint32_t otaAllowedUntil = 0;
 bool otaUploadOK = false;
 bool otaUploadStarted = false;
@@ -231,8 +266,8 @@ bool otaSessionAuthorized() {
 }
 void drawBoard();
 void displayWake() {
-  digitalWrite(BACKLIGHT_PIN, HIGH);
   displaySleeping = false;
+  applyBacklight();
   touchMenuOpen = false; touchMode = 0; // Safari wake restores departure board
   displayLastActivity = millis();
   ++touchExitRevision;
@@ -242,7 +277,7 @@ void displayWake() {
 void displaySleep() {
   if (displaySleeping) return;
   displaySleeping = true;
-  digitalWrite(BACKLIGHT_PIN, LOW);
+  applyBacklight();
 }
 
 uint32_t lastRefresh = 0;
@@ -391,6 +426,15 @@ void loadSettings() {
   wifiSsid = prefs.getString("ssid", "");
   wifiPassword = prefs.getString("pass", "");
   loadWiFiProfiles();
+  brightnessPwmEnabled=prefs.getBool("pwmOptIn",false);
+  dayBrightness=constrain((int)prefs.getUChar("dayBri",85),35,100);
+  nightBrightness=constrain((int)prefs.getUChar("nightBri",25),15,100);
+  nightFrom=constrain((int)prefs.getUChar("nightFrom",22),0,23);
+  nightTo=constrain((int)prefs.getUChar("nightTo",7),0,23);
+  nightEnabled=prefs.getBool("nightOn",false);
+  batteryWarningEnabled=prefs.getBool("batWarnOn",false);
+  batteryThresholdMv=constrain((int)prefs.getUShort("batWarnMv",3500),3000,3850);
+  applyBacklight();
   displayAutoOff = prefs.getBool("dispAuto", false);
   displayIdleMinutes = prefs.getUShort("dispMin", 10);
   if(displayIdleMinutes < 1 || displayIdleMinutes > 240) displayIdleMinutes=10;
@@ -536,6 +580,7 @@ void drawHeader() {
   if (displaySleeping) return;
   static String previousClock;
   static int previousFill = -2;
+  static bool previousLow=false;
   static uint32_t revision = 0, batteryRead = 0;
   bool force = revision != screenRevision;
   revision = screenRevision;
@@ -562,14 +607,15 @@ void drawHeader() {
       int percent = constrain((int)((volt - 3.3) / 0.9 * 100), 0, 100);
       fill = percent * 16 / 100;
     }
-    if (force || fill != previousFill) {
+    bool low=batteryIsLow(volt);
+    if (force || fill != previousFill || low != previousLow) {
       gfx->fillRect(448, 12, 25, 13, TRAM_COLOR_BLACK);
       if (fill >= 0) {
-        gfx->drawRect(448, 12, 20, 12, TRAM_COLOR_WHITE);
+        gfx->drawRect(448,12,20,12,low?BUTTON_RED:TRAM_COLOR_WHITE);
         gfx->fillRect(469, 15, 3, 6, TRAM_COLOR_WHITE);
-        if (fill > 0) gfx->fillRect(450, 14, fill, 8, TRAM_COLOR_AMBER);
+        if(fill>0)gfx->fillRect(450,14,fill,8,low?BUTTON_RED:TRAM_COLOR_AMBER);
       }
-      previousFill = fill;
+      previousFill=fill;previousLow=low;
     }
   }
 }
@@ -823,10 +869,11 @@ String pageStart(const String &title) {
 *{box-sizing:border-box}body{margin:0;background:#eef4fb;color:var(--ink);font:20px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%}header{background:#12477f;color:white;padding:24px 20px;border-bottom:5px solid #57d7c0}header div,main{max-width:880px;margin:auto}header b{font-size:30px;letter-spacing:-.6px}header span{display:block;font-size:14px;font-weight:650;letter-spacing:1.5px;color:#d8eaff;margin-top:4px}main{padding:28px 20px 48px}h1{font-size:clamp(30px,5vw,42px);line-height:1.2;letter-spacing:-1px;margin:8px 0 12px;overflow-wrap:anywhere}h2{font-size:26px;line-height:1.3;margin:0 0 18px}p{margin:12px 0 20px}small,.muted{color:var(--muted)}small{font-size:17px}.card{background:white;border:1px solid var(--line);border-top:5px solid #5a8fd1;border-radius:20px;padding:26px;margin:24px 0;box-shadow:0 5px 18px #17324b08}.card>h2:not(:first-child){border-top:2px solid #e5edf7;padding-top:24px;margin-top:28px}.card:has(form[action='/city']){border-top-color:#1558b0;background:#f7faff}.card:has(form[action='/search']){border-top-color:#098477}.card:has(button[aria-current='page']){border-top-color:#e0a126}button,.button{font:inherit;font-size:20px;line-height:1.3;font-weight:700;background:var(--blue);color:white;border:2px solid transparent;border-radius:12px;padding:14px 20px;min-height:56px;cursor:pointer;text-decoration:none;display:inline-flex;justify-content:center;align-items:center;text-align:center;max-width:100%;overflow-wrap:anywhere;touch-action:manipulation}button:hover,.button:hover{filter:brightness(.94)}button:active,.button:active{transform:translateY(1px)}a{color:#134e9d;text-underline-offset:3px}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #172e49;outline-offset:4px}input,select{display:block;font:inherit;font-size:20px;line-height:1.4;color:var(--ink);background:#f8fbff;border:2px solid #aebfd2;border-radius:12px;padding:13px 14px;width:100%;max-width:100%;min-width:0;margin:8px 0 18px;min-height:56px}select{padding-right:28px!important}input:focus,select:focus{border-color:var(--blue);background:white}input::placeholder{color:#617489}label{display:block;font-size:18px;font-weight:700;margin-top:16px}ol,ul{list-style:none;padding:0;margin:0}li{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:22px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}li:last-child{border:0}li>div{width:100%;min-width:0}li>span{flex:1 1 220px}li>form{flex:1 1 240px;min-width:0}li b{font-size:22px}li form+form{margin-top:12px}.subtle{background:#e9f1fc;color:#174f91;border-color:#c4d7f0;font-size:19px;padding:13px 18px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}.row form{margin:0;flex:1 1 140px}.row button{width:100%}nav{display:flex;gap:10px;margin:24px 0;flex-wrap:wrap}nav a{flex:1 1 180px;min-height:56px;padding:13px 16px;background:white;border:2px solid #bdcfe4;border-radius:12px;text-align:center;text-decoration:none;font-size:19px;font-weight:700;color:#174f91}nav a:hover{background:#e5effc}.status{padding:16px 20px;background:#e3f4ef;color:#175447;border-left:5px solid #138473;border-radius:12px;font-size:18px}.hint{font-size:17px;color:var(--muted);line-height:1.6}.notice{background:#fff2d4;color:#684600;border-left:5px solid #d99b22;padding:17px 20px;border-radius:12px}.notice:empty{display:none}summary{cursor:pointer;font-weight:700;min-height:52px;padding:10px 0}footer{font-size:16px;color:var(--muted);margin-top:32px;padding-top:20px;border-top:1px solid var(--line)}.address{font-family:ui-monospace,monospace;font-size:18px;display:block;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}.full{width:100%}form{margin:0}button[aria-current='page']{background:#12477f;box-shadow:0 0 0 3px #bdd5f4}form[action='/add'] button,form[action='/search'] button,form[action='/refresh'] button{background:var(--teal);color:white}form[action='/remove'] button,form[action='/board-remove'] button{background:#fff0f0;border-color:#edbebe;color:#a52626}form[action='/move'] button{background:#eaf1fc;color:#174f91}form[action='/page']+ol{margin-top:12px}@media(max-width:520px){body{font-size:19px}header{padding:18px 16px}main{padding:22px 14px 36px}.card{padding:20px 16px;margin:20px 0}h2{font-size:24px}.row{gap:8px}.row form{flex:1 1 80px}.row button{font-size:18px;padding:13px 7px}nav{gap:8px}nav a{flex:1 1 100%;text-align:left}li{display:block}li>form{margin-top:16px}li b{font-size:21px}button,.button{width:100%}header b{font-size:28px}}
 </style></head><body><header><div><b>▤ Trämli Bern</b><span>DEINE ABFAHRTSTAFELN</span></div></header><main>)TRAMLI";
   html += "<h1>" + escapeHtml(title) + "</h1><p class='muted'>" + escapeHtml(boardLabel()) + " · " + escapeHtml(currentAddress()) + "</p>";
-  html += "<nav aria-label='Navigation'><a href='/'>Haltestellen</a><a href='/boards'>Meine Boards</a><a href='/settings'>Einstellungen</a></nav>";
+  html += "<nav aria-label='Navigation'><a href='/'>Haltestellen</a><a href='/boards'>Meine Boards</a><a href='/settings'>Einstellungen</a><a href='/system'>System</a></nav>";
+  html += "<form method='post' action='/display/wake'><button class='subtle full'>Probudit displej</button></form>";
   return html;
 }
-String pageEnd() { return "<footer>TramliBern · Lokalni ovladani · Verze TEST · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
+String pageEnd() { return "<footer>TramliBern · Lokalni ovladani · Verze " TRAMLIBERN_VERSION " · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
 void sendPage(String html, int code = 200) {
   server.sendHeader("Cache-Control", "no-store");
   server.send(code, "text/html; charset=utf-8", html + pageEnd());
@@ -868,6 +915,10 @@ void setupRoutes() {
       html += "<p>SSID: "+escapeHtml(WiFi.SSID())+"</p>";
       html += "<p>IP: "+WiFi.localIP().toString()+"</p>";
     }
+    html += "<p>Firmware: <b>" TRAMLIBERN_VERSION "</b></p>";
+    html += "<p>Ulozene Wi-Fi: "+String(profileCount)+" / 4, neuspesne pokusy: "+String(wifiFailureCount)+"</p>";
+    html += "<p>Posledni stav Wi-Fi: "+escapeHtml(wifiLastIssue)+"</p>";
+    html += "<p>Orientacni baterie: "+String(batteryVoltage(),2)+" V</p>";
     html += "<p>Volna RAM: "+String(ESP.getFreeHeap())+" B</p>";
     html += "<p>Stav: "+escapeHtml(statusText)+"</p></section>";
     html += "<section class='card'><h2>Zastavky a cerstvost dat</h2>";
@@ -1104,6 +1155,7 @@ void setupRoutes() {
         html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='confirm' value='yes' required> Potvrzuji odstraneni</label><button class='subtle'>Odebrat sit</button></form>";
       }
     }
+    html += "<p><a class='button subtle' href='/wifi/scan'>Vyhledat dostupne Wi-Fi</a></p>";
     html += "<h2>Pridat nebo upravit Wi-Fi</h2>";
     html += "<form method='post' action='/wifi'><label>Nazev site SSID</label><input name='ssid' maxlength='32' required>";
     html += "<label>Heslo</label><input id='wpass' type='password' name='pass' maxlength='63' autocomplete='new-password'>";
@@ -1120,6 +1172,23 @@ void setupRoutes() {
     String name = server.arg("name"); name.trim();
     if (!name.length() || name.length() > 60) { showMessage("Bitte einen Namen mit höchstens 60 Zeichen eingeben."); return; }
     prefs.putString("boardname", name); redirectBoards();
+  });
+  server.on("/wifi/scan", HTTP_GET, []() {
+    String html=pageStart("Vyhledat Wi-Fi");
+    html+="<section class='card'><h2>Dostupne site</h2>";
+    int state=WiFi.scanComplete();
+    if(state==WIFI_SCAN_RUNNING) html+="<p>Hledani probiha, zkus obnovit za chvili.</p>";
+    else if(state<0) {
+      if(!otaAllowed()){WiFi.scanNetworks(true);html+="<p>Hledani spusteno, obnov stranku.</p>";}
+      else html+="<p>Behem OTA skenovani vypnuto.</p>";
+    } else {
+      for(int i=0;i<state&&i<20;i++)html+="<p>"+escapeHtml(WiFi.SSID(i))+" ("+String(WiFi.RSSI(i))+" dBm)</p>";
+      if(!state)html+="<p>Zadne site nebyly nalezeny.</p>";
+      WiFi.scanDelete();
+    }
+    html+="<p><a class='button' href='/wifi/scan'>Obnovit vyhledavani</a></p>";
+    html+="<p><a class='button subtle' href='/settings'>Zpet do nastaveni</a></p></section>";
+    sendPage(html);
   });
   server.on("/wifi", HTTP_POST, []() {
     String ssid=server.arg("ssid"),pass=server.arg("pass");
@@ -1144,6 +1213,18 @@ void setupRoutes() {
     }
     server.sendHeader("Location","/settings");server.send(303);
   });
+  server.on("/system", HTTP_GET, []() {
+    String html=pageStart("System");
+    html+="<section class='card'><h2>System</h2>";
+    html+="<p>Firmware: <b>" TRAMLIBERN_VERSION "</b></p>";
+    html+="<p>OTA partition: "+String((unsigned)otaMaxBytes())+" B</p>";
+    html+="<p>Volna RAM: "+String(ESP.getFreeHeap())+" B</p>";
+    html+="<p><a class='button' href='/display'>Displej, jas a baterie</a></p>";
+    html+="<p><a class='button' href='/diagnose'>Diagnostika</a></p>";
+    html+="<p><a class='button' href='/ota'>OTA firmware</a></p>";
+    html+="<form action='/refresh' method='post'><button>Aktualizovat odjezdy</button></form></section>";
+    sendPage(html);
+  });
   server.on("/display", HTTP_GET, []() {
     String html = pageStart("Displej");
     html += "<section class='card'><h2>Displej</h2><p>Stav: " +
@@ -1154,8 +1235,49 @@ void setupRoutes() {
     if (displayAutoOff) html += " checked";
     html += "> Automaticky zhasinat</label><label>Po minutach (1 az 240)</label><input name='minutes' type='number' min='1' max='240' value='" + String(displayIdleMinutes) + "'>";
     html += "<button class='full'>Ulozit nastaveni</button></form>";
+    html += "<h2>Jas a nocni rezim (PWM experimentalni)</h2>";
+    html += "<p class='notice'>GPIO27 je overen jen pro zapnuti/vypnuti. PWM stmivani nejprve otestuj na fyzickem displeji.</p>";
+    html += "<form method='post' action='/display/brightness'>";
+    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='enable' value='1'";
+    if(brightnessPwmEnabled)html+=" checked";
+    html += "> Zapnout experimentalni PWM</label>";
+    html += "<label>Denni jas 35-100%</label><input type='number' min='35' max='100' name='day' value='"+String(dayBrightness)+"'>";
+    html += "<label>Nocni jas 15-100%</label><input type='number' min='15' max='100' name='night' value='"+String(nightBrightness)+"'>";
+    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='schedule' value='1'";
+    if(nightEnabled)html+=" checked";
+    html += "> Nocni rezim podle casu</label>";
+    html += "<label>Noc od (0-23)</label><input type='number' min='0' max='23' name='from' value='"+String(nightFrom)+"'>";
+    html += "<label>Den od (0-23)</label><input type='number' min='0' max='23' name='to' value='"+String(nightTo)+"'>";
+    html += "<button>Ulozit jas</button></form><h2>Baterie</h2>";
+    html += "<p>Orientacni napeti: "+String(batteryVoltage(),2)+" V</p>";
+    html += "<form method='post' action='/display/battery'>";
+    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='enable' value='1'";
+    if(batteryWarningEnabled)html+=" checked";
+    html += "> Zapnout varovani</label>";
+    html += "<label>Prag 3000-3850 mV</label><input type='number' min='3000' max='3850' name='mv' value='"+String(batteryThresholdMv)+"'>";
+    html += "<button>Ulozit baterii</button></form>";
     html += "<p class='hint'>Po zapnuti napajeni je displej vzdy rozsviceny. Prvni dotyk po zhasnuti pouze probudi.</p></section>";
     sendPage(html);
+  });
+  server.on("/display/brightness", HTTP_POST, []() {
+    int day=server.arg("day").toInt(),night=server.arg("night").toInt();
+    int from=server.arg("from").toInt(),to=server.arg("to").toInt();
+    if(day<35||day>100||night<15||night>100||from<0||from>23||to<0||to>23){showMessage("Neplatny jas nebo cas.");return;}
+    dayBrightness=day;nightBrightness=night;nightFrom=from;nightTo=to;
+    brightnessPwmEnabled=server.arg("enable")=="1";
+    nightEnabled=server.arg("schedule")=="1";
+    prefs.putUChar("dayBri",dayBrightness);prefs.putUChar("nightBri",nightBrightness);
+    prefs.putUChar("nightFrom",nightFrom);prefs.putUChar("nightTo",nightTo);
+    prefs.putBool("pwmOptIn",brightnessPwmEnabled);prefs.putBool("nightOn",nightEnabled);
+    applyBacklight();server.sendHeader("Location","/display");server.send(303);
+  });
+  server.on("/display/battery", HTTP_POST, []() {
+    int mv=server.arg("mv").toInt();
+    if(mv<3000||mv>3850){showMessage("Neplatny prag baterie.");return;}
+    batteryWarningEnabled=server.arg("enable")=="1";
+    batteryThresholdMv=mv;
+    prefs.putBool("batWarnOn",batteryWarningEnabled);prefs.putUShort("batWarnMv",mv);
+    ++screenRevision;server.sendHeader("Location","/display");server.send(303);
   });
   server.on("/display/off", HTTP_POST, []() {
     displaySleep();
@@ -1417,11 +1539,21 @@ void drawMainMenu() {
   drawLine("TRAMLIBERN MENU",12,7,TRAM_COLOR_AMBER,2);
   touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
   gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
-  touchButton("STADT",30,47,420,40);
-  touchButton("HALTESTELLEN",30,97,420,40);
-  touchButton("WLAN",30,147,420,40);
-  touchButton("DIAGNOSE",30,197,420,40);
-  touchButton("SYSTEM",30,247,420,40);
+  touchButton("STADT",30,41,420,35);
+  touchButton("HALTESTELLEN",30,82,420,35);
+  touchButton("SEITEN 1 / 2 / 3",30,123,420,35);
+  touchButton("WLAN",30,164,420,35);
+  touchButton("DIAGNOSE",30,205,420,35);
+  touchButton("SYSTEM",30,246,420,35);
+}
+void drawPageSelectMenu() {
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("SEITEN EINRICHTEN",12,7,TRAM_COLOR_AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
+  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
+  for(int page=0;page<3;page++){
+    touchButton("SEITE "+String(page+1)+(page==activePage?" AKTIV":""),25,52+64*page,430,50);
+  }
 }
 void drawSystemMenu() {
   gfx->fillScreen(TRAM_COLOR_BLACK);
@@ -1574,11 +1706,21 @@ void handleTouchTap(int rawX, int rawY) {
   if (y < 32 && x > 345) { closeTouchMenu(); return; }
   if (touchMode == 5) { // hlavni MENU
     if(x>=30&&x<450) {
-      if(y>=47&&y<87){touchMode=4;drawCityMenu();return;}
-      if(y>=97&&y<137){touchEditIndex=activePage*2;touchQuery="";touchMode=1;drawTouchMenu();return;}
-      if(y>=147&&y<187){touchMode=7;drawWifiMenu();return;}
-      if(y>=197&&y<237){touchMode=6;drawBoardDiagnostic();return;}
-      if(y>=247&&y<287){touchMode=8;drawSystemMenu();return;}
+      if(y>=41&&y<76){touchMode=4;drawCityMenu();return;}
+      if(y>=82&&y<117){touchEditIndex=activePage*2;touchQuery="";touchMode=1;drawTouchMenu();return;}
+      if(y>=123&&y<158){touchMode=9;drawPageSelectMenu();return;}
+      if(y>=164&&y<199){touchMode=7;drawWifiMenu();return;}
+      if(y>=205&&y<240){touchMode=6;drawBoardDiagnostic();return;}
+      if(y>=246&&y<281){touchMode=8;drawSystemMenu();return;}
+    }
+    return;
+  }
+  if(touchMode==9) {
+    if(x>=25&&x<455&&y>=52&&y<244){
+      int page=(y-52)/64;
+      if((y-52)%64<50&&page>=0&&page<PAGE_COUNT){
+        selectPage(page);closeTouchMenu();lastRefresh=0;
+      }
     }
     return;
   }
@@ -1759,6 +1901,10 @@ void loop() {
   server.handleClient();
   wifiTick();
   checkSwipe();
+  if((int32_t)(millis()-nextLightCheck)>=0) {
+    nextLightCheck=millis()+30000UL;
+    if(brightnessPwmEnabled && !displaySleeping)applyBacklight();
+  }
   if (!displaySleeping && displayAutoOff && displayIdleMinutes &&
       millis()-displayLastActivity >= (uint32_t)displayIdleMinutes*60000UL) displaySleep();
   static bool wasConnected = false;
@@ -1767,7 +1913,7 @@ void loop() {
     wasConnected = connected;
     lastRefresh = 0;
     if (!connected) {
-      departureCount = 0;
+      wifiLastIssue="Spojeni preruseno, zkousim ulozene site";
       if (!fallbackAP && !wifiAttemptPending) {
         WiFi.mode(WIFI_AP_STA);
         WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
