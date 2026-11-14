@@ -1,0 +1,74 @@
+name: TramliBern 4.0 RC26 HomeCross compile (original design)
+on:
+  push:
+    branches: ['test/tramlibern-4.0-rc26-homecross-20261114']
+    paths:
+      - 'firmware/TramliBern/**'
+      - '.github/workflows/tramlibern-rc26-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - name: Install pinned core and libraries from RC26 instructions
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://espressif.github.io/arduino-esp32/package_esp32_index.json'
+          arduino-cli core update-index --additional-urls "$url"
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls "$url"
+          arduino-cli lib install 'ArduinoJson@7.4.2' 'GFX Library for Arduino@1.6.0' 'XPT2046_Touchscreen@1.4'
+          arduino-cli core list
+          arduino-cli lib list
+      - name: Compile all RC26 original headers and check flash/OTA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/build
+          fqbn='esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=min_spiffs,PSRAM=disabled,FlashFreq=40,FlashMode=qio'
+          echo "$fqbn" > reports/board.txt
+          sha256sum firmware/TramliBern/TramliBern.ino firmware/TramliBern/*.h firmware/TramliBern/partitions.csv > reports/SOURCE_SHA256.txt
+          arduino-cli compile --fqbn "$fqbn" --warnings default --output-dir reports/build firmware/TramliBern 2>&1 | tee reports/compile.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log=Path('reports/compile.log').read_text(errors='replace')
+          report=['RC26 HomeCross: genuine ESP32 compiler results']
+          for kind,pattern in [('Flash',r'Sketch uses (\d+) bytes.*?Maximum is (\d+) bytes'),
+                               ('Static RAM',r'Global variables use (\d+) bytes.*?Maximum is (\d+) bytes')]:
+            match=re.search(pattern,log)
+            if not match:raise SystemExit('Compiler did not supply '+kind+' report')
+            used,limit=map(int,match.groups())
+            report.append(f'{kind}: {used}/{limit}; free {limit-used}; {100*used/limit:.2f}%')
+          binary=Path('reports/build/TramliBern.ino.bin')
+          if not binary.is_file():raise SystemExit('Actual .ino.bin not found')
+          size=binary.stat().st_size
+          if binary.read_bytes()[0]!=0xe9:raise SystemExit('Invalid ESP32 image header')
+          ota=0x1e0000
+          report.append(f'App image: {size} bytes; OTA app partition: {ota}; free {ota-size}')
+          if size>ota:raise SystemExit('Image exceeds OTA app partition')
+          report.append('COMPILE_AND_OTA_SIZE: PASS')
+          text='\n'.join(report)+'\n'
+          print(text)
+          Path('reports/RESULT_CZ.txt').write_text(text,encoding='utf-8')
+          PY
+      - name: Upload compiled app and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TramliBern-4.0-RC26-HomeCross-BUILD
+          path: |
+            reports/build/TramliBern.ino.bin
+            reports/compile.log
+            reports/RESULT_CZ.txt
+            reports/board.txt
+            reports/SOURCE_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
