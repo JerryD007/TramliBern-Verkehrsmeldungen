@@ -25,7 +25,7 @@ constexpr int STOPS_PER_PAGE = 2;
 constexpr int PAGE_COUNT = 3;
 Preferences prefs;
 
-constexpr uint16_t BLACK = 0x0000, AMBER = 0xFDE0, WHITE = 0xFFFF;
+constexpr uint16_t TRAM_COLOR_BLACK = 0x0000, TRAM_COLOR_AMBER = 0xFDE0, TRAM_COLOR_WHITE = 0xFFFF;
 // Retro-Ambiente; barevna paleta je zachovana.
 constexpr uint16_t BUTTON_RED = 0xF800; // pouziva se pouze pro pripadne varovani
 constexpr uint16_t BUTTON_BLUE = 0x001F;
@@ -443,43 +443,43 @@ String clip(String s, int chars) {
 }
 
 void drawBusIcon(int x, int y) {
-  gfx->drawRoundRect(x, y + 3, 34, 13, 2, AMBER);
-  gfx->drawFastHLine(x + 2, y + 4, 30, AMBER);
-  gfx->drawFastHLine(x + 2, y + 13, 30, AMBER);
-  gfx->drawLine(x, y + 7, x + 2, y + 5, AMBER);
-  gfx->drawLine(x, y + 11, x + 2, y + 13, AMBER);
-  gfx->drawFastHLine(x + 1, y + 11, 5, AMBER);
-  gfx->drawRect(x + 2, y + 6, 5, 5, AMBER);
-  gfx->drawRect(x + 8, y + 6, 7, 5, AMBER);
-  gfx->drawFastVLine(x + 16, y + 5, 9, AMBER);
-  gfx->drawFastVLine(x + 19, y + 5, 9, AMBER);
-  gfx->drawRect(x + 20, y + 6, 8, 5, AMBER);
-  gfx->drawRect(x + 28, y + 6, 3, 5, AMBER);
-  gfx->drawRect(x + 32, y + 6, 1, 5, AMBER);
-  gfx->drawFastHLine(x + 6, y + 11, 9, AMBER);
-  gfx->drawFastHLine(x + 20, y + 11, 8, AMBER);
-  gfx->fillCircle(x + 8, y + 16, 2, AMBER);
-  gfx->fillCircle(x + 25, y + 16, 2, AMBER);
-  gfx->fillCircle(x + 8, y + 16, 1, BLACK);
-  gfx->fillCircle(x + 25, y + 16, 1, BLACK);
+  gfx->drawRoundRect(x, y + 3, 34, 13, 2, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 2, y + 4, 30, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 2, y + 13, 30, TRAM_COLOR_AMBER);
+  gfx->drawLine(x, y + 7, x + 2, y + 5, TRAM_COLOR_AMBER);
+  gfx->drawLine(x, y + 11, x + 2, y + 13, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 1, y + 11, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 2, y + 6, 5, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 8, y + 6, 7, 5, TRAM_COLOR_AMBER);
+  gfx->drawFastVLine(x + 16, y + 5, 9, TRAM_COLOR_AMBER);
+  gfx->drawFastVLine(x + 19, y + 5, 9, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 20, y + 6, 8, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 28, y + 6, 3, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 32, y + 6, 1, 5, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 6, y + 11, 9, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 20, y + 11, 8, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 8, y + 16, 2, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 25, y + 16, 2, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 8, y + 16, 1, TRAM_COLOR_BLACK);
+  gfx->fillCircle(x + 25, y + 16, 1, TRAM_COLOR_BLACK);
 }
 
 void drawTramIcon(int x, int y) {
-  gfx->drawRoundRect(x, y + 5, 34, 12, 2, AMBER);
-  gfx->drawFastHLine(x + 3, y + 5, 28, AMBER);
-  gfx->drawLine(x + 14, y + 5, x + 18, y, AMBER);
-  gfx->drawLine(x + 18, y, x + 22, y + 5, AMBER);
-  gfx->drawFastHLine(x + 15, y, 7, AMBER);
-  gfx->drawRect(x + 3, y + 8, 5, 5, AMBER);
-  gfx->drawRect(x + 9, y + 8, 5, 5, AMBER);
-  gfx->drawRect(x + 16, y + 7, 5, 9, AMBER);
-  gfx->drawFastVLine(x + 18, y + 7, 9, AMBER);
-  gfx->drawRect(x + 23, y + 8, 4, 5, AMBER);
-  gfx->drawRect(x + 28, y + 8, 4, 5, AMBER);
-  gfx->fillCircle(x + 6, y + 18, 1, AMBER);
-  gfx->fillCircle(x + 11, y + 18, 1, AMBER);
-  gfx->fillCircle(x + 25, y + 18, 1, AMBER);
-  gfx->fillCircle(x + 30, y + 18, 1, AMBER);
+  gfx->drawRoundRect(x, y + 5, 34, 12, 2, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 3, y + 5, 28, TRAM_COLOR_AMBER);
+  gfx->drawLine(x + 14, y + 5, x + 18, y, TRAM_COLOR_AMBER);
+  gfx->drawLine(x + 18, y, x + 22, y + 5, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(x + 15, y, 7, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 3, y + 8, 5, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 9, y + 8, 5, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 16, y + 7, 5, 9, TRAM_COLOR_AMBER);
+  gfx->drawFastVLine(x + 18, y + 7, 9, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 23, y + 8, 4, 5, TRAM_COLOR_AMBER);
+  gfx->drawRect(x + 28, y + 8, 4, 5, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 6, y + 18, 1, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 11, y + 18, 1, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 25, y + 18, 1, TRAM_COLOR_AMBER);
+  gfx->fillCircle(x + 30, y + 18, 1, TRAM_COLOR_AMBER);
 }
 
 // Warnungen zum Datenabruf sind keine Verkehrsmeldungen.
@@ -496,16 +496,16 @@ void drawOpaque(String text, int x, int y, int width, uint16_t color) {
   if (text.length() > (size_t)width) text = text.substring(0, width);
   while (text.length() < (size_t)width) text += ' ';
   gfx->setTextSize(2);
-  gfx->setTextColor(color, BLACK);
+  gfx->setTextColor(color, TRAM_COLOR_BLACK);
   gfx->setCursor(x, y);
   gfx->print(text);
 }
 
 // Puvodni retro vzhled: misto prepinace ABFAHRTEN pouze aktualni mesto.
 void drawCityButton() {
-  gfx->fillRect(12, 4, 350, 26, BLACK);
+  gfx->fillRect(12, 4, 350, 26, TRAM_COLOR_BLACK);
   String name = CITY_LABELS[activeCity];
-  gfx->setTextColor(AMBER, BLACK);
+  gfx->setTextColor(TRAM_COLOR_AMBER, TRAM_COLOR_BLACK);
   int size = name.length() > 13 ? 1 : 2;
   gfx->setTextSize(size);
   gfx->setCursor(16, size == 2 ? 8 : 12);
@@ -531,7 +531,7 @@ void drawHeader() {
   }
   if (force) { drawCityButton(); }
   if (force || clock != previousClock) {
-    drawOpaque(clock, 385, 8, 5, WHITE);
+    drawOpaque(clock, 385, 8, 5, TRAM_COLOR_WHITE);
     previousClock = clock;
   }
   if (force || millis() - batteryRead >= 10000) {
@@ -543,11 +543,11 @@ void drawHeader() {
       fill = percent * 16 / 100;
     }
     if (force || fill != previousFill) {
-      gfx->fillRect(448, 12, 25, 13, BLACK);
+      gfx->fillRect(448, 12, 25, 13, TRAM_COLOR_BLACK);
       if (fill >= 0) {
-        gfx->drawRect(448, 12, 20, 12, WHITE);
-        gfx->fillRect(469, 15, 3, 6, WHITE);
-        if (fill > 0) gfx->fillRect(450, 14, fill, 8, AMBER);
+        gfx->drawRect(448, 12, 20, 12, TRAM_COLOR_WHITE);
+        gfx->fillRect(469, 15, 3, 6, TRAM_COLOR_WHITE);
+        if (fill > 0) gfx->fillRect(450, 14, fill, 8, TRAM_COLOR_AMBER);
       }
       previousFill = fill;
     }
@@ -569,11 +569,11 @@ void drawDepartureRows() {
     const int baseY = 66 + position * 110;
     const int cacheBase = lastPage ? 0 : position * DEPARTURES_PER_STOP;
     if (!stops[station].length()) {
-      drawOpaque("Haltestelle noch nicht eingerichtet", 12, headerY, 38, WHITE);
+      drawOpaque("Haltestelle noch nicht eingerichtet", 12, headerY, 38, TRAM_COLOR_WHITE);
       for (int slot = 0; slot < rowsPerStation; ++slot) {
         int y = baseY + slot * spacing;
-        drawOpaque("", 14, y, 32, AMBER);
-        gfx->fillRect(398, y - 3, 74, 24, BLACK);
+        drawOpaque("", 14, y, 32, TRAM_COLOR_AMBER);
+        gfx->fillRect(398, y - 3, 74, 24, TRAM_COLOR_BLACK);
       }
       continue;
     }
@@ -582,7 +582,7 @@ void drawDepartureRows() {
     stationTitle = clip(stationTitle, stopFetchFailed[station] ? 29 : 38);
     if (stopFetchFailed[station]) stationTitle += " (Fehler)";
     if (stationTitle != stationCache[position]) {
-      drawOpaque(stationTitle, 12, headerY, 38, WHITE);
+      drawOpaque(stationTitle, 12, headerY, 38, TRAM_COLOR_WHITE);
       stationCache[position] = stationTitle;
     }
     int selected[PAGE3_DEPARTURES];
@@ -613,19 +613,19 @@ void drawDepartureRows() {
       }
       if (content != rowCache[cache]) {
         if (d) {
-          if (rowCache[cache].indexOf('|') < 0) drawOpaque("", 14, y, 32, AMBER);
-          drawOpaque(clip(d->line, 6), 14, y, 6, AMBER);
-          drawOpaque(clip(d->destination, 22), 100, y, 24, AMBER);
+          if (rowCache[cache].indexOf('|') < 0) drawOpaque("", 14, y, 32, TRAM_COLOR_AMBER);
+          drawOpaque(clip(d->line, 6), 14, y, 6, TRAM_COLOR_AMBER);
+          drawOpaque(clip(d->destination, 22), 100, y, 24, TRAM_COLOR_AMBER);
         } else {
-          drawOpaque(content, 14, y, 32, WHITE);
+          drawOpaque(content, 14, y, 32, TRAM_COLOR_WHITE);
         }
         rowCache[cache] = content;
       }
       if (timing != timeCache[cache]) {
-        gfx->fillRect(398, y - 3, 74, 24, BLACK);
+        gfx->fillRect(398, y - 3, 74, 24, TRAM_COLOR_BLACK);
         if (timing == "ICON_T") drawTramIcon(400, y - 2);
         else if (timing == "ICON_B") drawBusIcon(400, y - 2);
-        else drawOpaque(timing, 400, y, 6, AMBER);
+        else drawOpaque(timing, 400, y, 6, TRAM_COLOR_AMBER);
         timeCache[cache] = timing;
       }
     }
@@ -650,35 +650,35 @@ void drawBoard() {
     rowCache[i] = "\x01";
     timeCache[i] = "\x01";
   }
-  gfx->fillScreen(BLACK);
-  gfx->drawFastHLine(10, 34, 460, AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  gfx->drawFastHLine(10, 34, 460, TRAM_COLOR_AMBER);
   drawHeader();
   if (WiFi.status() != WL_CONNECTED) {
-    drawLine("WLAN nicht verbunden", 12, 60, WHITE);
-    drawLine("Setup: TRAMLI-BERN-2", 12, 93, AMBER);
-    drawLine("Browser: 192.168.4.1", 12, 123, WHITE);
+    drawLine("WLAN nicht verbunden", 12, 60, TRAM_COLOR_WHITE);
+    drawLine("Setup: TRAMLI-BERN-2", 12, 93, TRAM_COLOR_AMBER);
+    drawLine("Browser: 192.168.4.1", 12, 123, TRAM_COLOR_WHITE);
   } else {
     for (int position = 0; position < (activePage == 2 ? 1 : STOPS_PER_PAGE); ++position) {
       int i = activePage * STOPS_PER_PAGE + position;
       if (!stops[i].length()) continue;
       String name = stops[i];
       name.replace(String(CITY_QUERIES[activeCity]) + ", ", "");
-      drawLine(clip(name, 38), 12, 43 + position * 110, WHITE, 2);
+      drawLine(clip(name, 38), 12, 43 + position * 110, TRAM_COLOR_WHITE, 2);
     }
     drawDepartureRows();
   }
-  gfx->drawFastHLine(10, 267, 460, AMBER);
+  gfx->drawFastHLine(10, 267, 460, TRAM_COLOR_AMBER);
   String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
-  drawLine("Konfiguration: " + address, 12, 276, WHITE, 1);
+  drawLine("Konfiguration: " + address, 12, 276, TRAM_COLOR_WHITE, 1);
   gfx->fillRoundRect(230, 270, 82, 24, 3, BUTTON_BLUE);
-  drawLine("MENU", 245, 274, WHITE, 2);
+  drawLine("MENU", 245, 274, TRAM_COLOR_WHITE, 2);
   for (int page = 0; page < PAGE_COUNT; ++page) {
     int x = 320 + page * 50;
-    gfx->fillRect(x, 270, 46, 24, page == activePage ? AMBER : BLACK);
-    gfx->drawRect(x, 270, 46, 24, AMBER);
-    drawLine(String(page + 1), x + 17, 274, page == activePage ? BLACK : WHITE, 2);
+    gfx->fillRect(x, 270, 46, 24, page == activePage ? TRAM_COLOR_AMBER : TRAM_COLOR_BLACK);
+    gfx->drawRect(x, 270, 46, 24, TRAM_COLOR_AMBER);
+    drawLine(String(page + 1), x + 17, 274, page == activePage ? TRAM_COLOR_BLACK : TRAM_COLOR_WHITE, 2);
   }
-  gfx->drawFastHLine(10, 295, 460, AMBER);
+  gfx->drawFastHLine(10, 295, 460, TRAM_COLOR_AMBER);
 }
 
 // Dokumentiertes ISO-8601-Feld prognosis.departure in Unixzeit umrechnen.
@@ -1276,15 +1276,15 @@ void loadTouchCalibration() {
 void calibrateTouch() {
   if (!touchReady || calValid) return;
   const int tx[3]={60,420,60}, ty[3]={60,60,260};
-  gfx->fillScreen(BLACK);
-  drawLine("TOUCH KALIBRIEREN", 100, 8, AMBER, 2);
-  drawLine("3 Kreuze nacheinander tippen", 105, 30, WHITE, 1);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("TOUCH KALIBRIEREN", 100, 8, TRAM_COLOR_AMBER, 2);
+  drawLine("3 Kreuze nacheinander tippen", 105, 30, TRAM_COLOR_WHITE, 1);
   for(int i=0; i<3; ++i) {
-    gfx->fillRect(0,48,480,272,BLACK);
-    drawLine("Punkt " + String(i+1) + " von 3", 180, 152, WHITE, 2);
-    gfx->drawCircle(tx[i], ty[i], 13, AMBER);
-    gfx->drawFastHLine(tx[i]-18,ty[i],37, AMBER);
-    gfx->drawFastVLine(tx[i],ty[i]-18,37, AMBER);
+    gfx->fillRect(0,48,480,272,TRAM_COLOR_BLACK);
+    drawLine("Punkt " + String(i+1) + " von 3", 180, 152, TRAM_COLOR_WHITE, 2);
+    gfx->drawCircle(tx[i], ty[i], 13, TRAM_COLOR_AMBER);
+    gfx->drawFastHLine(tx[i]-18,ty[i],37, TRAM_COLOR_AMBER);
+    gfx->drawFastVLine(tx[i],ty[i]-18,37, TRAM_COLOR_AMBER);
     // Punkt 3 darf unten liegen; Infotext ueberdeckt das Kreuz nicht.
     unsigned long started=millis();
     bool got=false;
@@ -1302,8 +1302,8 @@ void calibrateTouch() {
       delay(15);
     }
     if(!got) {
-      gfx->fillScreen(BLACK);
-      drawLine("Kalibrierung abgebrochen", 12, 80, AMBER, 2);
+      gfx->fillScreen(TRAM_COLOR_BLACK);
+      drawLine("Kalibrierung abgebrochen", 12, 80, TRAM_COLOR_AMBER, 2);
       delay(1200);
       return;
     }
@@ -1312,8 +1312,8 @@ void calibrateTouch() {
   const double c=calRawY[1]-calRawY[0], d=calRawY[2]-calRawY[0];
   const double det=a*d-b*c;
   if(det>-10000.0 && det<10000.0) {
-    gfx->fillScreen(BLACK);
-    drawLine("Kalibrierung ungueltig", 12, 80, AMBER, 2);
+    gfx->fillScreen(TRAM_COLOR_BLACK);
+    drawLine("Kalibrierung ungueltig", 12, 80, TRAM_COLOR_AMBER, 2);
     delay(1500); return;
   }
   Preferences tp; tp.begin("tramli-touch", false);
@@ -1323,13 +1323,13 @@ void calibrateTouch() {
   }
   tp.putBool("valid",true); tp.end();
   calValid=true;
-  gfx->fillScreen(BLACK);
-  drawLine("Kalibrierung gespeichert", 60, 120, AMBER, 2);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("Kalibrierung gespeichert", 60, 120, TRAM_COLOR_AMBER, 2);
   delay(1200);
 }
 
 
-void touchButton(const String &label, int x, int y, int w, int h, uint16_t color = AMBER) {
+void touchButton(const String &label, int x, int y, int w, int h, uint16_t color = TRAM_COLOR_AMBER) {
   gfx->drawRoundRect(x, y, w, h, 4, color);
   // Textgroesse 2 = 12 Pixel pro Zeichen.
   int textX = x + max(3, (w - (int)label.length() * 12) / 2);
@@ -1346,22 +1346,22 @@ int cityAtTouch(int x, int y) {
   return city < CITY_COUNT ? city : -1;
 }
 void drawCityMenu() {
-  gfx->fillScreen(BLACK);
-  drawLine("STADT AUSWAEHLEN", 12, 6, AMBER, 2);
-  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
-  gfx->drawFastHLine(10, 33, 460, AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("STADT AUSWAEHLEN", 12, 6, TRAM_COLOR_AMBER, 2);
+  touchButton("ABBRUCH", 352, 4, 116, 25, TRAM_COLOR_WHITE);
+  gfx->drawFastHLine(10, 33, 460, TRAM_COLOR_AMBER);
   for (int city = 0; city < CITY_COUNT; ++city) {
     int x = 12 + (city % 2) * 234;
     int y = 43 + (city / 2) * 37;
     if (city == activeCity) gfx->fillRoundRect(x, y, 222, 33, 4, BUTTON_BLUE);
-    touchButton(CITY_LABELS[city], x, y, 222, 33, WHITE);
+    touchButton(CITY_LABELS[city], x, y, 222, 33, TRAM_COLOR_WHITE);
   }
 }
 void drawMainMenu() {
-  gfx->fillScreen(BLACK);
-  drawLine("TRAMLIBERN MENU",12,7,AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,WHITE);
-  gfx->drawFastHLine(10,35,460,AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("TRAMLIBERN MENU",12,7,TRAM_COLOR_AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
+  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
   touchButton("STADT",30,47,420,40);
   touchButton("HALTESTELLEN",30,97,420,40);
   touchButton("WLAN",30,147,420,40);
@@ -1369,62 +1369,62 @@ void drawMainMenu() {
   touchButton("SYSTEM",30,247,420,40);
 }
 void drawSystemMenu() {
-  gfx->fillScreen(BLACK);
-  drawLine("TRAMLIBERN SYSTEM",12,7,AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,WHITE);
-  gfx->drawFastHLine(10,35,460,AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("TRAMLIBERN SYSTEM",12,7,TRAM_COLOR_AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
+  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
   touchButton("OTA 5 MIN",25,55,430,44);
   touchButton("DISPLAY AUS",25,113,430,44);
-  drawLine("Usporne nastaveni a OTA v Safari",12,192,AMBER,1);
-  drawLine("Safari: /display nebo /ota",12,220,WHITE,1);
+  drawLine("Usporne nastaveni a OTA v Safari",12,192,TRAM_COLOR_AMBER,1);
+  drawLine("Safari: /display nebo /ota",12,220,TRAM_COLOR_WHITE,1);
 }
 void drawWifiMenu() {
-  gfx->fillScreen(BLACK);
-  drawLine("ULOZENE WLAN",12,7,AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,WHITE);
-  gfx->drawFastHLine(10,35,460,AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("ULOZENE WLAN",12,7,TRAM_COLOR_AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
+  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
   for(int i=0;i<profileCount;i++){
     String label=profileSsid[i];
     if(WiFi.status()==WL_CONNECTED && WiFi.SSID()==label)label+=" *";
     touchButton(clip(label,30),16,51+i*49,448,43);
   }
-  if(profileCount==0)drawLine("Keine gespeicherte WLAN",20,95,WHITE,2);
-  drawLine("Pridani a hesla: Safari /settings",12,276,WHITE,1);
+  if(profileCount==0)drawLine("Keine gespeicherte WLAN",20,95,TRAM_COLOR_WHITE,2);
+  drawLine("Pridani a hesla: Safari /settings",12,276,TRAM_COLOR_WHITE,1);
 }
 void drawBoardDiagnostic() {
-  gfx->fillScreen(BLACK);
-  drawLine("ABFAHRTEN DIAGNOSE",12,7,AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,WHITE);
-  drawLine(WiFi.status()==WL_CONNECTED?"WLAN: VERBUNDEN":"WLAN: GETRENNT",12,53,WHITE,2);
-  drawLine(clip(statusText,34),12,82,AMBER,1);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("ABFAHRTEN DIAGNOSE",12,7,TRAM_COLOR_AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
+  drawLine(WiFi.status()==WL_CONNECTED?"WLAN: VERBUNDEN":"WLAN: GETRENNT",12,53,TRAM_COLOR_WHITE,2);
+  drawLine(clip(statusText,34),12,82,TRAM_COLOR_AMBER,1);
   for(int pos=0;pos<(activePage==2?1:2);pos++){
     int i=activePage*2+pos;
     if(!stops[i].length())continue;
     int y=116+pos*77;
-    drawLine(clip(stops[i],33),12,y,WHITE,1);
-    if(lastSuccess[i])drawLine("Data pred "+String((millis()-lastSuccess[i])/60000UL)+" min",12,y+20,AMBER,1);
-    else drawLine("Zatim bez dat",12,y+20,AMBER,1);
-    if(stopFetchFailed[i])drawLine("CHYBA: detaily v Safari",12,y+39,WHITE,1);
+    drawLine(clip(stops[i],33),12,y,TRAM_COLOR_WHITE,1);
+    if(lastSuccess[i])drawLine("Data pred "+String((millis()-lastSuccess[i])/60000UL)+" min",12,y+20,TRAM_COLOR_AMBER,1);
+    else drawLine("Zatim bez dat",12,y+20,TRAM_COLOR_AMBER,1);
+    if(stopFetchFailed[i])drawLine("CHYBA: detaily v Safari",12,y+39,TRAM_COLOR_WHITE,1);
   }
-  drawLine("Podrobnosti: Safari /diagnose",12,281,WHITE,1);
+  drawLine("Podrobnosti: Safari /diagnose",12,281,TRAM_COLOR_WHITE,1);
 }
 void drawTouchMenu() {
-  gfx->fillScreen(BLACK);
-  drawLine("HALTESTELLE AENDERN", 12, 6, AMBER, 2);
-  gfx->drawFastHLine(10, 30, 460, AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("HALTESTELLE AENDERN", 12, 6, TRAM_COLOR_AMBER, 2);
+  gfx->drawFastHLine(10, 30, 460, TRAM_COLOR_AMBER);
   if (touchEditIndex < 0 || touchEditIndex >= MAX_STOPS) return;
   String oldName = stops[touchEditIndex].length() ? stops[touchEditIndex] : "Freier Platz";
-  drawLine(clip(oldName, 36), 12, 38, WHITE, 1);
-  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
+  drawLine(clip(oldName, 36), 12, 38, TRAM_COLOR_WHITE, 1);
+  touchButton("ABBRUCH", 352, 4, 116, 25, TRAM_COLOR_WHITE);
   if (touchMode == 3) {
-    drawLine("Haltestelle entfernen?", 12, 88, WHITE, 2);
-    drawLine("Andere Plaetze bleiben erhalten.", 12, 120, WHITE, 1);
+    drawLine("Haltestelle entfernen?", 12, 88, TRAM_COLOR_WHITE, 2);
+    drawLine("Andere Plaetze bleiben erhalten.", 12, 120, TRAM_COLOR_WHITE, 1);
     touchButton("JA, ENTFERNEN", 12, 170, 220, 45);
-    touchButton("ZURUECK", 248, 170, 220, 45, WHITE);
+    touchButton("ZURUECK", 248, 170, 220, 45, TRAM_COLOR_WHITE);
   } else if (touchMode == 1) {
-    gfx->fillRect(10, 57, 460, 26, BLACK);
-    gfx->drawRect(10, 57, 460, 26, AMBER);
-    drawLine(clip(touchQuery.length() ? touchQuery : "Suchbegriff eingeben", 36), 16, 62, WHITE, 2);
+    gfx->fillRect(10, 57, 460, 26, TRAM_COLOR_BLACK);
+    gfx->drawRect(10, 57, 460, 26, TRAM_COLOR_AMBER);
+    drawLine(clip(touchQuery.length() ? touchQuery : "Suchbegriff eingeben", 36), 16, 62, TRAM_COLOR_WHITE, 2);
     const char *rows[] = {"QWERTZUIOP", "ASDFGHJKL", "YXCVBNM"};
     for (int r = 0; r < 3; ++r) {
       const String line(rows[r]);
@@ -1442,15 +1442,15 @@ void drawTouchMenu() {
     touchButton("LEER", 12, 251, 100, 35);
     touchButton("LOESCH", 126, 251, 120, 35);
     touchButton("SUCHE", 260, 251, 205, 35);
-    if (stops[touchEditIndex].length()) touchButton("HALTESTELLE ENTFERNEN", 12, 290, 454, 28, WHITE);
+    if (stops[touchEditIndex].length()) touchButton("HALTESTELLE ENTFERNEN", 12, 290, 454, 28, TRAM_COLOR_WHITE);
   } else {
-    drawLine("Suchresultate antippen:", 12, 65, WHITE, 2);
-    if (!touchMatchCount) drawLine("Keine Treffer - erneut suchen", 12, 100, AMBER, 2);
+    drawLine("Suchresultate antippen:", 12, 65, TRAM_COLOR_WHITE, 2);
+    if (!touchMatchCount) drawLine("Keine Treffer - erneut suchen", 12, 100, TRAM_COLOR_AMBER, 2);
     for (int i = 0; i < touchMatchCount; ++i) {
       int y = 91 + i * 37;
       touchButton(clip(touchMatches[i], 34), 12, y, 454, 34);
     }
-    touchButton("ZURUECK", 12, 282, 454, 32, WHITE);
+    touchButton("ZURUECK", 12, 282, 454, 32, TRAM_COLOR_WHITE);
   }
 }
 
@@ -1463,10 +1463,10 @@ void closeTouchMenu() {
 }
 
 void touchSearch() {
-  if (WiFi.status() != WL_CONNECTED) { drawLine("WLAN erforderlich", 12, 294, WHITE, 1); return; }
+  if (WiFi.status() != WL_CONNECTED) { drawLine("WLAN erforderlich", 12, 294, TRAM_COLOR_WHITE, 1); return; }
   touchQuery.trim();
-  if (touchQuery.length() < 2) { drawLine("Mindestens 2 Zeichen", 12, 294, WHITE, 1); return; }
-  touchButton("SUCHE...", 260, 246, 205, 40, WHITE);
+  if (touchQuery.length() < 2) { drawLine("Mindestens 2 Zeichen", 12, 294, TRAM_COLOR_WHITE, 1); return; }
+  touchButton("SUCHE...", 260, 246, 205, 40, TRAM_COLOR_WHITE);
   JsonDocument doc;
   touchMatchCount = 0;
   bool ok = getJson("https://transport.opendata.ch/v1/locations?type=station&query=" +
@@ -1542,7 +1542,7 @@ void handleTouchTap(int rawX, int rawY) {
   if(touchMode==8){
     if(x>=25&&x<455&&y>=55&&y<99){
       otaAllowedUntil=millis()+300000UL;
-      drawSystemMenu();drawLine("OTA AKTIV 5 MIN",12,294,AMBER,1);
+      drawSystemMenu();drawLine("OTA AKTIV 5 MIN",12,294,TRAM_COLOR_AMBER,1);
     } else if(x>=25&&x<455&&y>=113&&y<157){
       closeTouchMenu();displaySleep();
     }
@@ -1574,7 +1574,7 @@ void handleTouchTap(int rawX, int rawY) {
         for (int i=0; i<MAX_STOPS; ++i) {
           if (i != touchEditIndex && stops[i] == chosen) {
             touchMode = 1; drawTouchMenu();
-            drawLine("Haltestelle bereits vorhanden", 12, 293, WHITE, 1);
+            drawLine("Haltestelle bereits vorhanden", 12, 293, TRAM_COLOR_WHITE, 1);
             return;
           }
         }
@@ -1675,8 +1675,8 @@ analogSetPinAttenuation(34, ADC_11db);
   setupTouch();
   loadTouchCalibration();
   gfx->setTextWrap(false);
-  gfx->fillScreen(BLACK);
-  drawLine("Bern Abfahrtstafel", 12, 20, AMBER);
+  gfx->fillScreen(TRAM_COLOR_BLACK);
+  drawLine("Bern Abfahrtstafel", 12, 20, TRAM_COLOR_AMBER);
   loadSettings();
   WiFi.mode(WIFI_STA);
   startWiFiAttempt(); // bez dlouheho blokovani dotyku a webove aplikace
@@ -1684,9 +1684,9 @@ analogSetPinAttenuation(34, ADC_11db);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("TRAMLI-BERN-2");
     fallbackAP=true;
-    gfx->fillScreen(BLACK);
-    drawLine("WLAN: TRAMLI-BERN-2", 12, 32, AMBER);
-    drawLine("Browser: 192.168.4.1", 12, 70, WHITE);
+    gfx->fillScreen(TRAM_COLOR_BLACK);
+    drawLine("WLAN: TRAMLI-BERN-2", 12, 32, TRAM_COLOR_AMBER);
+    drawLine("Browser: 192.168.4.1", 12, 70, TRAM_COLOR_WHITE);
   } else {
     configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org");
     statusText = "Lade Abfahrten";
