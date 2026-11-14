@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#define TRAMLIBERN_VERSION "3.3-KOMPLET-TEST"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -8,6 +9,9 @@
 #include <time.h>
 #include <SPI.h>
 #include <XPT2046_Touchscreen.h>
+#include <Update.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 
 // LCDWIKI E32R40T: ESP32-32E, ST7796, 320 x 480. Display im Querformat.
 Arduino_DataBus *bus = new Arduino_ESP32SPI(2, 15, 14, 13, 12, HSPI);
@@ -22,8 +26,8 @@ constexpr int PAGE_COUNT = 3;
 Preferences prefs;
 
 constexpr uint16_t BLACK = 0x0000, AMBER = 0xFDE0, WHITE = 0xFFFF;
-// Roter Seitenwechsel-Button, leicht rechts der Bildschirmmitte.
-constexpr uint16_t BUTTON_RED = 0xF800;
+// Retro-Ambiente; barevna paleta je zachovana.
+constexpr uint16_t BUTTON_RED = 0xF800; // pouziva se pouze pro pripadne varovani
 constexpr uint16_t BUTTON_BLUE = 0x001F;
 constexpr int CITY_BUTTON_X = 12;
 constexpr int CITY_BUTTON_Y = 4;
@@ -74,57 +78,153 @@ String timeCache[MAX_ROWS_PER_PAGE];
 String stops[MAX_STOPS];
 int stopCount = 0;
 String wifiSsid, wifiPassword;
-constexpr int MAX_WIFI_PROFILES = 4;
-String wifiNames[MAX_WIFI_PROFILES], wifiPasswords[MAX_WIFI_PROFILES];
-int wifiProfileCount = 0, preferredWiFi = 0;
-uint32_t wifiRetryAt = 0;
+constexpr uint8_t WIFI_PROFILE_MAX = 4;
+String profileSsid[WIFI_PROFILE_MAX], profilePassword[WIFI_PROFILE_MAX];
+uint8_t profileCount=0, profilePreferred=0, profileTrying=0;
+bool wifiAttemptPending=false, fallbackAP=false;
+uint32_t wifiAttemptAt=0, wifiNextTryAt=0, wifiSwitchAt=0;
+
 void loadWiFiProfiles() {
-  wifiProfileCount = 0;
-  String oldName = prefs.getString("ssid", "");
-  String oldPass = prefs.getString("pass", "");
-  if (oldName.length()) {
-    wifiNames[0] = oldName; wifiPasswords[0] = oldPass; wifiProfileCount = 1;
+  profileCount=0;
+  String legacyName=prefs.getString("ssid", "");
+  if (legacyName.length()) {
+    profileSsid[0]=legacyName;
+    profilePassword[0]=prefs.getString("pass", "");
+    profileCount=1;
   }
-  for (int i = 0; i < MAX_WIFI_PROFILES; ++i) {
-    String name = prefs.getString(("wf"+String(i)+"n").c_str(), "");
-    if (!name.length()) continue;
-    bool present = false;
-    for (int j=0; j<wifiProfileCount; ++j) if (wifiNames[j] == name) present=true;
-    if (!present && wifiProfileCount < MAX_WIFI_PROFILES) {
-      wifiNames[wifiProfileCount]=name;
-      wifiPasswords[wifiProfileCount++]=prefs.getString(("wf"+String(i)+"p").c_str(), "");
+  for (uint8_t i=0;i<WIFI_PROFILE_MAX;i++) {
+    String ssid=prefs.getString(("w"+String(i)+"s").c_str(), "");
+    bool oldBeta=false;
+    if(!ssid.length()) {
+      ssid=prefs.getString(("wf"+String(i)+"n").c_str(), "");
+      oldBeta=true;
+    }
+    if (!ssid.length()) continue;
+    bool duplicate=false;
+    for(uint8_t j=0;j<profileCount;j++) if(profileSsid[j]==ssid)duplicate=true;
+    if (!duplicate && profileCount<WIFI_PROFILE_MAX) {
+      profileSsid[profileCount]=ssid;
+      profilePassword[profileCount]=prefs.getString(
+        (oldBeta ? "wf"+String(i)+"p" : "w"+String(i)+"p").c_str(), "");
+      profileCount++;
     }
   }
+  profilePreferred=0;
 }
-void saveWiFiProfile(const String &name, const String &pass) {
-  if (!name.length() || name.length()>32 || pass.length()>63) return;
-  int i = -1;
-  for (int j=0; j<wifiProfileCount; ++j) if (wifiNames[j]==name) i=j;
-  if (i<0) i=wifiProfileCount<MAX_WIFI_PROFILES ? wifiProfileCount++ : MAX_WIFI_PROFILES-1;
-  wifiNames[i]=name; wifiPasswords[i]=pass; preferredWiFi=i;
-  for (int j=0; j<MAX_WIFI_PROFILES; ++j) {
-    prefs.putString(("wf"+String(j)+"n").c_str(), j<wifiProfileCount ? wifiNames[j] : "");
-    prefs.putString(("wf"+String(j)+"p").c_str(), j<wifiProfileCount ? wifiPasswords[j] : "");
+void persistWiFiProfiles() {
+  for(uint8_t i=0;i<WIFI_PROFILE_MAX;i++) {
+    prefs.putString(("w"+String(i)+"s").c_str(),i<profileCount?profileSsid[i]:"");
+    prefs.putString(("w"+String(i)+"p").c_str(),i<profileCount?profilePassword[i]:"");
   }
-  prefs.putString("ssid",name); prefs.putString("pass",pass);
-  wifiSsid=name; wifiPassword=pass;
+  // Stary firmware zna pouze ssid/pass: neodstranujeme jeho pristup.
+  if(profileCount){
+    prefs.putString("ssid",profileSsid[0]);
+    prefs.putString("pass",profilePassword[0]);
+  }
 }
-bool trySavedWiFi(uint32_t timeoutMs=4500) {
-  if (WiFi.status()==WL_CONNECTED) return true;
-  for (int p=0; p<wifiProfileCount; ++p) {
-    int i = (preferredWiFi+p)%wifiProfileCount;
+bool saveWiFiProfile(String ssid,String password,bool updatePassword) {
+  ssid.trim();
+  if(!ssid.length()||ssid.length()>32||password.length()>63)return false;
+  int pos=-1;
+  for(uint8_t i=0;i<profileCount;i++)if(profileSsid[i]==ssid)pos=i;
+  bool isNew = pos<0;
+  if(isNew){if(profileCount>=WIFI_PROFILE_MAX)return false;pos=profileCount++;}
+  profileSsid[pos]=ssid;
+  if(updatePassword || isNew)profilePassword[pos]=password;
+  persistWiFiProfiles();
+  profilePreferred=pos;
+  wifiNextTryAt=0;
+  return true;
+}
+bool deleteWiFiProfile(uint8_t pos) {
+  if(pos>=profileCount||profileCount<=1)return false;
+  for(uint8_t i=pos;i+1<profileCount;i++) {
+    profileSsid[i]=profileSsid[i+1]; profilePassword[i]=profilePassword[i+1];
+  }
+  --profileCount;
+  profileSsid[profileCount]="";profilePassword[profileCount]="";
+  profilePreferred=0;persistWiFiProfiles();
+  return true;
+}
+void startWiFiAttempt() {
+  if(!profileCount)return;
+  profileTrying=profilePreferred%profileCount;
+  WiFi.mode(fallbackAP?WIFI_AP_STA:WIFI_STA);
+  WiFi.begin(profileSsid[profileTrying].c_str(),profilePassword[profileTrying].c_str());
+  wifiAttemptAt=millis();wifiAttemptPending=true;
+}
+void wifiTick() {
+  if(wifiSwitchAt && (int32_t)(millis()-wifiSwitchAt)>=0) {
+    wifiSwitchAt=0;
+    wifiAttemptPending=false;
     WiFi.disconnect();
-    WiFi.begin(wifiNames[i].c_str(), wifiPasswords[i].c_str());
-    uint32_t started=millis();
-    while (WiFi.status()!=WL_CONNECTED && millis()-started<timeoutMs) delay(150);
-    if (WiFi.status()==WL_CONNECTED) {
-      wifiSsid=wifiNames[i]; wifiPassword=wifiPasswords[i]; preferredWiFi=i;
-      return true;
-    }
+    wifiNextTryAt=0;
   }
-  return false;
+  if(WiFi.status()==WL_CONNECTED) {
+    if(wifiAttemptPending) {
+      profilePreferred=profileTrying;
+      wifiSsid=profileSsid[profilePreferred];
+      wifiPassword=profilePassword[profilePreferred];
+    }
+    wifiAttemptPending=false;
+    if(fallbackAP) {WiFi.softAPdisconnect(true);fallbackAP=false;WiFi.mode(WIFI_STA);}
+    return;
+  }
+  uint32_t now=millis();
+  if(wifiAttemptPending) {
+    if(now-wifiAttemptAt<6500UL)return;
+    wifiAttemptPending=false;
+    if(profileCount)profilePreferred=(profileTrying+1)%profileCount;
+    if(profilePreferred==0 && !fallbackAP) {
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
+    }
+    wifiNextTryAt=now+1000UL;
+  }
+  if(!fallbackAP && !profileCount) {
+    WiFi.mode(WIFI_AP_STA); WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
+  }
+  if(profileCount && (int32_t)(now-wifiNextTryAt)>=0) startWiFiAttempt();
 }
+
 String statusText = "Startet";
+// GPIO27 is driven HIGH by the original board firmware. Verify that it is
+// backlight control on the physical board before using screen-off mode.
+constexpr int BACKLIGHT_PIN = 27;
+bool displaySleeping = false;
+bool displayAutoOff = false; // OFF by default, even after first installation
+uint16_t displayIdleMinutes = 10;
+uint32_t displayLastActivity = 0;
+bool wakeTouchWaitRelease = false;
+uint32_t otaAllowedUntil = 0;
+bool otaUploadOK = false;
+bool otaUploadStarted = false;
+String otaUploadError;
+size_t otaUploadedBytes = 0;
+// Only allow uploading while the user has physically authorized it.
+bool otaAllowed() {
+  return otaAllowedUntil && (int32_t)(otaAllowedUntil - millis()) > 0;
+}
+size_t otaMaxBytes() {
+  const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
+  return part ? part->size : 0;
+}
+void drawBoard();
+void displayWake() {
+  digitalWrite(BACKLIGHT_PIN, HIGH);
+  displaySleeping = false;
+  touchMenuOpen = false; touchMode = 0; // Safari wake restores departure board
+  displayLastActivity = millis();
+  ++touchExitRevision;
+  // Keep all application data in RAM; repaint the last selected board.
+  drawBoard();
+}
+void displaySleep() {
+  if (displaySleeping) return;
+  displaySleeping = true;
+  digitalWrite(BACKLIGHT_PIN, LOW);
+}
+
 uint32_t lastRefresh = 0;
 struct Departure {
   String line, destination, station;
@@ -271,6 +371,10 @@ void loadSettings() {
   wifiSsid = prefs.getString("ssid", "");
   wifiPassword = prefs.getString("pass", "");
   loadWiFiProfiles();
+  displayAutoOff = prefs.getBool("dispAuto", false);
+  displayIdleMinutes = prefs.getUShort("dispMin", 10);
+  if(displayIdleMinutes < 1 || displayIdleMinutes > 240) displayIdleMinutes=10;
+  displaySleeping=false;displayLastActivity=millis();
   activeCity = prefs.getUChar("city", 0);
   if (activeCity < 0 || activeCity >= CITY_COUNT) activeCity = 0;
   loadCityStops();
@@ -397,37 +501,19 @@ void drawOpaque(String text, int x, int y, int width, uint16_t color) {
   gfx->print(text);
 }
 
-// Nur der ABFAHRTEN-Button ist neu; Rest des Kopfs bleibt unveraendert.
+// Puvodni retro vzhled: misto prepinace ABFAHRTEN pouze aktualni mesto.
 void drawCityButton() {
-  gfx->fillRoundRect(CITY_BUTTON_X, CITY_BUTTON_Y,
-                     CITY_BUTTON_W, CITY_BUTTON_H, 4, BUTTON_BLUE);
-  gfx->setTextSize(2);
-  gfx->setTextColor(WHITE, BUTTON_BLUE);
+  gfx->fillRect(12, 4, 350, 26, BLACK);
   String name = CITY_LABELS[activeCity];
-  int width = name.length() * 12;
-  // Lange Stadtnamen passen im blauen Button mit Schriftgroesse 1.
-  if (width > CITY_BUTTON_W - 10) {
-    gfx->setTextSize(1);
-    width = name.length() * 6;
-  }
-  gfx->setCursor(CITY_BUTTON_X + (CITY_BUTTON_W - width) / 2,
-                 CITY_BUTTON_Y + (CITY_BUTTON_H - (width == (int)name.length()*6 ? 8 : 16)) / 2);
+  gfx->setTextColor(AMBER, BLACK);
+  int size = name.length() > 13 ? 1 : 2;
+  gfx->setTextSize(size);
+  gfx->setCursor(16, size == 2 ? 8 : 12);
   gfx->print(name);
 }
 
-void drawPageButton() {
-  gfx->fillRoundRect(PAGE_BUTTON_X, PAGE_BUTTON_Y,
-                     PAGE_BUTTON_W, PAGE_BUTTON_H, 4, BUTTON_RED);
-  gfx->setTextSize(2);
-  gfx->setTextColor(WHITE, BUTTON_RED);
-  // Standardschrift 6 Pixel/Zeichen bei Textgroesse 1; 9 Zeichen = 108 Pixel.
-  const int textWidth = 9 * 12;
-  gfx->setCursor(PAGE_BUTTON_X + (PAGE_BUTTON_W - textWidth) / 2,
-                 PAGE_BUTTON_Y + (PAGE_BUTTON_H - 16) / 2);
-  gfx->print("ABFAHRTEN");
-}
-
 void drawHeader() {
+  if (displaySleeping) return;
   static String previousClock;
   static int previousFill = -2;
   static uint32_t revision = 0, batteryRead = 0;
@@ -443,7 +529,7 @@ void drawHeader() {
     strftime(uhrzeit, sizeof(uhrzeit), "%H:%M", &timeinfo);
     clock = uhrzeit;
   }
-  if (force) { drawCityButton(); drawPageButton(); }
+  if (force) { drawCityButton(); }
   if (force || clock != previousClock) {
     drawOpaque(clock, 385, 8, 5, WHITE);
     previousClock = clock;
@@ -471,6 +557,7 @@ void drawHeader() {
 // Auf Seite 1 und 2 wie bisher: je zwei Haltestellen, drei Fahrten.
 // Auf Seite 3: genau eine Haltestelle mit sieben Fahrten.
 void drawDepartureRows() {
+  if (displaySleeping) return;
   time_t now = time(nullptr);
   const bool lastPage = activePage == 2;
   const int stationsOnPage = lastPage ? 1 : STOPS_PER_PAGE;
@@ -546,7 +633,7 @@ void drawDepartureRows() {
 }
 
 void drawBoard() {
-  if (touchMenuOpen) return;
+  if (touchMenuOpen || displaySleeping) return;
   static String previousLayout;
   String layout = String(activeCity) + ":" + String(WiFi.status() == WL_CONNECTED) + ":" + String(stopCount) + ":" + String(activePage) + ":" + String(touchExitRevision);
   for (int i = 0; i < MAX_STOPS; ++i) layout += "|" + stops[i];
@@ -583,8 +670,8 @@ void drawBoard() {
   gfx->drawFastHLine(10, 267, 460, AMBER);
   String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   drawLine("Konfiguration: " + address, 12, 276, WHITE, 1);
-  gfx->fillRoundRect(235, 270, 78, 24, 3, BUTTON_BLUE);
-  drawLine("MENU", 250, 274, WHITE, 2);
+  gfx->fillRoundRect(230, 270, 82, 24, 3, BUTTON_BLUE);
+  drawLine("MENU", 245, 274, WHITE, 2);
   for (int page = 0; page < PAGE_COUNT; ++page) {
     int x = 320 + page * 50;
     gfx->fillRect(x, 270, 46, 24, page == activePage ? AMBER : BLACK);
@@ -711,14 +798,15 @@ String currentAddress() {
   return WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
 }
 String pageStart(const String &title) {
-  String html = R"TRAMLI(<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#aa3528"><title>Traemli Schweiz</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f4f3ed;color:#23332f;font:17px system-ui,-apple-system,sans-serif}header{background:white;padding:22px;border-bottom:1px solid #dce0d5}header div,main{max-width:800px;margin:auto}header b{font-size:25px}header span{display:block;font-size:12px;letter-spacing:2px;color:#70796c;margin-top:5px}main{padding:25px 16px 40px}h1{font-size:32px;margin:10px 0 6px;overflow-wrap:anywhere}h2{font-size:22px;margin:0 0 16px}p{line-height:1.55}small,.muted{color:#667366}.card{background:white;border:1px solid #dce1d4;border-radius:18px;padding:22px;margin:18px 0}button,.button{font:inherit;font-weight:650;background:#aa3528;color:white;border:0;border-radius:10px;padding:13px 17px;min-height:48px;cursor:pointer;text-decoration:none;display:inline-block}a{color:#983023}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #328676;outline-offset:3px}input{display:block;font:inherit;border:1px solid #c9d1c3;border-radius:10px;padding:13px;width:100%;margin:7px 0 16px;min-height:48px}label{display:block;font-size:15px;font-weight:600;margin-top:12px}ol,ul{list-style:none;padding:0;margin:0}li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 0;border-bottom:1px solid #e5e8df;overflow-wrap:anywhere}li:last-child{border:0}.subtle{background:#edf0e7;color:#3e5143;font-size:14px;padding:10px 13px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.row form{margin:0}nav{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}nav a{padding:10px 13px;background:white;border:1px solid #dae0d1;border-radius:9px;text-decoration:none;color:#354a3d}.status{padding:15px 18px;background:#e8eddf;border-radius:12px;font-size:15px}.hint{font-size:14px;color:#657262;line-height:1.6}.notice{background:#fff2cf;padding:15px;border-radius:12px}summary{cursor:pointer;font-weight:700;min-height:40px}footer{font-size:12px;color:#717b6c;margin-top:25px}.address{font-family:monospace;font-size:14px;display:block;color:#657262;margin-top:4px}.full{width:100%}form{margin:0} @media(max-width:420px){.card{padding:17px}h1{font-size:28px}li{align-items:flex-start}.row>*{flex-grow:1}}
+  String html = R"TRAMLI(<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#12477f"><title>Traemli Schweiz</title><style>
+:root{color-scheme:light;--ink:#17324b;--muted:#50657a;--blue:#1558b0;--teal:#086b62;--line:#d4e0ed}
+*{box-sizing:border-box}body{margin:0;background:#eef4fb;color:var(--ink);font:20px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%}header{background:#12477f;color:white;padding:24px 20px;border-bottom:5px solid #57d7c0}header div,main{max-width:880px;margin:auto}header b{font-size:30px;letter-spacing:-.6px}header span{display:block;font-size:14px;font-weight:650;letter-spacing:1.5px;color:#d8eaff;margin-top:4px}main{padding:28px 20px 48px}h1{font-size:clamp(30px,5vw,42px);line-height:1.2;letter-spacing:-1px;margin:8px 0 12px;overflow-wrap:anywhere}h2{font-size:26px;line-height:1.3;margin:0 0 18px}p{margin:12px 0 20px}small,.muted{color:var(--muted)}small{font-size:17px}.card{background:white;border:1px solid var(--line);border-top:5px solid #5a8fd1;border-radius:20px;padding:26px;margin:24px 0;box-shadow:0 5px 18px #17324b08}.card>h2:not(:first-child){border-top:2px solid #e5edf7;padding-top:24px;margin-top:28px}.card:has(form[action='/city']){border-top-color:#1558b0;background:#f7faff}.card:has(form[action='/search']){border-top-color:#098477}.card:has(button[aria-current='page']){border-top-color:#e0a126}button,.button{font:inherit;font-size:20px;line-height:1.3;font-weight:700;background:var(--blue);color:white;border:2px solid transparent;border-radius:12px;padding:14px 20px;min-height:56px;cursor:pointer;text-decoration:none;display:inline-flex;justify-content:center;align-items:center;text-align:center;max-width:100%;overflow-wrap:anywhere;touch-action:manipulation}button:hover,.button:hover{filter:brightness(.94)}button:active,.button:active{transform:translateY(1px)}a{color:#134e9d;text-underline-offset:3px}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #172e49;outline-offset:4px}input,select{display:block;font:inherit;font-size:20px;line-height:1.4;color:var(--ink);background:#f8fbff;border:2px solid #aebfd2;border-radius:12px;padding:13px 14px;width:100%;max-width:100%;min-width:0;margin:8px 0 18px;min-height:56px}select{padding-right:28px!important}input:focus,select:focus{border-color:var(--blue);background:white}input::placeholder{color:#617489}label{display:block;font-size:18px;font-weight:700;margin-top:16px}ol,ul{list-style:none;padding:0;margin:0}li{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:22px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}li:last-child{border:0}li>div{width:100%;min-width:0}li>span{flex:1 1 220px}li>form{flex:1 1 240px;min-width:0}li b{font-size:22px}li form+form{margin-top:12px}.subtle{background:#e9f1fc;color:#174f91;border-color:#c4d7f0;font-size:19px;padding:13px 18px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}.row form{margin:0;flex:1 1 140px}.row button{width:100%}nav{display:flex;gap:10px;margin:24px 0;flex-wrap:wrap}nav a{flex:1 1 180px;min-height:56px;padding:13px 16px;background:white;border:2px solid #bdcfe4;border-radius:12px;text-align:center;text-decoration:none;font-size:19px;font-weight:700;color:#174f91}nav a:hover{background:#e5effc}.status{padding:16px 20px;background:#e3f4ef;color:#175447;border-left:5px solid #138473;border-radius:12px;font-size:18px}.hint{font-size:17px;color:var(--muted);line-height:1.6}.notice{background:#fff2d4;color:#684600;border-left:5px solid #d99b22;padding:17px 20px;border-radius:12px}.notice:empty{display:none}summary{cursor:pointer;font-weight:700;min-height:52px;padding:10px 0}footer{font-size:16px;color:var(--muted);margin-top:32px;padding-top:20px;border-top:1px solid var(--line)}.address{font-family:ui-monospace,monospace;font-size:18px;display:block;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}.full{width:100%}form{margin:0}button[aria-current='page']{background:#12477f;box-shadow:0 0 0 3px #bdd5f4}form[action='/add'] button,form[action='/search'] button,form[action='/refresh'] button{background:var(--teal);color:white}form[action='/remove'] button,form[action='/board-remove'] button{background:#fff0f0;border-color:#edbebe;color:#a52626}form[action='/move'] button{background:#eaf1fc;color:#174f91}form[action='/page']+ol{margin-top:12px}@media(max-width:520px){body{font-size:19px}header{padding:18px 16px}main{padding:22px 14px 36px}.card{padding:20px 16px;margin:20px 0}h2{font-size:24px}.row{gap:8px}.row form{flex:1 1 80px}.row button{font-size:18px;padding:13px 7px}nav{gap:8px}nav a{flex:1 1 100%;text-align:left}li{display:block}li>form{margin-top:16px}li b{font-size:21px}button,.button{width:100%}header b{font-size:28px}}
 </style></head><body><header><div><b>▤ Trämli Bern</b><span>DEINE ABFAHRTSTAFELN</span></div></header><main>)TRAMLI";
   html += "<h1>" + escapeHtml(title) + "</h1><p class='muted'>" + escapeHtml(boardLabel()) + " · " + escapeHtml(currentAddress()) + "</p>";
   html += "<nav aria-label='Navigation'><a href='/'>Haltestellen</a><a href='/boards'>Meine Boards</a><a href='/settings'>Einstellungen</a></nav>";
   return html;
 }
-String pageEnd() { return "<footer>Trämli Bern · Lokale Bedienung · Version SLIM TEST · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
+String pageEnd() { return "<footer>TramliBern · Lokalni ovladani · Verze TEST · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
 void sendPage(String html, int code = 200) {
   server.sendHeader("Cache-Control", "no-store");
   server.send(code, "text/html; charset=utf-8", html + pageEnd());
@@ -751,48 +839,42 @@ bool readIndex(int limit, int &index) {
 }
 
 void setupRoutes() {
+  // Lokalni webova aplikace: pouze odjezdy, zadne GTFS vystrahy.
   server.on("/diagnose", HTTP_GET, []() {
-    String html = pageStart("Abfahrtsdiagnose");
-    bool connected = WiFi.status() == WL_CONNECTED;
-    html += "<section class='card'><h2>Verbindung</h2>";
-    html += "<p><b>WLAN:</b> " + String(connected ? "Verbunden" : "Nicht verbunden") + "</p>";
-    if (connected) html += "<p><b>IP:</b> " + WiFi.localIP().toString() + "</p>";
-    else html += "<p class='notice'>Keine WLAN-Verbindung.</p>";
-    html += "<p><b>Abfahrten:</b> " + escapeHtml(statusText) + "</p></section>";
-    html += "<section class='card'><h2>Letztes Laden und Datenalter</h2>";
-    int count = 0;
-    for (int i = 0; i < MAX_STOPS; ++i) {
-      if (!stops[i].length()) continue;
-      ++count;
-      html += "<div style='display:block;overflow-wrap:anywhere;padding:14px 0;border-bottom:1px solid #dce1d4'>";
-      html += "<p><b>" + escapeHtml(stops[i]) + "</b> - Seite " + String(i / 2 + 1) + "</p>";
-      if (lastSuccess[i]) {
-        uint32_t age = (millis() - lastSuccess[i]) / 1000UL;
-        String ageText = age < 60 ? String(age) + " Sekunden" :
-                         age < 3600 ? String(age / 60) + " Minuten" :
-                         String(age / 3600) + " Stunden " + String((age % 3600) / 60) + " Minuten";
-        html += "<p>Letztes erfolgreiches Laden: vor <b>" + ageText + "</b></p>";
-        html += "<p>Alter der gespeicherten Daten: " + ageText + "</p>";
-      } else html += "<p>Noch keine erfolgreichen Daten seit dem Neustart</p>";
-      if (stopFetchFailed[i]) {
-        String problem = stopErrors[i];
-        if (problem.indexOf("HTTP -") >= 0) problem = "Netzwerk- oder Zeitproblem beim Abruf";
-        else if (problem.indexOf("HTTP 5") >= 0) problem = "Datenserver voruebergehend gestoert";
-        else if (problem.indexOf("JSON:") >= 0) problem = "Antwort vom Server unlesbar";
-        html += "<p class='notice'><b>Fehler:</b> " + escapeHtml(problem) + "</p>";
-        html += "<p>Automatische Wiederholung: maximal " + String(retryDelay[i]/1000UL) + " Sekunden Abstand</p>";
-      } else if (lastSuccess[i]) html += "<p><b>Status:</b> Abruf erfolgreich</p>";
-      else html += "<p><b>Status:</b> Noch nicht geladen</p>";
+    String html=pageStart("Diagnostika odjezdu");
+    html += "<section class='card'><h2>Pripojeni</h2><p>Wi-Fi: <b>"+
+       String(WiFi.status()==WL_CONNECTED?"Pripojeno":"Odpojeno")+"</b></p>";
+    if(WiFi.status()==WL_CONNECTED){
+      html += "<p>SSID: "+escapeHtml(WiFi.SSID())+"</p>";
+      html += "<p>IP: "+WiFi.localIP().toString()+"</p>";
+    }
+    html += "<p>Volna RAM: "+String(ESP.getFreeHeap())+" B</p>";
+    html += "<p>Stav: "+escapeHtml(statusText)+"</p></section>";
+    html += "<section class='card'><h2>Zastavky a cerstvost dat</h2>";
+    bool any=false;
+    for(int i=0;i<MAX_STOPS;i++){
+      if(!stops[i].length())continue;
+      any=true;
+      html += "<div style='padding:14px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere'>";
+      html += "<p><b>"+escapeHtml(stops[i])+"</b>, strana "+String(i/2+1)+"</p>";
+      if(lastSuccess[i]){
+        uint32_t secs=(millis()-lastSuccess[i])/1000UL;
+        html += "<p>Posledni uspesne nacteni: pred "+String(secs<60?secs:secs/60)+
+          String(secs<60?" sekundami":" minutami")+"</p>";
+      } else html += "<p>Od restartu zatim nebyla prijata data.</p>";
+      if(stopFetchFailed[i]){
+        String problem=stopErrors[i];
+        if(problem.indexOf("HTTP -")>=0)problem="Chyba spojeni nebo vyprsel cas";
+        else if(problem.indexOf("JSON")>=0)problem="Chybna odpoved serveru";
+        else if(problem.indexOf("HTTP 5")>=0)problem="Server docasne nedostupny";
+        html += "<p class='notice'>Chyba: "+escapeHtml(problem)+"</p>";
+      } else if(lastSuccess[i])html += "<p>Posledni stazeni bylo uspesne.</p>";
       html += "</div>";
     }
-    if (!count) html += "<p>Keine Haltestelle eingerichtet.</p>";
-    html += "<p class='hint'>Zeitangaben gelten seit dem letzten Neustart des Boards.</p>";
-    html += "<p><a class='button subtle' href='/'>Zurueck</a></p></section>";
+    if(!any)html += "<p>Zatim nejsou vybrane zastavky.</p>";
+    html += "<p class='hint'>Cas meri dobu od stazeni odpovedi, nikoli presnost odjezdu dopravce.</p></section>";
     sendPage(html);
   });
-
-  // TramliBern 3.0 TEST: Diagnose nur im lokalen Browser.
-  // Meldungen werden nicht veraendert; keine unbestaetigten Linien-Zuordnungen.
   server.on("/", HTTP_GET, []() {
     String html = pageStart("Meine Haltestellen");
     html += "<section class='card'><h2>Seite frei wählen</h2><div class='row'>";
@@ -809,7 +891,7 @@ void setupRoutes() {
     for (int i = 0; i < MAX_STOPS; ++i) {
       if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
     }
-    html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p><a class='button subtle' href='/diagnose'>Abfahrtsdiagnose ansehen</a></p>";
+    html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
     html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
@@ -991,11 +1073,27 @@ void setupRoutes() {
   server.on("/settings", HTTP_GET, []() {
     String html = pageStart("Einstellungen");
     html += "<section class='card'><h2>Name dieses Boards</h2><form action='/device' method='post'><label for='boardname'>Name</label><input id='boardname' name='name' maxlength='60' value='" + escapeHtml(boardLabel()) + "' required><button class='full'>Namen speichern</button></form></section>";
-    html += "<section class='card'><details><summary>WLAN ändern</summary><p class='hint'>Nur ausfüllen, wenn du das WLAN wechseln möchtest. Nach dem Speichern startet das Board neu; seine IP-Adresse kann sich ändern.</p><form action='/wifi' method='post'><label for='ssid'>WLAN-Name</label><input id='ssid' name='ssid' maxlength='32' value='" + escapeHtml(wifiSsid) + "' required><label for='pass'>WLAN-Passwort neu eingeben</label><input id='pass' name='pass' type='password' maxlength='63' autocomplete='new-password'><p class='hint'>Leer lassen nur für ein WLAN ohne Passwort.</p><label><input type='checkbox' name='confirm' value='yes' required style='display:inline;width:auto;min-height:0'> WLAN-Wechsel und Neustart bestätigen</label><p><button class='full'>WLAN speichern und neu starten</button></p></form></details></section>";
-    html += "<section class='card'><h2>Gespeicherte WLAN-Netze</h2>";
-    for (int i=0; i<wifiProfileCount; ++i)
-      html += "<p>" + escapeHtml(wifiNames[i]) + (WiFi.SSID()==wifiNames[i] ? " (verbunden)" : "") + "</p>";
-    html += "<p class='hint'>Bis zu vier WLAN-Netze. Neue Netze lassen sich oben speichern.</p></section>";
+    html += "<section class='card'><h2>Ulozene Wi-Fi site</h2>";
+    html += "<p class='hint'>Az ctyri site, automaticke pripojeni a opakovani po vypadku.</p>";
+    for(uint8_t i=0;i<profileCount;i++){
+      html += "<p><b>" + escapeHtml(profileSsid[i]) + "</b>";
+      if(WiFi.status()==WL_CONNECTED && WiFi.SSID()==profileSsid[i]) html += " (pripojeno)";
+      html += "</p>";
+      if(profileCount>1){
+        html += "<form method='post' action='/wifi/remove'><input type='hidden' name='index' value='"+String(i)+"'>";
+        html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='confirm' value='yes' required> Potvrzuji odstraneni</label><button class='subtle'>Odebrat sit</button></form>";
+      }
+    }
+    html += "<h2>Pridat nebo upravit Wi-Fi</h2>";
+    html += "<form method='post' action='/wifi'><label>Nazev site SSID</label><input name='ssid' maxlength='32' required>";
+    html += "<label>Heslo</label><input id='wpass' type='password' name='pass' maxlength='63' autocomplete='new-password'>";
+    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' onclick=\"document.getElementById('wpass').type=this.checked?'text':'password'\"> Zobrazit heslo</label>";
+    html += "<p class='hint'>Prazdne heslo u jiz ulozene site znamena zachovat puvodni heslo.</p>";
+    html += "<button>Ulozit Wi-Fi</button></form></section>";
+    html += "<p><a class='button' href='/diagnose'>Diagnostika odjezdu</a></p>";
+    html += "<section class='card'><h2>Displej a firmware</h2>";
+    html += "<p><a class='button' href='/display'>Zhasnuti a probuzeni</a></p>";
+    html += "<p><a class='button' href='/ota'>Aktualizace firmware</a></p></section>";
     sendPage(html);
   });
   server.on("/device", HTTP_POST, []() {
@@ -1004,13 +1102,128 @@ void setupRoutes() {
     prefs.putString("boardname", name); redirectBoards();
   });
   server.on("/wifi", HTTP_POST, []() {
-    String ssid = server.arg("ssid"), pass = server.arg("pass");
-    if (server.arg("confirm") != "yes") { showMessage("Bitte WLAN-Wechsel bestätigen."); return; }
-    if (ssid.length() && ssid.length() <= 32 && pass.length() <= 63) {
-      saveWiFiProfile(ssid, pass);
-      sendPage(pageStart("WLAN gespeichert") + "<section class='card'><p>Das Board startet jetzt neu. Verbinde dein Handy mit dem gewählten WLAN und öffne die Adresse, die auf dem Display angezeigt wird.</p><p>Falls die Verbindung fehlschlägt: mit TRAMLI-BERN-2 verbinden und http://192.168.4.1 öffnen.</p></section>");
-      delay(500); ESP.restart();
-    } else showMessage("Ungültiger WLAN-Name oder Passwort.");
+    String ssid=server.arg("ssid"),pass=server.arg("pass");
+    bool known=false;
+    for(uint8_t i=0;i<profileCount;i++)if(profileSsid[i]==ssid){known=true;break;}
+    if(!saveWiFiProfile(ssid,pass,pass.length() || !known)){
+      showMessage("Neplatna Wi-Fi nebo limit 4 siti.");return;
+    }
+    wifiAttemptPending=false;
+    wifiSwitchAt=millis()+2000;
+    server.sendHeader("Location","/settings");server.send(303);
+    // Nove ulozene heslo otestujeme pri nasledujicim automatickem pokusu. 
+  });
+  server.on("/wifi/remove", HTTP_POST, []() {
+    if(server.arg("confirm")!="yes"){
+      showMessage("Potvrd odstraneni site.");return;
+    }
+    String input=server.arg("index");
+    if(input.length()!=1||input[0]<'0'||input[0]>'3'||
+       !deleteWiFiProfile((uint8_t)input.toInt())) {
+      showMessage("Neplatny vyber nebo posledni ulozena sit.");return;
+    }
+    server.sendHeader("Location","/settings");server.send(303);
+  });
+  server.on("/display", HTTP_GET, []() {
+    String html = pageStart("Displej");
+    html += "<section class='card'><h2>Displej</h2><p>Stav: " +
+            String(displaySleeping ? "Zhasnuty" : "Zapnuty") + "</p>";
+    html += "<form method='post' action='/display/wake'><button class='full'>Probudit displej</button></form>";
+    html += "<form method='post' action='/display/off'><button class='full subtle'>Zhasnout displej</button></form>";
+    html += "<form method='post' action='/display/config'><label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='auto' value='1'";
+    if (displayAutoOff) html += " checked";
+    html += "> Automaticky zhasinat</label><label>Po minutach (1 az 240)</label><input name='minutes' type='number' min='1' max='240' value='" + String(displayIdleMinutes) + "'>";
+    html += "<button class='full'>Ulozit nastaveni</button></form>";
+    html += "<p class='hint'>Po zapnuti napajeni je displej vzdy rozsviceny. Prvni dotyk po zhasnuti pouze probudi.</p></section>";
+    sendPage(html);
+  });
+  server.on("/display/off", HTTP_POST, []() {
+    displaySleep();
+    server.sendHeader("Location", "/display"); server.send(303);
+  });
+  server.on("/display/wake", HTTP_POST, []() {
+    displayWake();
+    server.sendHeader("Location", "/display"); server.send(303);
+  });
+  server.on("/display/config", HTTP_POST, []() {
+    int n=server.arg("minutes").toInt();
+    if (n < 1 || n > 240) { showMessage("Vyber 1 az 240 minut."); return; }
+    displayIdleMinutes = n;
+    displayAutoOff = server.hasArg("auto") && server.arg("auto") == "1";
+    prefs.putBool("dispAuto", displayAutoOff);
+    prefs.putUShort("dispMin", displayIdleMinutes);
+    displayLastActivity = millis();
+    server.sendHeader("Location", "/display"); server.send(303);
+  });
+  server.on("/ota", HTTP_GET, []() {
+    String html=pageStart("Aktualizace firmware");
+    html += "<section class='card'><h2>Aktualizace pres Safari</h2>";
+    html += "<p>Pro nahrani nejdriv na displeji stiskni MENU a OTA 5 MIN.</p>";
+    html += "<p>Povoleni: " + String(otaAllowed()?"AKTIVNI":"NEAKTIVNI") + "</p>";
+    html += "<p>Maximalni velikost firmware: " + String((unsigned)otaMaxBytes()) + " B.</p>";
+    html += "<p class='notice'>Nahravej vyhradne samostatny .ino.bin urceny pro tuto desku, ne merged.bin!</p>";
+    html += R"HTML(<input type='file' id='fw' accept='.bin'><button id='send' onclick='go()'>Nahrat firmware</button><p id='status'></p>
+<script>
+async function go(){const f=document.getElementById('fw').files[0],status=document.getElementById('status');
+ if(!f || !f.name.endsWith('.ino.bin')){status.textContent='Vyber samostatny soubor .ino.bin';return;}
+ status.textContent='Overuji velikost...';
+ try {const test=await fetch('/ota/check?size='+f.size,{cache:'no-store'});
+ if(!test.ok){status.textContent=await test.text();return;}
+ const form=new FormData();form.append('firmware',f,f.name);
+ const xhr=new XMLHttpRequest();xhr.open('POST','/ota/upload');
+ xhr.upload.onprogress=e=>{if(e.lengthComputable)status.textContent='Nahrano '+Math.floor(e.loaded/e.total*100)+' %';};
+ xhr.onload=()=>{status.textContent=xhr.responseText;};
+ xhr.onerror=()=>{status.textContent='Nahravani selhalo. Zkus znovu.';};xhr.send(form);
+ }catch(err){status.textContent='Chyba spojeni: '+err;}}
+</script>)HTML";
+    html += "</section>";
+    sendPage(html);
+  });
+  server.on("/ota/check", HTTP_GET, []() {
+    if (!otaAllowed()) { server.send(403,"text/plain","Nejdriv povol OTA na displeji."); return; }
+    String ss=server.arg("size");
+    uint32_t n=(uint32_t)ss.toInt();
+    if (!n || n>otaMaxBytes()) {server.send(413,"text/plain","Soubor se nevejde do OTA oblasti."); return;}
+    server.send(200,"text/plain","OK");
+  });
+  server.on("/ota/upload", HTTP_POST, []() {
+    bool ok=otaUploadOK && otaUploadStarted && !Update.hasError();
+    String response=ok ? "Firmware nahran. ESP32 se restartuje." :
+                      "Aktualizace selhala: " + otaUploadError;
+    server.send(ok ? 200:400,"text/plain; charset=utf-8",response);
+    if(ok){otaAllowedUntil=0;delay(250);ESP.restart();}
+  }, []() {
+    HTTPUpload &upload=server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      otaUploadOK=false; otaUploadStarted=false; otaUploadedBytes=0;
+      otaUploadError="Neni povolena aktualizace nebo chybi OTA oblast";
+      if (!otaAllowed() || !otaMaxBytes()) return;
+      if (!upload.filename.endsWith(".ino.bin")) {otaUploadError="Vyber samostatny .ino.bin firmware";return;}
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {otaUploadError="Nelze zahajit OTA";return;}
+      otaUploadStarted=true;otaUploadOK=true;otaUploadError="";
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      if(!otaUploadOK || !otaUploadStarted) return;
+      if(otaUploadedBytes==0 && upload.currentSize && upload.buf[0]!=0xE9) {
+        otaUploadError="Neplatna hlavicka ESP32 firmware";
+        otaUploadOK=false;Update.abort();return;
+      }
+      if(otaUploadedBytes+upload.currentSize > otaMaxBytes()) {
+        otaUploadError="Firmware je vetsi nez OTA oddil";
+        otaUploadOK=false;Update.abort();return;
+      }
+      if(Update.write(upload.buf,upload.currentSize)!=upload.currentSize) {
+        otaUploadError="Chyba zapisovani firmware";otaUploadOK=false;Update.abort();return;
+      }
+      otaUploadedBytes+=upload.currentSize;
+    } else if(upload.status==UPLOAD_FILE_END) {
+      if (!otaUploadOK || !otaUploadStarted || !otaUploadedBytes) {
+        otaUploadOK=false;return;
+      }
+      if(!Update.end(true)) {otaUploadError="Firmware neprosel overenim";otaUploadOK=false;}
+    } else if(upload.status==UPLOAD_FILE_ABORTED) {
+      if(otaUploadStarted) Update.abort();
+      otaUploadOK=false;otaUploadError="Prenos prerusen";
+    }
   });
   server.on("/refresh", HTTP_POST, []() { lastRefresh = 0; redirectHome(); });
   server.on("/refresh", HTTP_GET, []() { lastRefresh = 0; redirectHome(); });
@@ -1146,44 +1359,54 @@ void drawCityMenu() {
 }
 void drawMainMenu() {
   gfx->fillScreen(BLACK);
-  drawLine("TRAMLIBERN MENU", 12, 8, AMBER, 2);
-  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
-  gfx->drawFastHLine(10, 35, 460, AMBER);
-  touchButton("HALTESTELLE", 30, 65, 420, 48);
-  touchButton("STADT WAEHLEN", 30, 130, 420, 48);
-  touchButton("DIAGNOSE", 30, 195, 420, 43);
-  touchButton("WLAN", 30, 252, 420, 43);
+  drawLine("TRAMLIBERN MENU",12,7,AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,WHITE);
+  gfx->drawFastHLine(10,35,460,AMBER);
+  touchButton("STADT",30,47,420,40);
+  touchButton("HALTESTELLEN",30,97,420,40);
+  touchButton("WLAN",30,147,420,40);
+  touchButton("DIAGNOSE",30,197,420,40);
+  touchButton("SYSTEM",30,247,420,40);
+}
+void drawSystemMenu() {
+  gfx->fillScreen(BLACK);
+  drawLine("TRAMLIBERN SYSTEM",12,7,AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,WHITE);
+  gfx->drawFastHLine(10,35,460,AMBER);
+  touchButton("OTA 5 MIN",25,55,430,44);
+  touchButton("DISPLAY AUS",25,113,430,44);
+  drawLine("Usporne nastaveni a OTA v Safari",12,192,AMBER,1);
+  drawLine("Safari: /display nebo /ota",12,220,WHITE,1);
+}
+void drawWifiMenu() {
+  gfx->fillScreen(BLACK);
+  drawLine("ULOZENE WLAN",12,7,AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,WHITE);
+  gfx->drawFastHLine(10,35,460,AMBER);
+  for(int i=0;i<profileCount;i++){
+    String label=profileSsid[i];
+    if(WiFi.status()==WL_CONNECTED && WiFi.SSID()==label)label+=" *";
+    touchButton(clip(label,30),16,51+i*49,448,43);
+  }
+  if(profileCount==0)drawLine("Keine gespeicherte WLAN",20,95,WHITE,2);
+  drawLine("Pridani a hesla: Safari /settings",12,276,WHITE,1);
 }
 void drawBoardDiagnostic() {
   gfx->fillScreen(BLACK);
-  drawLine("ABFAHRTS DIAGNOSE", 12, 8, AMBER, 2);
-  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
-  drawLine(WiFi.status() == WL_CONNECTED ? "WLAN: VERBUNDEN" : "WLAN: GETRENNT", 12, 52, WHITE, 2);
-  drawLine(clip(statusText, 34), 12, 86, AMBER, 1);
-  for (int pos = 0; pos < (activePage == 2 ? 1 : 2); ++pos) {
-    int i = activePage*2 + pos;
-    if (!stops[i].length()) continue;
-    int y = 125 + pos*83;
-    drawLine(clip(stops[i], 32), 12, y, WHITE, 1);
-    if (lastSuccess[i]) {
-      drawLine("Letzter Erfolg vor " + String((millis() - lastSuccess[i])/60000UL) + " Min", 12, y+19, AMBER, 1);
-    } else drawLine("Noch keine Daten", 12, y+19, AMBER, 1);
-    if (stopFetchFailed[i]) drawLine("FEHLER: Bitte Handy-Diagnose pruefen", 12, y+37, WHITE, 1);
+  drawLine("ABFAHRTEN DIAGNOSE",12,7,AMBER,2);
+  touchButton("ZURUECK",350,3,118,28,WHITE);
+  drawLine(WiFi.status()==WL_CONNECTED?"WLAN: VERBUNDEN":"WLAN: GETRENNT",12,53,WHITE,2);
+  drawLine(clip(statusText,34),12,82,AMBER,1);
+  for(int pos=0;pos<(activePage==2?1:2);pos++){
+    int i=activePage*2+pos;
+    if(!stops[i].length())continue;
+    int y=116+pos*77;
+    drawLine(clip(stops[i],33),12,y,WHITE,1);
+    if(lastSuccess[i])drawLine("Data pred "+String((millis()-lastSuccess[i])/60000UL)+" min",12,y+20,AMBER,1);
+    else drawLine("Zatim bez dat",12,y+20,AMBER,1);
+    if(stopFetchFailed[i])drawLine("CHYBA: detaily v Safari",12,y+39,WHITE,1);
   }
-  drawLine("Weitere Details in der Web-App /diagnose", 12, 292, WHITE, 1);
-}
-void drawSavedWiFiMenu() {
-  gfx->fillScreen(BLACK);
-  drawLine("GESPEICHERTE WLAN", 12, 7, AMBER, 2);
-  touchButton("ABBRUCH", 352, 4, 116, 25, WHITE);
-  gfx->drawFastHLine(10, 35, 460, AMBER);
-  for (int i=0; i<wifiProfileCount; ++i) {
-    String caption=wifiNames[i];
-    if (WiFi.status()==WL_CONNECTED && WiFi.SSID()==wifiNames[i]) caption+=" *";
-    touchButton(clip(caption, 30), 12, 52+i*52, 456, 46, WHITE);
-  }
-  if (!wifiProfileCount) drawLine("Noch kein WLAN gespeichert", 12, 95, WHITE, 2);
-  drawLine("Neue WLAN: Web-App / Einstellungen", 12, 283, WHITE, 1);
+  drawLine("Podrobnosti: Safari /diagnose",12,281,WHITE,1);
 }
 void drawTouchMenu() {
   gfx->fillScreen(BLACK);
@@ -1266,8 +1489,9 @@ void handleTouchTap(int rawX, int rawY) {
   int x = touchXFromRaw(rawX, rawY), y = touchYFromRaw(rawX, rawY);
   if (x < 0 || y < 0) return;
   Serial.printf("Touch raw %d,%d -> px %d,%d | mode %d\n", rawX, rawY, x, y, touchMode);
+  displayLastActivity = millis();
   if (!touchMenuOpen) {
-    if (y >= 270 && y < 295 && x >= 235 && x < 313) {
+    if (y >= 270 && y < 295 && x >= 230 && x < 312) {
       touchMenuOpen = true; touchMode = 5; drawMainMenu(); return;
     }
     // Direct page selection also works for empty pages.
@@ -1277,22 +1501,7 @@ void handleTouchTap(int rawX, int rawY) {
       drawBoard();
       return;
     }
-    // Blauer Button: direkte Auswahl aus der Stadtliste.
-    if (x >= CITY_BUTTON_X && x < CITY_BUTTON_X + CITY_BUTTON_W &&
-        y >= CITY_BUTTON_Y && y < CITY_BUTTON_Y + CITY_BUTTON_H) {
-      touchMenuOpen = true;
-      touchMode = 4;
-      drawCityMenu();
-      return;
-    }
-    // Tasten-Tippen schaltet Seite 1 -> 2 -> 3 -> 1; Swipe bleibt bestehen.
-    if (x >= PAGE_BUTTON_X && x < PAGE_BUTTON_X + PAGE_BUTTON_W &&
-        y >= PAGE_BUTTON_Y && y < PAGE_BUTTON_Y + PAGE_BUTTON_H) {
-      selectPage((activePage + 1) % PAGE_COUNT);
-      lastRefresh = 0;
-      drawBoard();
-      return;
-    }
+    // Mesto lze vybrat pouze pres MENU; stranky pres 1/2/3 nebo swipe.
     // Nur der Haltestellentitel oeffnet das Bearbeitungsmenue.
     if (x > 8 && x < 470) {
       int position = y >= 39 && y < 63 ? 0 : (activePage < 2 && y >= 149 && y < 172 ? 1 : -1);
@@ -1308,36 +1517,34 @@ void handleTouchTap(int rawX, int rawY) {
     return;
   }
   if (y < 32 && x > 345) { closeTouchMenu(); return; }
-  if (touchMode == 6) { closeTouchMenu(); return; }
-  if (touchMode == 7) {
-    if (x >= 12 && x < 468 && y >= 52 && y < 52+52*wifiProfileCount) {
-      int index=(y-52)/52;
-      if ((y-52)%52 < 46 && index >= 0 && index < wifiProfileCount) {
-        preferredWiFi=index;
-        WiFi.disconnect();
+  if (touchMode == 5) { // hlavni MENU
+    if(x>=30&&x<450) {
+      if(y>=47&&y<87){touchMode=4;drawCityMenu();return;}
+      if(y>=97&&y<137){touchEditIndex=activePage*2;touchQuery="";touchMode=1;drawTouchMenu();return;}
+      if(y>=147&&y<187){touchMode=7;drawWifiMenu();return;}
+      if(y>=197&&y<237){touchMode=6;drawBoardDiagnostic();return;}
+      if(y>=247&&y<287){touchMode=8;drawSystemMenu();return;}
+    }
+    return;
+  }
+  if(touchMode==6){closeTouchMenu();return;}
+  if(touchMode==7){ // kliknout na ulozenou sit
+    if(x>=16&&x<464&&y>=51&&y<51+49*profileCount){
+      int i=(y-51)/49;
+      if((y-51)%49<43&&i<profileCount){
+        profilePreferred=i;
+        wifiAttemptPending=false; WiFi.disconnect();wifiNextTryAt=0;
         closeTouchMenu();
-        wifiRetryAt=millis();
-        trySavedWiFi(5500);
-        lastRefresh=0;
-        drawBoard();
       }
     }
     return;
   }
-  if (touchMode == 5) {
-    if (x >= 30 && x < 450 && y >= 65 && y < 113) {
-      touchEditIndex = activePage * 2;
-      touchQuery = "";
-      touchMode = 1; drawTouchMenu(); return;
-    }
-    if (x >= 30 && x < 450 && y >= 130 && y < 178) {
-      touchMode = 4; drawCityMenu(); return;
-    }
-    if (x >= 30 && x < 450 && y >= 195 && y < 243) {
-      touchMode = 6; drawBoardDiagnostic(); return;
-    }
-    if (x >= 30 && x < 450 && y >= 252 && y < 295) {
-      touchMode = 7; drawSavedWiFiMenu(); return;
+  if(touchMode==8){
+    if(x>=25&&x<455&&y>=55&&y<99){
+      otaAllowedUntil=millis()+300000UL;
+      drawSystemMenu();drawLine("OTA AKTIV 5 MIN",12,294,AMBER,1);
+    } else if(x>=25&&x<455&&y>=113&&y<157){
+      closeTouchMenu();displaySleep();
     }
     return;
   }
@@ -1425,6 +1632,14 @@ void setupTouch() {
 
 void checkSwipe() {
   if (!touchReady || !calValid) return;
+  if (displaySleeping) {
+    if (touch.touched()) { displayWake(); wakeTouchWaitRelease = true; }
+    return;
+  }
+  if (wakeTouchWaitRelease) {
+    if (!touch.touched()) wakeTouchWaitRelease = false;
+    return;
+  }
   static bool pressed = false, waitRelease = false, moved = false;
   static int firstX = 0, firstY = 0;
   static uint32_t started = 0;
@@ -1452,7 +1667,8 @@ void setup() {
   Serial.begin(115200);
   analogReadResolution(12);
 analogSetPinAttenuation(34, ADC_11db);
-  pinMode(27, OUTPUT); digitalWrite(27, HIGH);
+  pinMode(BACKLIGHT_PIN, OUTPUT);
+  digitalWrite(BACKLIGHT_PIN, HIGH); // Always ON after power cycle, never persist sleep
   pinMode(33, OUTPUT); digitalWrite(33, HIGH); // Touch-CS inaktiv
   pinMode(5, OUTPUT); digitalWrite(5, HIGH);   // SD-CS inaktiv
   gfx->begin(27000000);
@@ -1463,10 +1679,11 @@ analogSetPinAttenuation(34, ADC_11db);
   drawLine("Bern Abfahrtstafel", 12, 20, AMBER);
   loadSettings();
   WiFi.mode(WIFI_STA);
-  trySavedWiFi();
+  startWiFiAttempt(); // bez dlouheho blokovani dotyku a webove aplikace
   if (WiFi.status() != WL_CONNECTED) {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("TRAMLI-BERN-2");
+    fallbackAP=true;
     gfx->fillScreen(BLACK);
     drawLine("WLAN: TRAMLI-BERN-2", 12, 32, AMBER);
     drawLine("Browser: 192.168.4.1", 12, 70, WHITE);
@@ -1483,7 +1700,10 @@ analogSetPinAttenuation(34, ADC_11db);
 
 void loop() {
   server.handleClient();
+  wifiTick();
   checkSwipe();
+  if (!displaySleeping && displayAutoOff && displayIdleMinutes &&
+      millis()-displayLastActivity >= (uint32_t)displayIdleMinutes*60000UL) displaySleep();
   static bool wasConnected = false;
   bool connected = WiFi.status() == WL_CONNECTED;
   if (connected != wasConnected) {
@@ -1491,24 +1711,22 @@ void loop() {
     lastRefresh = 0;
     if (!connected) {
       departureCount = 0;
-      WiFi.mode(WIFI_AP_STA);
-      WiFi.softAP("TRAMLI-BERN-2");
+      if (!fallbackAP && !wifiAttemptPending) {
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
+      }
     }
     if (!touchMenuOpen) drawBoard();
   }
-  if (!connected && !touchMenuOpen && millis() - wifiRetryAt >= 90000UL) {
-    wifiRetryAt = millis();
-    trySavedWiFi(2500);
-  }
-  if (!touchMenuOpen && connected && (lastRefresh == 0 || millis() - lastRefresh >= REFRESH_MS)) {
+  if (connected && (lastRefresh == 0 || millis() - lastRefresh >= REFRESH_MS)) {
     refreshBoard();
     lastRefresh = millis();
   }
-  if (!touchMenuOpen) retryFailedStops();
+  retryFailedStops();
   static uint32_t lastBlink = 0;
   if (millis() - lastBlink >= 500) {
     lastBlink = millis();
-    if (!touchMenuOpen) { drawHeader(); if (connected && stopCount) drawDepartureRows(); }
+    if (!touchMenuOpen && !displaySleeping) { drawHeader(); if (connected && stopCount) drawDepartureRows(); }
   }
   static uint32_t lastWarning = 0;
   if (millis() - lastWarning >= 220) {
@@ -1517,4 +1735,3 @@ void loop() {
   delay(5);
 
 }
-
