@@ -1,7 +1,7 @@
 name: TramliBern 3.3.1 OTA SAFE ESP32 compile
 on:
   push:
-    branches: ['test/tramlibern-3.3.1-ota-safe-20261114']
+    branches: ['test/tramlibern-3.3.1-ota-safe-20261114', 'test/tramlibern-3.4-menu-wifi-night-20261114']
     paths: ['firmware/TramliBern/**', '.github/workflows/tramlibern-3.3.1-ota-safe.yml']
   workflow_dispatch:
 permissions:
@@ -38,7 +38,8 @@ jobs:
               if not match: raise SystemExit('Missing ESP32 memory report: '+name)
               used,limit=map(int,match.groups())
               lines.append(f'{name}: {used} / {limit}; free {limit-used}; used {100*used/limit:.2f}%')
-          fw=Path('reports/build/TramliBern.ino.bin')
+          fw=Path('reports/build/TramliBern.ino.bin
+            firmware/TramliBern/TramliBern.ino')
           if not fw.exists(): raise SystemExit('Firmware .ino.bin missing')
           app_partition=1966080
           size=fw.stat().st_size
