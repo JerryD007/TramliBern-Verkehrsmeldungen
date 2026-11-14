@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#define TRAMLIBERN_VERSION "3.3-KOMPLET-TEST"
+#define TRAMLIBERN_VERSION "3.3.1-OTA-SAFE-TEST"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -201,6 +201,9 @@ bool otaUploadOK = false;
 bool otaUploadStarted = false;
 String otaUploadError;
 size_t otaUploadedBytes = 0;
+size_t otaExpectedBytes = 0;
+uint32_t otaSessionNonce = 0; // Regenerated only by physical display confirmation
+bool otaFinishedOK = false;
 // Only allow uploading while the user has physically authorized it.
 bool otaAllowed() {
   return otaAllowedUntil && (int32_t)(otaAllowedUntil - millis()) > 0;
@@ -208,6 +211,23 @@ bool otaAllowed() {
 size_t otaMaxBytes() {
   const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
   return part ? part->size : 0;
+}
+// Defensive decimal parser: negative, overflow, empty and oversize are invalid.
+bool otaParseFirmwareSize(const String &value, size_t &out) {
+  out = 0;
+  size_t partitionSize = otaMaxBytes();
+  if (!partitionSize || !value.length() || value.length() > 9) return false;
+  for (size_t i=0; i<value.length(); ++i) {
+    char ch = value[i];
+    if (ch < '0' || ch > '9') return false;
+    out = out*10 + (size_t)(ch-'0');
+    if (out > partitionSize) return false;
+  }
+  return out > 0;
+}
+bool otaSessionAuthorized() {
+  return otaAllowed() && otaSessionNonce != 0 &&
+         server.arg("nonce") == String(otaSessionNonce, HEX);
 }
 void drawBoard();
 void displayWake() {
@@ -1160,18 +1180,24 @@ void setupRoutes() {
     html += "<section class='card'><h2>Aktualizace pres Safari</h2>";
     html += "<p>Pro nahrani nejdriv na displeji stiskni MENU a OTA 5 MIN.</p>";
     html += "<p>Povoleni: " + String(otaAllowed()?"AKTIVNI":"NEAKTIVNI") + "</p>";
-    html += "<p>Maximalni velikost firmware: " + String((unsigned)otaMaxBytes()) + " B.</p>";
+    html += "<p>Maximalni velikost firmware pro nahrani: " + String((unsigned)otaMaxBytes()) + " B.</p>";
+    if (otaAllowed()) {
+      uint32_t remaining = (otaAllowedUntil - millis()) / 1000UL;
+      html += "<p>Cas zbyvajici pro zahajeni nahravani: " + String(remaining) + " s</p>";
+    }
+    html += "<p class='hint'>Pouze aplikacni ESP32 obraz (.ino.bin). Pred prenosem porovnej nazev zarizeni a velikost souboru. Zmena partition table pri nahrani OTA neni mozna.</p>";
+    html += "<script>const otaNonce='" + String(otaAllowed() ? otaSessionNonce : 0, HEX) + "';</script>";
     html += "<p class='notice'>Nahravej vyhradne samostatny .ino.bin urceny pro tuto desku, ne merged.bin!</p>";
     html += R"HTML(<input type='file' id='fw' accept='.bin'><button id='send' onclick='go()'>Nahrat firmware</button><p id='status'></p>
 <script>
 async function go(){const f=document.getElementById('fw').files[0],status=document.getElementById('status');
  if(!f || !f.name.endsWith('.ino.bin')){status.textContent='Vyber samostatny soubor .ino.bin';return;}
  status.textContent='Overuji velikost...';
- try {const test=await fetch('/ota/check?size='+f.size,{cache:'no-store'});
+ try {const test=await fetch('/ota/check?size='+f.size+'&nonce='+otaNonce,{cache:'no-store'});
  if(!test.ok){status.textContent=await test.text();return;}
  const form=new FormData();form.append('firmware',f,f.name);
- const xhr=new XMLHttpRequest();xhr.open('POST','/ota/upload');
- xhr.upload.onprogress=e=>{if(e.lengthComputable)status.textContent='Nahrano '+Math.floor(e.loaded/e.total*100)+' %';};
+ const xhr=new XMLHttpRequest();xhr.open('POST','/ota/upload?size='+f.size+'&nonce='+otaNonce);
+ xhr.upload.onprogress=e=>{if(e.lengthComputable)status.textContent='Prenos do ESP32: '+Math.floor(e.loaded/e.total*100)+' % (po dokonceni probiha kontrola)';};
  xhr.onload=()=>{status.textContent=xhr.responseText;};
  xhr.onerror=()=>{status.textContent='Nahravani selhalo. Zkus znovu.';};xhr.send(form);
  }catch(err){status.textContent='Chyba spojeni: '+err;}}
@@ -1180,49 +1206,78 @@ async function go(){const f=document.getElementById('fw').files[0],status=docume
     sendPage(html);
   });
   server.on("/ota/check", HTTP_GET, []() {
-    if (!otaAllowed()) { server.send(403,"text/plain","Nejdriv povol OTA na displeji."); return; }
-    String ss=server.arg("size");
-    uint32_t n=(uint32_t)ss.toInt();
-    if (!n || n>otaMaxBytes()) {server.send(413,"text/plain","Soubor se nevejde do OTA oblasti."); return;}
-    server.send(200,"text/plain","OK");
+    if (!otaSessionAuthorized()) {
+      server.send(403,"text/plain; charset=utf-8","Povol OTA 5 MIN na displeji a obnov stranku v Safari."); return;
+    }
+    size_t expected = 0;
+    if (!otaParseFirmwareSize(server.arg("size"), expected)) {
+      server.send(413,"text/plain; charset=utf-8","Soubor ma neplatnou velikost nebo se nevejde do OTA oblasti."); return;
+    }
+    server.send(200,"text/plain; charset=utf-8","OK");
   });
   server.on("/ota/upload", HTTP_POST, []() {
-    bool ok=otaUploadOK && otaUploadStarted && !Update.hasError();
-    String response=ok ? "Firmware nahran. ESP32 se restartuje." :
-                      "Aktualizace selhala: " + otaUploadError;
-    server.send(ok ? 200:400,"text/plain; charset=utf-8",response);
-    if(ok){otaAllowedUntil=0;delay(250);ESP.restart();}
+    bool ok=otaFinishedOK && otaUploadOK && otaUploadStarted &&
+            otaUploadedBytes == otaExpectedBytes && !Update.hasError();
+    String response=ok ? "Firmware overen a ulozen. ESP32 se restartuje." :
+                         "Aktualizace selhala: " + (otaUploadError.length() ? otaUploadError : "Neznamy problem");
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(ok ? 200 : 400, "text/plain; charset=utf-8", response);
+    otaFinishedOK=false;
+    otaUploadStarted=false;
+    otaUploadOK=false;
+    if (ok) {otaAllowedUntil=0;otaSessionNonce=0;delay(500);ESP.restart();}
   }, []() {
     HTTPUpload &upload=server.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-      otaUploadOK=false; otaUploadStarted=false; otaUploadedBytes=0;
-      otaUploadError="Neni povolena aktualizace nebo chybi OTA oblast";
-      if (!otaAllowed() || !otaMaxBytes()) return;
-      if (!upload.filename.endsWith(".ino.bin")) {otaUploadError="Vyber samostatny .ino.bin firmware";return;}
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {otaUploadError="Nelze zahajit OTA";return;}
+    if(upload.status==UPLOAD_FILE_START) {
+      otaUploadStarted=false;otaUploadOK=false;otaFinishedOK=false;
+      otaUploadedBytes=0;otaExpectedBytes=0;
+      otaUploadError="OTA neni povoleno nebo je soubor neplatny";
+      if (!otaSessionAuthorized()) return;
+      if (!upload.filename.endsWith(".ino.bin")) {
+        otaUploadError="Vyber samostatny .ino.bin, ne merged.bin";return;
+      }
+      size_t expected=0;
+      if (!otaParseFirmwareSize(server.arg("size"), expected)) {
+        otaUploadError="Soubor se nevejde do aktivni OTA oblasti";return;
+      }
+      if (!Update.begin(expected, U_FLASH)) {
+        otaUploadError="Nelze zahajit zapis do OTA oblasti";return;
+      }
+      otaExpectedBytes=expected;
       otaUploadStarted=true;otaUploadOK=true;otaUploadError="";
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      if(!otaUploadOK || !otaUploadStarted) return;
-      if(otaUploadedBytes==0 && upload.currentSize && upload.buf[0]!=0xE9) {
-        otaUploadError="Neplatna hlavicka ESP32 firmware";
+      // Only one upload is accepted during a physical 5-minute authorization.
+      otaAllowedUntil=0;otaSessionNonce=0;
+    } else if(upload.status==UPLOAD_FILE_WRITE) {
+      if (!otaUploadOK || !otaUploadStarted) return;
+      if (!otaUploadedBytes && upload.currentSize && upload.buf[0] != 0xE9) {
+        otaUploadError="Soubor neni platny obraz firmware ESP32";
         otaUploadOK=false;Update.abort();return;
       }
-      if(otaUploadedBytes+upload.currentSize > otaMaxBytes()) {
-        otaUploadError="Firmware je vetsi nez OTA oddil";
+      if (upload.currentSize > otaExpectedBytes-otaUploadedBytes) {
+        otaUploadError="Bylo prijato vice dat nez velikost souboru";
         otaUploadOK=false;Update.abort();return;
       }
-      if(Update.write(upload.buf,upload.currentSize)!=upload.currentSize) {
-        otaUploadError="Chyba zapisovani firmware";otaUploadOK=false;Update.abort();return;
+      if (Update.write(upload.buf,upload.currentSize) != upload.currentSize) {
+        otaUploadError="Chyba zapisu OTA firmware";
+        otaUploadOK=false;Update.abort();return;
       }
       otaUploadedBytes+=upload.currentSize;
-    } else if(upload.status==UPLOAD_FILE_END) {
-      if (!otaUploadOK || !otaUploadStarted || !otaUploadedBytes) {
+    } else if (upload.status==UPLOAD_FILE_END) {
+      if (!otaUploadOK || !otaUploadStarted) return;
+      if (!otaExpectedBytes || otaUploadedBytes != otaExpectedBytes) {
+        otaUploadError="Prenos nebyl kompletni (chybi cast firmware)";
+        otaUploadOK=false;Update.abort();return;
+      }
+      // Strict end: do not accept an incomplete image or pad missing bytes.
+      if (!Update.end(false)) {
+        otaUploadError="Overeni firmware ESP32 selhalo";
         otaUploadOK=false;return;
       }
-      if(!Update.end(true)) {otaUploadError="Firmware neprosel overenim";otaUploadOK=false;}
+      otaFinishedOK=true;
     } else if(upload.status==UPLOAD_FILE_ABORTED) {
-      if(otaUploadStarted) Update.abort();
-      otaUploadOK=false;otaUploadError="Prenos prerusen";
+      if (otaUploadStarted && !otaFinishedOK) Update.abort();
+      otaFinishedOK=false;otaUploadOK=false;
+      otaUploadError="Prenos prerusen. Puvodni firmware nebyl prepsan.";
     }
   });
   server.on("/refresh", HTTP_POST, []() { lastRefresh = 0; redirectHome(); });
@@ -1541,6 +1596,8 @@ void handleTouchTap(int rawX, int rawY) {
   }
   if(touchMode==8){
     if(x>=25&&x<455&&y>=55&&y<99){
+      otaSessionNonce=esp_random();
+      if (!otaSessionNonce) otaSessionNonce=1;
       otaAllowedUntil=millis()+300000UL;
       drawSystemMenu();drawLine("OTA AKTIV 5 MIN",12,294,TRAM_COLOR_AMBER,1);
     } else if(x>=25&&x<455&&y>=113&&y<157){
