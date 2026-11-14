@@ -1,5 +1,10 @@
-name: TramliBern RC27 – ESP32 compile
+name: TramliBern RC27 - compile ESP32
 on:
+  push:
+    branches:
+      - test/tramlibern-4.0-rc27-build
+    paths:
+      - RC27_SOURCE_UPLOAD.zip
   workflow_dispatch:
 permissions:
   contents: read
@@ -8,10 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Require RC27 firmware sources
+      - name: Extract uploaded RC27 source archive
         run: |
-          test -f TramliBern/TramliBern.ino || { echo "::error::RC27 sources are not yet present on this test branch"; exit 1; }
-          test -f TramliBern/partitions.csv
+          test -s RC27_SOURCE_UPLOAD.zip || { echo "::error::Missing RC27_SOURCE_UPLOAD.zip"; exit 1; }
+          mkdir -p src
+          unzip -q RC27_SOURCE_UPLOAD.zip -d src
+          test -s src/TramliBern/TramliBern.ino
+          test -s src/TramliBern/partitions.csv
       - name: Set up Arduino CLI
         uses: arduino/setup-arduino-cli@v2
       - name: Install ESP32 core and libraries
@@ -21,19 +29,24 @@ jobs:
           arduino-cli lib install "ArduinoJson@7.4.2"
           arduino-cli lib install "GFX Library for Arduino@1.6.0"
           arduino-cli lib install "XPT2046_Touchscreen@1.4"
-      - name: Compile RC27
+      - name: Compile original RC27 sources
         run: |
           mkdir -p build
-          arduino-cli compile -b esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashSize=4M,FlashMode=qio,FlashFreq=40 --export-binaries --output-dir build TramliBern
-      - name: Confirm OTA partition capacity
+          arduino-cli compile --jobs 1 --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs --output-dir build --export-binaries src/TramliBern
+      - name: Check OTA capacity
         run: |
-          test -f build/TramliBern.ino.bin
+          test -s build/TramliBern.ino.bin
           bytes=$(stat -c '%s' build/TramliBern.ino.bin)
-          echo "Firmware: $bytes bytes; OTA slot: 1966080 bytes"
+          echo "Firmware size: $bytes bytes; OTA slot: 1966080 bytes"
           test "$bytes" -le 1966080
-      - name: Upload directly usable firmware
+      - name: Package output
+        run: |
+          mkdir -p deliver
+          cp build/TramliBern.ino.bin deliver/TramliBern_RC27.ino.bin
+          sha256sum deliver/TramliBern_RC27.ino.bin > deliver/SHA256SUMS.txt
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TramliBern_RC27_ino_bin
-          path: build/TramliBern.ino.bin
+          name: TramliBern_RC27_compiled_bin
+          path: deliver/
           if-no-files-found: error
