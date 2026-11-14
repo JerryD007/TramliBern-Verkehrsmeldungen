@@ -1,17 +1,67 @@
+#include <atomic>
+#include <esp_arduino_version.h>
+
 #include <WiFi.h>
-#define TRAMLIBERN_VERSION "3.4-WIFI-MENU-DISPLAY-TEST"
+#include <esp_wifi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <Arduino_GFX_Library.h>
+#include "BootIntro.h"
+static BootIntro bootIntro;
 #include <time.h>
 #include <SPI.h>
 #include <XPT2046_Touchscreen.h>
-#include <Update.h>
-#include <esp_ota_ops.h>
-#include <esp_partition.h>
+
+// Public CA trust anchors from the system trust store; no insecure TLS fallback.
+static const char TRUST_ANCHORS[] PROGMEM = R"CERT(-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICGzCCAaGgAwIBAgIQQdKd0XLq7qeAwSxs6S+HUjAKBggqhkjOPQQDAzBPMQsw
+CQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFyY2gg
+R3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBYMjAeFw0yMDA5MDQwMDAwMDBaFw00
+MDA5MTcxNjAwMDBaME8xCzAJBgNVBAYTAlVTMSkwJwYDVQQKEyBJbnRlcm5ldCBT
+ZWN1cml0eSBSZXNlYXJjaCBHcm91cDEVMBMGA1UEAxMMSVNSRyBSb290IFgyMHYw
+EAYHKoZIzj0CAQYFK4EEACIDYgAEzZvVn4CDCuwJSvMWSj5cz3es3mcFDR0HttwW
++1qLFNvicWDEukWVEYmO6gbf9yoWHKS5xcUy4APgHoIYOIvXRdgKam7mAHf7AlF9
+ItgKbppbd9/w+kHsOdx1ymgHDB/qo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0T
+AQH/BAUwAwEB/zAdBgNVHQ4EFgQUfEKWrt5LSDv6kviejM9ti6lyN5UwCgYIKoZI
+zj0EAwMDaAAwZQIwe3lORlCEwkSHRhtFcP9Ymd70/aTSVaYgLXTWNLxBo1BfASdW
+tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
+/q4AaOeMSQ+2b1tbFfLn
+-----END CERTIFICATE-----
+)CERT";
 
 // LCDWIKI E32R40T: ESP32-32E, ST7796, 320 x 480. Display im Querformat.
 Arduino_DataBus *bus = new Arduino_ESP32SPI(2, 15, 14, 13, 12, HSPI);
@@ -21,20 +71,23 @@ SPIClass touchSPI(HSPI);
 XPT2046_Touchscreen touch(33, 36);
 bool touchReady = false;
 int activePage = 0;
-constexpr int STOPS_PER_PAGE = 2;
+constexpr int STOPS_PER_PAGE = 3;
 constexpr int PAGE_COUNT = 3;
 Preferences prefs;
 
-constexpr uint16_t TRAM_COLOR_BLACK = 0x0000, TRAM_COLOR_AMBER = 0xFDE0, TRAM_COLOR_WHITE = 0xFFFF;
-// Retro-Ambiente; barevna paleta je zachovana.
-constexpr uint16_t BUTTON_RED = 0xF800; // pouziva se pouze pro pripadne varovani
+#ifdef BLACK
+#undef BLACK
+#endif
+#ifdef WHITE
+#undef WHITE
+#endif
+constexpr uint16_t BLACK = 0x0000, AMBER = 0xFDE0, WHITE = 0xFFFF;
+// UI accent colours.
+constexpr uint16_t BUTTON_RED = 0xF800;
 constexpr uint16_t BUTTON_BLUE = 0x001F;
-constexpr int CITY_BUTTON_X = 12;
-constexpr int CITY_BUTTON_Y = 4;
-constexpr int CITY_BUTTON_W = 143;
-constexpr int CITY_BUTTON_H = 25;
 // Die Stadtbezeichnungen auf dem Display sind ASCII, die API-Suche nutzt den Ortsnamen.
 constexpr int CITY_COUNT = 13;
+static_assert(CITY_COUNT == IntroAssets::cityCount, "Intro city order/count must match CITY_LABELS");
 const char *const CITY_LABELS[CITY_COUNT] = {
   "BERN", "ZUERICH", "BASEL", "GENF", "LAUSANNE", "LUZERN", "THUN",
   "ST.GALLEN", "WINTERTHUR", "BIEL", "FRIBOURG", "NEUENBURG", "ZUG"
@@ -43,18 +96,54 @@ const char *const CITY_QUERIES[CITY_COUNT] = {
   "Bern", "Zürich", "Basel", "Genève", "Lausanne", "Luzern", "Thun",
   "St. Gallen", "Winterthur", "Biel/Bienne", "Fribourg", "Neuchâtel", "Zug"
 };
+// Final approved city-menu design: white labels and city-colour underlines.
+#include "MenuCrests.h"
+const uint16_t CITY_ACCENTS[CITY_COUNT] = {
+  AMBER, 0x045D, 0x045D, BUTTON_RED, BUTTON_RED, 0x045D, AMBER,
+  AMBER, BUTTON_RED, BUTTON_RED, 0x045D, AMBER, 0x045D
+};
 int activeCity = 0;
+uint16_t favoriteCities = 0;
+uint8_t introMode = 2; // 0 off, 1 startup only, 2 startup and city changes.
+uint8_t autoPageSeconds = 0;
+uint8_t homeCity = 255, homePage = 0; // Unset until explicitly configured.
+uint32_t autoPageAt = 0;
+int cityForPosition(int position) {
+  if(position<0 || position>=CITY_COUNT) return -1;
+  int n=0;
+  for(int group=1;group>=0;--group) for(int city=0;city<CITY_COUNT;++city)
+    if(((favoriteCities>>city)&1)==group && n++==position) return city;
+  return -1;
+}
+bool validAutoSeconds(int seconds) { return seconds>=0 && seconds<=60; }
+void resetAutoPageTimer() { autoPageAt=millis(); }
+void loadComfortSettings() {
+  favoriteCities=prefs.getUShort("favorites",0)&0x1fff;
+  introMode=prefs.getUChar("introMode",2);if(introMode>2)introMode=2;
+  autoPageSeconds=prefs.getUChar("autoSecs",0);if(!validAutoSeconds(autoPageSeconds))autoPageSeconds=0;
+  homeCity=prefs.getUChar("homeCity",255);homePage=prefs.getUChar("homePage",0);
+  if(homeCity>=CITY_COUNT || homePage>=PAGE_COUNT){homeCity=255;homePage=0;}
+  resetAutoPageTimer();
+}
+void saveComfortSettings() {
+  prefs.putUShort("favorites",favoriteCities);
+  prefs.putUChar("introMode",introMode);prefs.putUChar("autoSecs",autoPageSeconds);
+  prefs.putUChar("homeCity",homeCity);prefs.putUChar("homePage",homePage);
+  resetAutoPageTimer();
+}
+void goHome();
+void serviceAutoPages();
+void setupComfortRoutes();
+bool numericArg(const char *name,int low,int high,int &out);
+void touchButton(const String &label, int x, int y, int w, int h, uint16_t color);
 
-constexpr int PAGE_BUTTON_X = 166;
-constexpr int PAGE_BUTTON_Y = 4;
-constexpr int PAGE_BUTTON_W = 174;
-constexpr int PAGE_BUTTON_H = 25;
+
 constexpr uint32_t REFRESH_MS = 60000;
-constexpr int MAX_STOPS = 5;
+constexpr int MAX_STOPS = 9;
 constexpr int DEPARTURES_PER_STOP = 3;
 constexpr int PAGE3_DEPARTURES = 7;
-constexpr int MAX_ROWS_PER_PAGE = PAGE3_DEPARTURES;
-constexpr int MAX_DEPARTURES = 4 * DEPARTURES_PER_STOP + PAGE3_DEPARTURES;
+constexpr int MAX_ROWS_PER_PAGE = 7;
+constexpr int MAX_DEPARTURES = PAGE_COUNT * MAX_ROWS_PER_PAGE;
 float batteryVoltage();
 bool stopFetchFailed[MAX_STOPS] = {};
 bool fetchFailed = false;
@@ -63,7 +152,7 @@ String lastHttpError;
 String stopErrors[MAX_STOPS];
 uint32_t lastSuccess[MAX_STOPS] = {};
 uint32_t lastAttempt[MAX_STOPS] = {};
-uint32_t retryDelay[MAX_STOPS] = {15000, 15000, 15000, 15000, 15000};
+uint32_t retryDelay[MAX_STOPS] = {};
 String stationCache[STOPS_PER_PAGE];
 uint32_t screenRevision = 0;
 uint32_t touchExitRevision = 0;
@@ -76,217 +165,91 @@ int touchMatchCount = 0;
 String rowCache[MAX_ROWS_PER_PAGE];
 String timeCache[MAX_ROWS_PER_PAGE];
 String stops[MAX_STOPS];
+uint8_t pageSlots[PAGE_COUNT]={2,2,1};
+int moveTargetPage=0;
+bool slotEnabled(int slot) { return slot>=0 && slot<MAX_STOPS && slot%STOPS_PER_PAGE<pageSlots[slot/STOPS_PER_PAGE]; }
+int pageEndSlot(int page) { return page*STOPS_PER_PAGE+pageSlots[page]; }
+int pageRows(int page) { const int rows[]={0,7,3,2}; return rows[pageSlots[page]]; }
+int stationHeaderY(int page,int position) { const int stride[]={0,220,110,72};return 43+position*stride[pageSlots[page]]; }
+int departureSpacing(int page) { return pageSlots[page]==1?27:pageSlots[page]==2?28:24; }
+String layoutKey() { return "layout"+String(activeCity); }
+bool decodeLayout(const String &data,uint8_t *counts,String *items) {
+  if(data.length()<6 || !data.startsWith("FP1"))return false;
+  for(int p=0;p<PAGE_COUNT;++p){if(data[3+p]<'1'||data[3+p]>'3')return false;counts[p]=data[3+p]-'0';}
+  unsigned cursor=6;
+  for(int i=0;i<MAX_STOPS;++i){
+    unsigned len=0,begin=cursor;
+    while(cursor<data.length() && data[cursor]>='0' && data[cursor]<='9'){len=len*10+data[cursor++]-'0';if(len>1000)return false;}
+    if(cursor==begin||cursor>=data.length()||data[cursor++]!=':'||cursor+len>data.length())return false;
+    items[i]=data.substring(cursor,cursor+len);cursor+=len;
+  }
+  return cursor==data.length();
+}
+void saveStops();
+void setPageSlots(int page,int count);
+
 int stopCount = 0;
 String wifiSsid, wifiPassword;
-constexpr uint8_t WIFI_PROFILE_MAX = 4;
-String profileSsid[WIFI_PROFILE_MAX], profilePassword[WIFI_PROFILE_MAX];
-uint8_t profileCount=0, profilePreferred=0, profileTrying=0;
-bool wifiAttemptPending=false, fallbackAP=false;
-uint32_t wifiAttemptAt=0, wifiNextTryAt=0, wifiSwitchAt=0;
-String wifiLastIssue=""; uint32_t wifiFailureCount=0;
-
-void loadWiFiProfiles() {
-  profileCount=0;
-  String legacyName=prefs.getString("ssid", "");
-  if (legacyName.length()) {
-    profileSsid[0]=legacyName;
-    profilePassword[0]=prefs.getString("pass", "");
-    profileCount=1;
-  }
-  for (uint8_t i=0;i<WIFI_PROFILE_MAX;i++) {
-    String ssid=prefs.getString(("w"+String(i)+"s").c_str(), "");
-    bool oldBeta=false;
-    if(!ssid.length()) {
-      ssid=prefs.getString(("wf"+String(i)+"n").c_str(), "");
-      oldBeta=true;
-    }
-    if (!ssid.length()) continue;
-    bool duplicate=false;
-    for(uint8_t j=0;j<profileCount;j++) if(profileSsid[j]==ssid)duplicate=true;
-    if (!duplicate && profileCount<WIFI_PROFILE_MAX) {
-      profileSsid[profileCount]=ssid;
-      profilePassword[profileCount]=prefs.getString(
-        (oldBeta ? "wf"+String(i)+"p" : "w"+String(i)+"p").c_str(), "");
-      profileCount++;
-    }
-  }
-  profilePreferred=0;
-}
-void persistWiFiProfiles() {
-  for(uint8_t i=0;i<WIFI_PROFILE_MAX;i++) {
-    prefs.putString(("w"+String(i)+"s").c_str(),i<profileCount?profileSsid[i]:"");
-    prefs.putString(("w"+String(i)+"p").c_str(),i<profileCount?profilePassword[i]:"");
-  }
-  // Stary firmware zna pouze ssid/pass: neodstranujeme jeho pristup.
-  if(profileCount){
-    prefs.putString("ssid",profileSsid[0]);
-    prefs.putString("pass",profilePassword[0]);
-  }
-}
-bool saveWiFiProfile(String ssid,String password,bool updatePassword) {
-  ssid.trim();
-  if(!ssid.length()||ssid.length()>32||password.length()>63)return false;
-  int pos=-1;
-  for(uint8_t i=0;i<profileCount;i++)if(profileSsid[i]==ssid)pos=i;
-  bool isNew = pos<0;
-  if(isNew){if(profileCount>=WIFI_PROFILE_MAX)return false;pos=profileCount++;}
-  profileSsid[pos]=ssid;
-  if(updatePassword || isNew)profilePassword[pos]=password;
-  persistWiFiProfiles();
-  profilePreferred=pos;
-  wifiNextTryAt=0;
-  return true;
-}
-bool deleteWiFiProfile(uint8_t pos) {
-  if(pos>=profileCount||profileCount<=1)return false;
-  for(uint8_t i=pos;i+1<profileCount;i++) {
-    profileSsid[i]=profileSsid[i+1]; profilePassword[i]=profilePassword[i+1];
-  }
-  --profileCount;
-  profileSsid[profileCount]="";profilePassword[profileCount]="";
-  profilePreferred=0;persistWiFiProfiles();
-  return true;
-}
-void startWiFiAttempt() {
-  if(!profileCount)return;
-  profileTrying=profilePreferred%profileCount;
-  WiFi.mode(fallbackAP?WIFI_AP_STA:WIFI_STA);
-  wifiLastIssue="Zkousim pripojeni k "+profileSsid[profileTrying];
-  WiFi.begin(profileSsid[profileTrying].c_str(),profilePassword[profileTrying].c_str());
-  wifiAttemptAt=millis();wifiAttemptPending=true;
-}
-void wifiTick() {
-  if(wifiSwitchAt && (int32_t)(millis()-wifiSwitchAt)>=0) {
-    wifiSwitchAt=0;
-    wifiAttemptPending=false;
-    WiFi.disconnect();
-    wifiNextTryAt=0;
-  }
-  if(WiFi.status()==WL_CONNECTED) {
-    if(wifiAttemptPending) {
-      profilePreferred=profileTrying;
-      wifiSsid=profileSsid[profilePreferred];
-      wifiPassword=profilePassword[profilePreferred];
-      wifiLastIssue="";
-    }
-    wifiAttemptPending=false;
-    if(fallbackAP) {WiFi.softAPdisconnect(true);fallbackAP=false;WiFi.mode(WIFI_STA);}
-    return;
-  }
-  uint32_t now=millis();
-  if(wifiAttemptPending) {
-    if(now-wifiAttemptAt<6500UL)return;
-    wifiAttemptPending=false;
-    ++wifiFailureCount;
-    wifiLastIssue="Spojeni se nezdarilo, zkousim dalsi Wi-Fi";
-    if(profileCount)profilePreferred=(profileTrying+1)%profileCount;
-    if(profilePreferred==0 && !fallbackAP) {
-      WiFi.mode(WIFI_AP_STA);
-      WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
-    }
-    wifiNextTryAt=now+1000UL;
-  }
-  if(!fallbackAP && !profileCount) {
-    WiFi.mode(WIFI_AP_STA); WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
-  }
-  if(profileCount && (int32_t)(now-wifiNextTryAt)>=0) startWiFiAttempt();
-}
+constexpr const char *VERSION = "TramliBern 4.0 RC26 HomeCross";
+struct WifiProfile { char ssid[33]; char pass[64]; uint8_t worked; };
+WifiProfile networks[4] = {};
+int wifiTrying = -1, wifiPreferred = 0;
+uint32_t wifiAttemptAt = 0;
+bool wifiAttempting = false, accessPoint = false;
+int brightness = 100, nightBrightness = 15, nightStart = 22*60, nightEnd = 7*60;
+bool nightEnabled = false, pwmReady = false;
+int wifiEdit = -1, keyboardPage = 0, moveSource = -1;
+String pendingSsid, inputText;
+String menuNotice;
+struct NearbyWifi { String ssid; int rssi; bool open; };
+NearbyWifi nearbyWifi[16];
+int nearbyCount=0, nearbyPage=0;
+bool wifiScanning=false, wifiScanDone=false, wifiScanError=false;
+uint32_t wifiScanAt=0;
+void startWifiScan(bool force=false);
+void serviceWifiScan();
+String wifiScanJson();
+// Manufacturer schematic: R2=100k, R3=100k, BAT_ADC -> GPIO34.
+// Measured BAT+ voltage does not prove physical battery presence; no percentage estimate.
+bool batteryEnabled = true;
+bool batteryWarningEnabled = false;
+constexpr bool BATTERY_VERIFIED = true; // Board schematic verified, individual unit not calibrated.
+constexpr float BATTERY_DIVIDER = 2.0f;
+int batteryLowMv = 0; // 0 = unset; user-selected threshold, no assumed battery chemistry.
+void loadExtendedSettings();
+void serviceWifi();
+void applyBrightness();
+void drawExtendedMenu();
+bool extendedTap(int x, int y);
+void setupExtendedRoutes();
 
 String statusText = "Startet";
-// GPIO27 is driven HIGH by the original board firmware. Verify that it is
-// backlight control on the physical board before using screen-off mode.
-constexpr int BACKLIGHT_PIN = 27;
-bool displaySleeping = false;
-bool displayAutoOff = false; // OFF by default, even after first installation
-uint16_t displayIdleMinutes = 10;
-uint32_t displayLastActivity = 0;
-bool wakeTouchWaitRelease = false;
-bool brightnessPwmEnabled=false,brightnessPwmAttached=false,nightEnabled=false;
-uint8_t dayBrightness=85,nightBrightness=25,nightFrom=22,nightTo=7;
-bool batteryWarningEnabled=false;
-uint16_t batteryThresholdMv=3500;
-uint32_t nextLightCheck=0;
-bool isNightNow() {
-  if(!nightEnabled || time(nullptr)<1700000000 || nightFrom==nightTo)return false;
-  time_t current=time(nullptr);tm ti;localtime_r(&current,&ti);
-  int h=ti.tm_hour;
-  return nightFrom<nightTo ? (h>=nightFrom&&h<nightTo):(h>=nightFrom||h<nightTo);
-}
-void applyBacklight() {
-  if(!brightnessPwmEnabled) {
-    if(brightnessPwmAttached){ledcDetach(BACKLIGHT_PIN);brightnessPwmAttached=false;pinMode(BACKLIGHT_PIN,OUTPUT);}
-    digitalWrite(BACKLIGHT_PIN,displaySleeping?LOW:HIGH);return;
-  }
-  if(!brightnessPwmAttached) {
-    if(!ledcAttach(BACKLIGHT_PIN,1000,8)) {
-      brightnessPwmEnabled=false;pinMode(BACKLIGHT_PIN,OUTPUT);
-      digitalWrite(BACKLIGHT_PIN,displaySleeping?LOW:HIGH);return;
-    }
-    brightnessPwmAttached=true;
-  }
-  int level=displaySleeping?0:(isNightNow()?nightBrightness:dayBrightness);
-  ledcWrite(BACKLIGHT_PIN,(uint32_t)level*255/100);
-}
-bool batteryIsLow(float voltage) {
-  return batteryWarningEnabled && voltage>=3.0f && voltage<=4.3f
-         && (int)(voltage*1000.0f)<batteryThresholdMv;
-}
-uint32_t otaAllowedUntil = 0;
-bool otaUploadOK = false;
-bool otaUploadStarted = false;
-String otaUploadError;
-size_t otaUploadedBytes = 0;
-size_t otaExpectedBytes = 0;
-uint32_t otaSessionNonce = 0; // Regenerated only by physical display confirmation
-bool otaFinishedOK = false;
-// Only allow uploading while the user has physically authorized it.
-bool otaAllowed() {
-  return otaAllowedUntil && (int32_t)(otaAllowedUntil - millis()) > 0;
-}
-size_t otaMaxBytes() {
-  const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
-  return part ? part->size : 0;
-}
-// Defensive decimal parser: negative, overflow, empty and oversize are invalid.
-bool otaParseFirmwareSize(const String &value, size_t &out) {
-  out = 0;
-  size_t partitionSize = otaMaxBytes();
-  if (!partitionSize || !value.length() || value.length() > 9) return false;
-  for (size_t i=0; i<value.length(); ++i) {
-    char ch = value[i];
-    if (ch < '0' || ch > '9') return false;
-    out = out*10 + (size_t)(ch-'0');
-    if (out > partitionSize) return false;
-  }
-  return out > 0;
-}
-bool otaSessionAuthorized() {
-  return otaAllowed() && otaSessionNonce != 0 &&
-         server.arg("nonce") == String(otaSessionNonce, HEX);
-}
-void drawBoard();
-void displayWake() {
-  displaySleeping = false;
-  applyBacklight();
-  touchMenuOpen = false; touchMode = 0; // Safari wake restores departure board
-  displayLastActivity = millis();
-  ++touchExitRevision;
-  // Keep all application data in RAM; repaint the last selected board.
-  drawBoard();
-}
-void displaySleep() {
-  if (displaySleeping) return;
-  displaySleeping = true;
-  applyBacklight();
-}
-
 uint32_t lastRefresh = 0;
 struct Departure {
   String line, destination, station;
+  bool tram = false;
   time_t when;
 };
 Departure departures[MAX_DEPARTURES];
 int departureCount = 0;
+struct DepartureJob {
+  String url, error;
+  JsonDocument doc;
+  int index = -1;
+  uint32_t generation = 0;
+  bool ok = false;
+};
+DepartureJob fetchJob;
+std::atomic<bool> fetchBusy{false}, fetchReady{false};
+bool fetchQueued[MAX_STOPS] = {};
+uint32_t dataGeneration = 0;
+void serviceDepartures();
+bool getJson(const String &url, JsonDocument &doc) {
+  // Searches run on the UI thread only after the departure worker releases TLS RAM.
+  while (fetchBusy.load()) delay(5);
+  return getJsonImpl(url, doc, lastHttpError);
+}
+
 
 
 String escapeHtml(const String &s) {
@@ -340,31 +303,32 @@ class JsonResponseBuffer : public Stream {
   void flush() override {}
 };
 
-bool getJson(const String &url, JsonDocument &doc) {
-  lastHttpError = "";
+bool getJsonImpl(const String &url, JsonDocument &doc, String &errorText) {
+  errorText = "";
   doc.clear();
   WiFiClientSecure client;
-  client.setInsecure(); // Bisherige TLS-Konfiguration.
+  client.setCACert(TRUST_ANCHORS); // Verify server certificate; never fall back to insecure TLS.
   HTTPClient http;
   http.setReuse(false);
-  http.setTimeout(15000);
-  if (!http.begin(client, url)) { lastHttpError = "HTTP Start fehlgeschlagen"; return false; }
+  http.setConnectTimeout(4000);
+  http.setTimeout(4000);
+  if (!http.begin(client, url)) { errorText = "HTTP Start fehlgeschlagen"; return false; }
   http.addHeader("Accept", "application/json");
   http.addHeader("Accept-Encoding", "identity");
   int code = http.GET();
   int expected = http.getSize();
   Serial.println("URL: " + url);
   if (code != HTTP_CODE_OK) {
-    lastHttpError = "HTTP " + String(code) + ": " + http.errorToString(code);
+    errorText = "HTTP " + String(code) + ": " + http.errorToString(code);
     http.end(); return false;
   }
   if (expected > (int)JsonResponseBuffer::CAPACITY) {
-    lastHttpError = "Antwort zu gross: " + String(expected) + " Bytes; Feldfilter pruefen";
+    errorText = "Antwort zu gross: " + String(expected) + " Bytes; Feldfilter pruefen";
     http.end(); return false;
   }
   JsonResponseBuffer response;
   if (!response.data) {
-    lastHttpError = "Empfangspuffer nicht verfuegbar; Heap " + String(ESP.getFreeHeap());
+    errorText = "Empfangspuffer nicht verfuegbar; Heap " + String(ESP.getFreeHeap());
     http.end(); return false;
   }
   // Dieser Weg nutzt die HTTPClient-Behandlung fuer Laenge und Chunked-Encoding.
@@ -373,14 +337,14 @@ bool getJson(const String &url, JsonDocument &doc) {
   Serial.printf("HTTP %d | Transfer %d | Bytes %u | erwartet %d | Heap %u\n",
     code, received, (unsigned)response.length, expected, (unsigned)ESP.getFreeHeap());
   if (received < 0 || response.overflow || (expected >= 0 && response.length != (size_t)expected)) {
-    lastHttpError = "Transfer " + String(received) + ": " + http.errorToString(received) +
+    errorText = "Transfer " + String(received) + ": " + http.errorToString(received) +
                    " | gelesen " + String((unsigned)response.length) + " | erwartet " + String(expected);
     return false;
   }
-  if (!response.length) { lastHttpError = "HTTP 200, aber Antwort leer"; return false; }
+  if (!response.length) { errorText = "HTTP 200, aber Antwort leer"; return false; }
   // const char* erzwingt eigene JSON-Strings: der Empfangspuffer wird danach freigegeben.
   DeserializationError error = deserializeJson(doc, (const char *)response.data, response.length);
-  if (error) lastHttpError = "JSON: " + String(error.c_str()) + " | Bytes " + String((unsigned)response.length);
+  if (error) errorText = "JSON: " + String(error.c_str()) + " | Bytes " + String((unsigned)response.length);
   return !error;
 }
 
@@ -397,20 +361,29 @@ void restoreCityPage() {
   const uint8_t saved = prefs.getUChar(cityPageKey(activeCity).c_str(), 0);
   activePage = saved < PAGE_COUNT ? saved : 0;
 }
-void selectPage(int page) {
-  if (page < 0 || page >= PAGE_COUNT || page == activePage) return;
+void selectPage(int page, bool persist = true) {
+  resetAutoPageTimer();
+  if (page < 0 || page >= PAGE_COUNT) return;
+  if(page==activePage){if(persist && prefs.getUChar(cityPageKey(activeCity).c_str(),0)!=page)prefs.putUChar(cityPageKey(activeCity).c_str(),page);return;}
   activePage = page;
-  prefs.putUChar(cityPageKey(activeCity).c_str(), (uint8_t)page);
+  if(persist) prefs.putUChar(cityPageKey(activeCity).c_str(), (uint8_t)page);
 }
 void loadCityStops() {
-  stopCount = prefs.getUChar(cityCountKey(activeCity).c_str(), 0);
-  if (stopCount > MAX_STOPS) stopCount = MAX_STOPS;
-  for (int i = 0; i < MAX_STOPS; ++i)
-    stops[i] = (prefs.getBool("fixedSlots", false) || i < stopCount) ? prefs.getString(cityStopKey(activeCity, i).c_str(), "") : "";
-  stopCount = 0;
-  for (int i = 0; i < MAX_STOPS; ++i) if (stops[i].length()) ++stopCount;
+  uint8_t counts[PAGE_COUNT];String items[MAX_STOPS];
+  bool migrated=decodeLayout(prefs.getString(layoutKey().c_str(),""),counts,items);
+  for(int page=0;page<PAGE_COUNT;++page)pageSlots[page]=migrated?counts[page]:(page==2?1:2);
+  for(int i=0;i<MAX_STOPS;++i){stops[i]=migrated?items[i]:String("");retryDelay[i]=15000;}
+  if(!migrated) {
+    const int mapped[]={0,1,3,4,6};
+    int oldCount=prefs.getUChar(cityCountKey(activeCity).c_str(),0);
+    bool fixed=prefs.getBool("fixedSlots",false);
+    for(int i=0;i<5;++i)if(fixed || i<oldCount)stops[mapped[i]]=prefs.getString(cityStopKey(activeCity,i).c_str(),"");
+  }
+  stopCount=0;for(int i=0;i<MAX_STOPS;++i)if(slotEnabled(i)&&stops[i].length())++stopCount;
 }
 void resetStopData() {
+  ++dataGeneration;
+  for (bool &queued : fetchQueued) queued = false;
   departureCount = 0;
   fetchFailed = false;
   for (int i = 0; i < MAX_STOPS; ++i) {
@@ -425,38 +398,30 @@ void loadSettings() {
   prefs.begin("tramli-bern", false);
   wifiSsid = prefs.getString("ssid", "");
   wifiPassword = prefs.getString("pass", "");
-  loadWiFiProfiles();
-  brightnessPwmEnabled=prefs.getBool("pwmOptIn",false);
-  dayBrightness=constrain((int)prefs.getUChar("dayBri",85),35,100);
-  nightBrightness=constrain((int)prefs.getUChar("nightBri",25),15,100);
-  nightFrom=constrain((int)prefs.getUChar("nightFrom",22),0,23);
-  nightTo=constrain((int)prefs.getUChar("nightTo",7),0,23);
-  nightEnabled=prefs.getBool("nightOn",false);
-  batteryWarningEnabled=prefs.getBool("batWarnOn",false);
-  batteryThresholdMv=constrain((int)prefs.getUShort("batWarnMv",3500),3000,3850);
-  applyBacklight();
-  displayAutoOff = prefs.getBool("dispAuto", false);
-  displayIdleMinutes = prefs.getUShort("dispMin", 10);
-  if(displayIdleMinutes < 1 || displayIdleMinutes > 240) displayIdleMinutes=10;
-  displaySleeping=false;displayLastActivity=millis();
   activeCity = prefs.getUChar("city", 0);
   if (activeCity < 0 || activeCity >= CITY_COUNT) activeCity = 0;
   loadCityStops();
   restoreCityPage();
+  loadExtendedSettings();
+  loadComfortSettings();
 }
 void saveStops() {
-  stopCount = 0;
-  for (int i = 0; i < MAX_STOPS; ++i) if (stops[i].length()) ++stopCount;
-  prefs.putBool("fixedSlots", true);
+  stopCount=0;for(int i=0;i<MAX_STOPS;++i)if(slotEnabled(i)&&stops[i].length())++stopCount;
   resetStopData();
-  prefs.putUChar(cityCountKey(activeCity).c_str(), stopCount);
-  for (int i = 0; i < MAX_STOPS; ++i)
-    prefs.putString(cityStopKey(activeCity, i).c_str(), stops[i]);
+  String encoded="FP1";for(int p=0;p<PAGE_COUNT;++p)encoded+=char('0'+pageSlots[p]);
+  for(int i=0;i<MAX_STOPS;++i)encoded+=String(stops[i].length())+":"+stops[i];
+  String key=layoutKey();prefs.putString(key.c_str(),encoded);
+  if(prefs.getString(key.c_str(),"")!=encoded){menuNotice="Speichern fehlgeschlagen - Speicher voll?";Serial.println(menuNotice);}
+  else menuNotice="";
+}
+void setPageSlots(int page,int count) {
+  if(page<0||page>=PAGE_COUNT||count<1||count>3||pageSlots[page]==count)return;
+  pageSlots[page]=count;saveStops();resetAutoPageTimer();lastRefresh=0;++touchExitRevision;
 }
 // Never silently fall back to a different page when its places are occupied.
 int firstFreeSlotOnPage(int page) {
   if (page < 0 || page >= PAGE_COUNT) return -1;
-  for (int slot = page * STOPS_PER_PAGE; slot < MAX_STOPS && slot < (page + 1) * STOPS_PER_PAGE; ++slot)
+  for (int slot = page * STOPS_PER_PAGE; slot < pageEndSlot(page); ++slot)
     if (!stops[slot].length()) return slot;
   return -1;
 }
@@ -469,6 +434,7 @@ void removeStopAt(int index) {
 void drawBoard(); // Der Stadtwechsel benutzt die unveraenderte Anzeige-Funktion.
 void changeCity(int city) {
   if (city < 0 || city >= CITY_COUNT || city == activeCity) return;
+  resetAutoPageTimer();
   activeCity = city;
   prefs.putUChar("city", activeCity);
   loadCityStops();
@@ -476,7 +442,35 @@ void changeCity(int city) {
   resetStopData();
   lastRefresh = 0;
   statusText = "Lade Abfahrten";
-  if (!touchMenuOpen) drawBoard();
+  // Both touch and Safari use this path. Saving happens before the animation.
+  touchMenuOpen = false;
+  touchMode = 0;
+  touchEditIndex = -1;
+  if(introMode==2) bootIntro.begin(gfx, millis(), activeCity);
+  else { bootIntro.cancel(); ++touchExitRevision; drawBoard(); }
+}
+void goHome() {
+  if(homeCity>=CITY_COUNT || homePage>=PAGE_COUNT) return;
+  changeCity(homeCity);
+  selectPage(homePage);
+  touchMenuOpen=false;touchMode=0;touchEditIndex=-1;
+  ++touchExitRevision;lastRefresh=0;drawBoard();
+}
+bool pageHasStops(int page) {
+  if(page<0 || page>=PAGE_COUNT)return false;
+  for(int i=page*STOPS_PER_PAGE;i<pageEndSlot(page);++i)
+    if(stops[i].length())return true;
+  return false;
+}
+void serviceAutoPages() {
+  uint32_t now=millis();
+  if(!autoPageSeconds || touchMenuOpen || bootIntro.active()){autoPageAt=now;return;}
+  if(uint32_t(now-autoPageAt)<uint32_t(autoPageSeconds)*1000)return;
+  autoPageAt=now;
+  for(int step=1;step<PAGE_COUNT;++step) {
+    int page=(activePage+step)%PAGE_COUNT;
+    if(pageHasStops(page)){selectPage(page,false);lastRefresh=0;drawBoard();return;}
+  }
 }
 String citySearchQuery(const String &userQuery) {
   String q = userQuery;
@@ -492,6 +486,12 @@ void drawLine(const String &s, int x, int y, uint16_t color, int size = 2) {
   gfx->setTextSize(size);
   gfx->setCursor(x, y);
   gfx->print(s);
+  // Built-in font is byte-based: render PLÄTZE as PLATZE with explicit umlaut.
+  int umlaut=s.indexOf("PLATZE");
+  if(umlaut>=0){
+    gfx->fillRect(x+(umlaut*6+13)*size,y-size,size,size,color);
+    gfx->fillRect(x+(umlaut*6+15)*size,y-size,size,size,color);
+  }
 }
 
 String asciiDisplay(String s) {
@@ -507,43 +507,43 @@ String clip(String s, int chars) {
 }
 
 void drawBusIcon(int x, int y) {
-  gfx->drawRoundRect(x, y + 3, 34, 13, 2, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 2, y + 4, 30, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 2, y + 13, 30, TRAM_COLOR_AMBER);
-  gfx->drawLine(x, y + 7, x + 2, y + 5, TRAM_COLOR_AMBER);
-  gfx->drawLine(x, y + 11, x + 2, y + 13, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 1, y + 11, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 2, y + 6, 5, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 8, y + 6, 7, 5, TRAM_COLOR_AMBER);
-  gfx->drawFastVLine(x + 16, y + 5, 9, TRAM_COLOR_AMBER);
-  gfx->drawFastVLine(x + 19, y + 5, 9, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 20, y + 6, 8, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 28, y + 6, 3, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 32, y + 6, 1, 5, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 6, y + 11, 9, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 20, y + 11, 8, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 8, y + 16, 2, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 25, y + 16, 2, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 8, y + 16, 1, TRAM_COLOR_BLACK);
-  gfx->fillCircle(x + 25, y + 16, 1, TRAM_COLOR_BLACK);
+  gfx->drawRoundRect(x, y + 3, 34, 13, 2, AMBER);
+  gfx->drawFastHLine(x + 2, y + 4, 30, AMBER);
+  gfx->drawFastHLine(x + 2, y + 13, 30, AMBER);
+  gfx->drawLine(x, y + 7, x + 2, y + 5, AMBER);
+  gfx->drawLine(x, y + 11, x + 2, y + 13, AMBER);
+  gfx->drawFastHLine(x + 1, y + 11, 5, AMBER);
+  gfx->drawRect(x + 2, y + 6, 5, 5, AMBER);
+  gfx->drawRect(x + 8, y + 6, 7, 5, AMBER);
+  gfx->drawFastVLine(x + 16, y + 5, 9, AMBER);
+  gfx->drawFastVLine(x + 19, y + 5, 9, AMBER);
+  gfx->drawRect(x + 20, y + 6, 8, 5, AMBER);
+  gfx->drawRect(x + 28, y + 6, 3, 5, AMBER);
+  gfx->drawRect(x + 32, y + 6, 1, 5, AMBER);
+  gfx->drawFastHLine(x + 6, y + 11, 9, AMBER);
+  gfx->drawFastHLine(x + 20, y + 11, 8, AMBER);
+  gfx->fillCircle(x + 8, y + 16, 2, AMBER);
+  gfx->fillCircle(x + 25, y + 16, 2, AMBER);
+  gfx->fillCircle(x + 8, y + 16, 1, BLACK);
+  gfx->fillCircle(x + 25, y + 16, 1, BLACK);
 }
 
 void drawTramIcon(int x, int y) {
-  gfx->drawRoundRect(x, y + 5, 34, 12, 2, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 3, y + 5, 28, TRAM_COLOR_AMBER);
-  gfx->drawLine(x + 14, y + 5, x + 18, y, TRAM_COLOR_AMBER);
-  gfx->drawLine(x + 18, y, x + 22, y + 5, TRAM_COLOR_AMBER);
-  gfx->drawFastHLine(x + 15, y, 7, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 3, y + 8, 5, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 9, y + 8, 5, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 16, y + 7, 5, 9, TRAM_COLOR_AMBER);
-  gfx->drawFastVLine(x + 18, y + 7, 9, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 23, y + 8, 4, 5, TRAM_COLOR_AMBER);
-  gfx->drawRect(x + 28, y + 8, 4, 5, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 6, y + 18, 1, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 11, y + 18, 1, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 25, y + 18, 1, TRAM_COLOR_AMBER);
-  gfx->fillCircle(x + 30, y + 18, 1, TRAM_COLOR_AMBER);
+  gfx->drawRoundRect(x, y + 5, 34, 12, 2, AMBER);
+  gfx->drawFastHLine(x + 3, y + 5, 28, AMBER);
+  gfx->drawLine(x + 14, y + 5, x + 18, y, AMBER);
+  gfx->drawLine(x + 18, y, x + 22, y + 5, AMBER);
+  gfx->drawFastHLine(x + 15, y, 7, AMBER);
+  gfx->drawRect(x + 3, y + 8, 5, 5, AMBER);
+  gfx->drawRect(x + 9, y + 8, 5, 5, AMBER);
+  gfx->drawRect(x + 16, y + 7, 5, 9, AMBER);
+  gfx->drawFastVLine(x + 18, y + 7, 9, AMBER);
+  gfx->drawRect(x + 23, y + 8, 4, 5, AMBER);
+  gfx->drawRect(x + 28, y + 8, 4, 5, AMBER);
+  gfx->fillCircle(x + 6, y + 18, 1, AMBER);
+  gfx->fillCircle(x + 11, y + 18, 1, AMBER);
+  gfx->fillCircle(x + 25, y + 18, 1, AMBER);
+  gfx->fillCircle(x + 30, y + 18, 1, AMBER);
 }
 
 // Warnungen zum Datenabruf sind keine Verkehrsmeldungen.
@@ -560,27 +560,47 @@ void drawOpaque(String text, int x, int y, int width, uint16_t color) {
   if (text.length() > (size_t)width) text = text.substring(0, width);
   while (text.length() < (size_t)width) text += ' ';
   gfx->setTextSize(2);
-  gfx->setTextColor(color, TRAM_COLOR_BLACK);
+  gfx->setTextColor(color, BLACK);
   gfx->setCursor(x, y);
   gfx->print(text);
 }
 
-// Puvodni retro vzhled: misto prepinace ABFAHRTEN pouze aktualni mesto.
+// Native-size antialiased city crests, shared by city selection and board heading.
+void drawCityCrest(int city, int x, int y) {
+  MenuCrests::draw(gfx, city, x, y);
+}
+void drawCityBadge(int city, int x, int y, int w, int h, int size, bool selected) {
+  if(city<0 || city>=CITY_COUNT) return;
+  gfx->fillRect(x,y,w,h,BLACK); // No card outline or light crest backing.
+  drawCityCrest(city,x+6,y+(h-26)/2);
+  int textX=x+41;
+  int textY=y+(h-8*size)/2-1;
+  if(city==1 && textY<y+size) textY=y+size;
+  // The built-in bitmap font is byte-based: draw U and its umlaut explicitly.
+  drawLine(city==1 ? "ZURICH" : CITY_LABELS[city],textX,textY,WHITE,size);
+  if(city==1) {
+    gfx->fillRect(textX+7*size,textY-size,size,size,WHITE);
+    gfx->fillRect(textX+9*size,textY-size,size,size,WHITE);
+  }
+  gfx->fillRect(textX,y+h-5,w-49,2,CITY_ACCENTS[city]);
+  // Selection marker appears only in the city list, without changing its background.
+  if(selected) {
+    int mx=x+w-19, my=y+(h-14)/2;
+    gfx->fillRect(mx,my,14,14,BUTTON_RED);
+    gfx->fillRect(mx+3,my+6,8,2,WHITE);
+    gfx->fillRect(mx+6,my+3,2,8,WHITE);
+  }
+}
+// Informational heading, same selected-city badge as the city menu.
 void drawCityButton() {
-  gfx->fillRect(12, 4, 350, 26, TRAM_COLOR_BLACK);
-  String name = CITY_LABELS[activeCity];
-  gfx->setTextColor(TRAM_COLOR_AMBER, TRAM_COLOR_BLACK);
-  int size = name.length() > 13 ? 1 : 2;
-  gfx->setTextSize(size);
-  gfx->setCursor(16, size == 2 ? 8 : 12);
-  gfx->print(name);
+  gfx->fillRect(112,2,285,30,BLACK);
+  drawCityBadge(activeCity,112,2,285,30,3,false);
 }
 
 void drawHeader() {
-  if (displaySleeping) return;
+  if (bootIntro.active()) return;
   static String previousClock;
   static int previousFill = -2;
-  static bool previousLow=false;
   static uint32_t revision = 0, batteryRead = 0;
   bool force = revision != screenRevision;
   revision = screenRevision;
@@ -596,26 +616,27 @@ void drawHeader() {
   }
   if (force) { drawCityButton(); }
   if (force || clock != previousClock) {
-    drawOpaque(clock, 385, 8, 5, TRAM_COLOR_WHITE);
+    drawOpaque(clock, 410, 8, 5, WHITE);
     previousClock = clock;
   }
   if (force || millis() - batteryRead >= 10000) {
     batteryRead = millis();
     float volt = batteryVoltage();
-    int fill = -1;
-    if (volt >= 3.0 && volt <= 4.3) {
-      int percent = constrain((int)((volt - 3.3) / 0.9 * 100), 0, 100);
-      fill = percent * 16 / 100;
-    }
-    bool low=batteryIsLow(volt);
-    if (force || fill != previousFill || low != previousLow) {
-      gfx->fillRect(448, 12, 25, 13, TRAM_COLOR_BLACK);
-      if (fill >= 0) {
-        gfx->drawRect(448,12,20,12,low?BUTTON_RED:TRAM_COLOR_WHITE);
-        gfx->fillRect(469, 15, 3, 6, TRAM_COLOR_WHITE);
-        if(fill>0)gfx->fillRect(450,14,fill,8,low?BUTTON_RED:TRAM_COLOR_AMBER);
+    int fill = !batteryEnabled ? -3 : volt > 0 ? (int)(volt * 100 + 0.5f) * 2 + (isLowBattery(volt, BATTERY_VERIFIED, batteryLowMv / 1000.0f) ? 1 : 0) : -1;
+    static int previousColor = -1;
+    int visualColor = batteryVisualColor(volt);
+    if (force || fill != previousFill || visualColor != previousColor) {
+      previousColor = visualColor;
+      gfx->fillRect(10, 10, 96, 18, BLACK);
+      if (batteryEnabled) {
+      uint16_t color = batteryVisualColor(volt);
+      gfx->drawRect(10, 12, 20, 12, color);
+      gfx->fillRect(31, 15, 3, 6, color);
+      int barWidth = batteryBarWidth(volt);
+      if (barWidth) gfx->fillRect(12, 14, barWidth, 8, color);
+      drawLine(fill < 0 ? "--" : String(volt, 2) + " V", 43, 14, color, 1);
       }
-      previousFill=fill;previousLow=low;
+      previousFill = fill;
     }
   }
 }
@@ -623,23 +644,22 @@ void drawHeader() {
 // Auf Seite 1 und 2 wie bisher: je zwei Haltestellen, drei Fahrten.
 // Auf Seite 3: genau eine Haltestelle mit sieben Fahrten.
 void drawDepartureRows() {
-  if (displaySleeping) return;
+  if (bootIntro.active()) return;
   time_t now = time(nullptr);
-  const bool lastPage = activePage == 2;
-  const int stationsOnPage = lastPage ? 1 : STOPS_PER_PAGE;
-  const int rowsPerStation = lastPage ? PAGE3_DEPARTURES : DEPARTURES_PER_STOP;
-  const int spacing = lastPage ? 27 : 28;
+  const int stationsOnPage = pageSlots[activePage];
+  const int rowsPerStation = pageRows(activePage);
+  const int spacing = departureSpacing(activePage);
   for (int position = 0; position < stationsOnPage; ++position) {
     int station = activePage * STOPS_PER_PAGE + position;
-    const int headerY = 43 + position * 110;
-    const int baseY = 66 + position * 110;
-    const int cacheBase = lastPage ? 0 : position * DEPARTURES_PER_STOP;
+    const int headerY = stationHeaderY(activePage,position);
+    const int baseY = headerY+23;
+    const int cacheBase = position * rowsPerStation;
     if (!stops[station].length()) {
-      drawOpaque("Haltestelle noch nicht eingerichtet", 12, headerY, 38, TRAM_COLOR_WHITE);
+      drawOpaque("Haltestelle noch nicht eingerichtet", 12, headerY, 38, WHITE);
       for (int slot = 0; slot < rowsPerStation; ++slot) {
         int y = baseY + slot * spacing;
-        drawOpaque("", 14, y, 32, TRAM_COLOR_AMBER);
-        gfx->fillRect(398, y - 3, 74, 24, TRAM_COLOR_BLACK);
+        drawOpaque("", 14, y, 32, AMBER);
+        gfx->fillRect(398, y - 3, 74, 24, BLACK);
       }
       continue;
     }
@@ -648,14 +668,14 @@ void drawDepartureRows() {
     stationTitle = clip(stationTitle, stopFetchFailed[station] ? 29 : 38);
     if (stopFetchFailed[station]) stationTitle += " (Fehler)";
     if (stationTitle != stationCache[position]) {
-      drawOpaque(stationTitle, 12, headerY, 38, TRAM_COLOR_WHITE);
+      drawOpaque(stationTitle, 12, headerY, 38, WHITE);
       stationCache[position] = stationTitle;
     }
     int selected[PAGE3_DEPARTURES];
     int shown = 0;
     for (int i = 0; i < departureCount && shown < rowsPerStation; ++i) {
       if (departures[i].station != stops[station]) continue;
-      if (stopFetchFailed[station] && millis() - lastSuccess[station] > 180000) continue;
+      if (lastSuccess[station] && millis() - lastSuccess[station] > 180000) continue;
       if (clockReady && departures[i].when < now - 30) continue;
       selected[shown++] = i;
     }
@@ -666,12 +686,12 @@ void drawDepartureRows() {
       Departure *d = slot < shown ? &departures[selected[slot]] : nullptr;
       if (d) {
         content = d->line + "|" + d->destination;
-        if (stopFetchFailed[station]) timing = "alt";
+        if (stopFetchFailed[station] || (lastSuccess[station] && millis() - lastSuccess[station] > 90000)) timing = "alt";
         else if (!clockReady) timing = "--";
         else {
           long minutes = max(0L, (long)((d->when - now + 59) / 60));
           if (minutes == 0) timing = (millis() / 500) % 2 == 0 ?
-              (d->line.startsWith("T") ? "ICON_T" : "ICON_B") : "";
+              (d->tram ? "ICON_T" : "ICON_B") : "";
           else timing = minutes > 999 ? String("999+") : String(minutes) + "'";
         }
       } else if (slot == 0) {
@@ -679,19 +699,19 @@ void drawDepartureRows() {
       }
       if (content != rowCache[cache]) {
         if (d) {
-          if (rowCache[cache].indexOf('|') < 0) drawOpaque("", 14, y, 32, TRAM_COLOR_AMBER);
-          drawOpaque(clip(d->line, 6), 14, y, 6, TRAM_COLOR_AMBER);
-          drawOpaque(clip(d->destination, 22), 100, y, 24, TRAM_COLOR_AMBER);
+          if (rowCache[cache].indexOf('|') < 0) drawOpaque("", 14, y, 32, AMBER);
+          drawOpaque(clip(d->line, 6), 14, y, 6, AMBER);
+          drawOpaque(clip(d->destination, 22), 100, y, 24, AMBER);
         } else {
-          drawOpaque(content, 14, y, 32, TRAM_COLOR_WHITE);
+          drawOpaque(content, 14, y, 32, WHITE);
         }
         rowCache[cache] = content;
       }
       if (timing != timeCache[cache]) {
-        gfx->fillRect(398, y - 3, 74, 24, TRAM_COLOR_BLACK);
+        gfx->fillRect(398, y - 3, 74, 24, BLACK);
         if (timing == "ICON_T") drawTramIcon(400, y - 2);
         else if (timing == "ICON_B") drawBusIcon(400, y - 2);
-        else drawOpaque(timing, 400, y, 6, TRAM_COLOR_AMBER);
+        else drawOpaque(timing, 400, y, 6, AMBER);
         timeCache[cache] = timing;
       }
     }
@@ -699,9 +719,10 @@ void drawDepartureRows() {
 }
 
 void drawBoard() {
-  if (touchMenuOpen || displaySleeping) return;
+  if (bootIntro.active()) return;
+  if (touchMenuOpen) return;
   static String previousLayout;
-  String layout = String(activeCity) + ":" + String(WiFi.status() == WL_CONNECTED) + ":" + String(stopCount) + ":" + String(activePage) + ":" + String(touchExitRevision);
+  String layout = String(activeCity) + ":" + String(WiFi.status() == WL_CONNECTED) + ":" + String(stopCount) + ":" + String(activePage) + ":" + String(touchExitRevision)+":"+String(pageSlots[activePage]);
   for (int i = 0; i < MAX_STOPS; ++i) layout += "|" + stops[i];
   layout += WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   if (layout == previousLayout) {
@@ -716,50 +737,70 @@ void drawBoard() {
     rowCache[i] = "\x01";
     timeCache[i] = "\x01";
   }
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  gfx->drawFastHLine(10, 34, 460, TRAM_COLOR_AMBER);
+  gfx->fillScreen(BLACK);
+  gfx->drawFastHLine(10, 34, 460, AMBER);
   drawHeader();
   if (WiFi.status() != WL_CONNECTED) {
-    drawLine("WLAN nicht verbunden", 12, 60, TRAM_COLOR_WHITE);
-    drawLine("Setup: TRAMLI-BERN-2", 12, 93, TRAM_COLOR_AMBER);
-    drawLine("Browser: 192.168.4.1", 12, 123, TRAM_COLOR_WHITE);
+    drawLine("WLAN nicht verbunden", 12, 60, WHITE);
+    drawLine("Setup: TRAMLI-BERN-2", 12, 93, AMBER);
+    drawLine("Browser: 192.168.4.1", 12, 123, WHITE);
   } else {
-    for (int position = 0; position < (activePage == 2 ? 1 : STOPS_PER_PAGE); ++position) {
+    for (int position = 0; position < pageSlots[activePage]; ++position) {
       int i = activePage * STOPS_PER_PAGE + position;
       if (!stops[i].length()) continue;
       String name = stops[i];
       name.replace(String(CITY_QUERIES[activeCity]) + ", ", "");
-      drawLine(clip(name, 38), 12, 43 + position * 110, TRAM_COLOR_WHITE, 2);
+      drawLine(clip(name, 38), 12, stationHeaderY(activePage,position), WHITE, 2);
     }
     drawDepartureRows();
   }
-  gfx->drawFastHLine(10, 267, 460, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(10, 267, 460, AMBER);
   String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
-  drawLine("Konfiguration: " + address, 12, 276, TRAM_COLOR_WHITE, 1);
-  gfx->fillRoundRect(230, 270, 82, 24, 3, BUTTON_BLUE);
-  drawLine("MENU", 245, 274, TRAM_COLOR_WHITE, 2);
+  gfx->fillRoundRect(12, 270, 100, 25, 4, BUTTON_RED);
+  gfx->drawRoundRect(12, 270, 100, 25, 4, AMBER);
+  drawLine("MENU", 38, 275, WHITE, 2);
+  drawLine(address, 126, 278, WHITE, 1);
+  if(homeCity<CITY_COUNT) {
+    gfx->fillRoundRect(254,270,60,25,4,BUTTON_RED);
+    gfx->drawRoundRect(254,270,60,25,4,WHITE);
+    // Centered white cross; keep the existing Home touch target unchanged.
+    gfx->fillRect(281,275,5,15,WHITE);
+    gfx->fillRect(276,280,15,5,WHITE);
+  }
   for (int page = 0; page < PAGE_COUNT; ++page) {
     int x = 320 + page * 50;
-    gfx->fillRect(x, 270, 46, 24, page == activePage ? TRAM_COLOR_AMBER : TRAM_COLOR_BLACK);
-    gfx->drawRect(x, 270, 46, 24, TRAM_COLOR_AMBER);
-    drawLine(String(page + 1), x + 17, 274, page == activePage ? TRAM_COLOR_BLACK : TRAM_COLOR_WHITE, 2);
+    gfx->fillRect(x, 270, 46, 24, page == activePage ? AMBER : BLACK);
+    gfx->drawRect(x, 270, 46, 24, AMBER);
+    drawLine(String(page + 1), x + 17, 274, page == activePage ? BLACK : WHITE, 2);
   }
-  gfx->drawFastHLine(10, 295, 460, TRAM_COLOR_AMBER);
+  gfx->drawFastHLine(10, 299, 460, AMBER);
 }
 
 // Dokumentiertes ISO-8601-Feld prognosis.departure in Unixzeit umrechnen.
 // Expliziter UTC-Offset vermeidet Probleme bei Sommer-/Winterzeit.
 int64_t parseDepartureTime(const char *value) {
   if (!value || !*value) return 0;
+  if (strlen(value) < 20 || value[4]!='-' || value[7]!='-' || value[10]!='T' || value[13]!=':' || value[16]!=':') return 0;
+  for (int p=0;p<19;++p) if (p!=4&&p!=7&&p!=10&&p!=13&&p!=16 && (value[p]<'0'||value[p]>'9')) return 0;
   int year, month, day, hour, minute, second;
   if (sscanf(value, "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute, &second) != 6) return 0;
   if (strlen(value) < 20 || month < 1 || month > 12 || day < 1 || day > 31) return 0;
+  if (year < 1970 || year > 2199 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return 0;
+  const int monthDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+  int daysInMonth = monthDays[month-1] + (month == 2 && year%4 == 0 && (year%100 != 0 || year%400 == 0));
+  if (day > daysInMonth) return 0;
   int offsetHour = 0, offsetMinute = 0, offset = 0;
+  size_t length = strlen(value);
   if (value[19] == '+' || value[19] == '-') {
-    if (sscanf(value + 20, "%d:%d", &offsetHour, &offsetMinute) != 2) return 0;
+    int minutePos = length == 25 && value[22] == ':' ? 23 : length == 24 ? 22 : -1;
+    if (minutePos < 0) return 0;
+    for (int p : {20,21,minutePos,minutePos+1}) if (value[p] < '0' || value[p] > '9') return 0;
+    offsetHour = (value[20]-'0')*10 + value[21]-'0';
+    offsetMinute = (value[minutePos]-'0')*10 + value[minutePos+1]-'0';
+    if (offsetHour > 23 || offsetMinute > 59) return 0;
     offset = (offsetHour * 60 + offsetMinute) * 60;
     if (value[19] == '-') offset = -offset;
-  } else if (value[19] != 'Z') return 0;
+  } else if (value[19] != 'Z' || length != 20) return 0;
   year -= month <= 2;
   int era = (year >= 0 ? year : year - 399) / 400;
   unsigned yoe = (unsigned)(year - era * 400);
@@ -770,21 +811,22 @@ int64_t parseDepartureTime(const char *value) {
 }
 
 // Jeder Halt wird separat aktualisiert. Ein Fehler loescht nicht den letzten Empfang.
-void fetchStop(int index) {
-  lastAttempt[index] = millis();
-  JsonDocument doc;
-  String url = "https://transport.opendata.ch/v1/stationboard?station=" +
-               urlEncode(stops[index]) + "&limit=" + String(index == 4 ? 14 : 6) +
+String stationboardUrl(int index) {
+  return "https://transport.opendata.ch/v1/stationboard?station=" +
+               urlEncode(stops[index]) + "&limit=" + String(pageRows(index/STOPS_PER_PAGE)*2) +
+               "&transportations%5B%5D=tram&transportations%5B%5D=bus"
                "&fields%5B%5D=stationboard/category"
                "&fields%5B%5D=stationboard/number"
                "&fields%5B%5D=stationboard/to"
                "&fields%5B%5D=stationboard/stop/departureTimestamp"
                "&fields%5B%5D=stationboard/stop/prognosis/departure"
                "&fields%5B%5D=stationboard/stop/prognosis/departureTimestamp";
-  if (!getJson(url, doc) || !doc["stationboard"].is<JsonArray>()) {
+}
+void applyStopResponse(int index, JsonDocument &doc, bool success, const String &errorText) {
+  if (!success || !doc["stationboard"].is<JsonArray>()) {
     bool alreadyFailed = stopFetchFailed[index];
     stopFetchFailed[index] = true;
-    stopErrors[index] = lastHttpError.length() ? lastHttpError : "Antwort ohne stationboard-Liste";
+    stopErrors[index] = errorText.length() ? errorText : "Antwort ohne stationboard-Liste";
     retryDelay[index] = alreadyFailed ? min((uint32_t)60000, retryDelay[index] * 2) : 15000;
     // Abstand ab Ende des fehlgeschlagenen Abrufs messen.
     lastAttempt[index] = millis();
@@ -792,7 +834,7 @@ void fetchStop(int index) {
     return;
   }
   Departure fresh[PAGE3_DEPARTURES];
-  const int wanted = index == 4 ? PAGE3_DEPARTURES : DEPARTURES_PER_STOP;
+  const int wanted = pageRows(index/STOPS_PER_PAGE);
   int count = 0;
   for (JsonObject row : doc["stationboard"].as<JsonArray>()) {
     if (count >= wanted) break;
@@ -806,19 +848,21 @@ void fetchStop(int index) {
     category.toUpperCase();
     if (category.length() && category != "T" && category != "TRAM" &&
         category != "B" && category != "BUS" && category != "NFB" && category != "NFO") continue;
-    Departure &d = fresh[count++];
+    Departure &d = fresh[count];
     d.station = stops[index];
     String number = String(row["number"] | "");
     bool isTram = category == "T" || category == "TRAM";
-    if (!category.length()) isTram = number == "6" || number == "7" || number == "8" || number == "9";
-    d.line = String(isTram ? "T " : "B ") + number;
+    if (!category.length()) continue; // Do not guess vehicle type from a line number.
+    d.tram = isTram;
+    d.line = number;
     d.destination = String(row["to"] | "");
     d.when = (time_t)timestamp;
+    ++count;
   }
   int keep = 0;
   for (int i = 0; i < departureCount; ++i) {
     bool stillSelected = false;
-    for (int j = 0; j < MAX_STOPS; ++j) if (departures[i].station == stops[j]) stillSelected = true;
+    for (int j = 0; j < MAX_STOPS; ++j) if (slotEnabled(j) && departures[i].station == stops[j]) stillSelected = true;
     if (stillSelected && departures[i].station != stops[index]) departures[keep++] = departures[i];
   }
   departureCount = keep;
@@ -827,6 +871,44 @@ void fetchStop(int index) {
   stopErrors[index] = "";
   lastSuccess[index] = millis();
   retryDelay[index] = 15000;
+}
+
+// Synchronous adapter retained for host tests; production uses the worker below.
+void fetchStop(int index) {
+  lastAttempt[index] = millis();
+  JsonDocument doc;
+  bool ok = getJson(stationboardUrl(index), doc);
+  applyStopResponse(index, doc, ok, lastHttpError);
+}
+void departureWorker(void *) {
+  fetchJob.ok = getJsonImpl(fetchJob.url, fetchJob.doc, fetchJob.error);
+  fetchReady.store(true);
+  fetchBusy.store(false);
+  vTaskDelete(nullptr);
+}
+void serviceDepartures() {
+  if(fetchBusy.load()) return;
+  if(fetchReady.load()) {
+    if(fetchJob.generation == dataGeneration) {
+      applyStopResponse(fetchJob.index, fetchJob.doc, fetchJob.ok, fetchJob.error);
+      updateFetchStatus();
+    }
+    fetchJob.doc.clear(); fetchJob.error=""; fetchJob.url="";
+    fetchReady.store(false);
+  }
+  if(touchMenuOpen || WiFi.status()!=WL_CONNECTED) return;
+  for(int i=0;i<MAX_STOPS;++i) {
+    if(i/STOPS_PER_PAGE != activePage || !slotEnabled(i)) {fetchQueued[i]=false;continue;}
+    if(!fetchQueued[i] || !stops[i].length()) continue;
+    fetchQueued[i]=false;
+    if(lastAttempt[i] && millis()-lastAttempt[i]<15000) continue;
+    fetchJob.url=stationboardUrl(i);fetchJob.index=i;fetchJob.generation=dataGeneration;
+    lastAttempt[i]=millis();fetchBusy.store(true);
+    if(xTaskCreate(departureWorker,"departures",10240,nullptr,1,nullptr)!=pdPASS) {
+      fetchBusy.store(false);fetchJob.ok=false;fetchJob.error="Nicht genug RAM fuer Datenabruf";fetchReady.store(true);
+    }
+    break;
+  }
 }
 
 void updateFetchStatus() {
@@ -839,19 +921,19 @@ void updateFetchStatus() {
 
 void refreshBoard() {
   if (WiFi.status() != WL_CONNECTED || !stopCount) { drawBoard(); return; }
-  for (int i = activePage * STOPS_PER_PAGE; i < min(MAX_STOPS, (activePage + 1) * STOPS_PER_PAGE); ++i) {
+  for (int i = activePage * STOPS_PER_PAGE; i < pageEndSlot(activePage); ++i) {
     // Auch regulaere Aktualisierungen beachten den Fehler-Abstand.
     if (stopFetchFailed[i] && millis() - lastAttempt[i] < retryDelay[i]) continue;
-    if (stops[i].length()) fetchStop(i);
+    if (stops[i].length() && (!lastAttempt[i] || millis() - lastAttempt[i] >= 15000)) fetchQueued[i] = true;
   }
   updateFetchStatus();
 }
 
 void retryFailedStops() {
   if (WiFi.status() != WL_CONNECTED) return;
-  for (int i = activePage * STOPS_PER_PAGE; i < min(MAX_STOPS, (activePage + 1) * STOPS_PER_PAGE); ++i) {
+  for (int i = activePage * STOPS_PER_PAGE; i < pageEndSlot(activePage); ++i) {
     if (stopFetchFailed[i] && millis() - lastAttempt[i] >= retryDelay[i]) {
-      if (stops[i].length()) fetchStop(i);
+      if (stops[i].length() && (!lastAttempt[i] || millis() - lastAttempt[i] >= 15000)) fetchQueued[i] = true;
       updateFetchStatus();
       break;
     }
@@ -867,13 +949,12 @@ String pageStart(const String &title) {
   String html = R"TRAMLI(<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#12477f"><title>Traemli Schweiz</title><style>
 :root{color-scheme:light;--ink:#17324b;--muted:#50657a;--blue:#1558b0;--teal:#086b62;--line:#d4e0ed}
 *{box-sizing:border-box}body{margin:0;background:#eef4fb;color:var(--ink);font:20px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%}header{background:#12477f;color:white;padding:24px 20px;border-bottom:5px solid #57d7c0}header div,main{max-width:880px;margin:auto}header b{font-size:30px;letter-spacing:-.6px}header span{display:block;font-size:14px;font-weight:650;letter-spacing:1.5px;color:#d8eaff;margin-top:4px}main{padding:28px 20px 48px}h1{font-size:clamp(30px,5vw,42px);line-height:1.2;letter-spacing:-1px;margin:8px 0 12px;overflow-wrap:anywhere}h2{font-size:26px;line-height:1.3;margin:0 0 18px}p{margin:12px 0 20px}small,.muted{color:var(--muted)}small{font-size:17px}.card{background:white;border:1px solid var(--line);border-top:5px solid #5a8fd1;border-radius:20px;padding:26px;margin:24px 0;box-shadow:0 5px 18px #17324b08}.card>h2:not(:first-child){border-top:2px solid #e5edf7;padding-top:24px;margin-top:28px}.card:has(form[action='/city']){border-top-color:#1558b0;background:#f7faff}.card:has(form[action='/search']){border-top-color:#098477}.card:has(button[aria-current='page']){border-top-color:#e0a126}button,.button{font:inherit;font-size:20px;line-height:1.3;font-weight:700;background:var(--blue);color:white;border:2px solid transparent;border-radius:12px;padding:14px 20px;min-height:56px;cursor:pointer;text-decoration:none;display:inline-flex;justify-content:center;align-items:center;text-align:center;max-width:100%;overflow-wrap:anywhere;touch-action:manipulation}button:hover,.button:hover{filter:brightness(.94)}button:active,.button:active{transform:translateY(1px)}a{color:#134e9d;text-underline-offset:3px}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #172e49;outline-offset:4px}input,select{display:block;font:inherit;font-size:20px;line-height:1.4;color:var(--ink);background:#f8fbff;border:2px solid #aebfd2;border-radius:12px;padding:13px 14px;width:100%;max-width:100%;min-width:0;margin:8px 0 18px;min-height:56px}select{padding-right:28px!important}input:focus,select:focus{border-color:var(--blue);background:white}input::placeholder{color:#617489}label{display:block;font-size:18px;font-weight:700;margin-top:16px}ol,ul{list-style:none;padding:0;margin:0}li{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:22px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}li:last-child{border:0}li>div{width:100%;min-width:0}li>span{flex:1 1 220px}li>form{flex:1 1 240px;min-width:0}li b{font-size:22px}li form+form{margin-top:12px}.subtle{background:#e9f1fc;color:#174f91;border-color:#c4d7f0;font-size:19px;padding:13px 18px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}.row form{margin:0;flex:1 1 140px}.row button{width:100%}nav{display:flex;gap:10px;margin:24px 0;flex-wrap:wrap}nav a{flex:1 1 180px;min-height:56px;padding:13px 16px;background:white;border:2px solid #bdcfe4;border-radius:12px;text-align:center;text-decoration:none;font-size:19px;font-weight:700;color:#174f91}nav a:hover{background:#e5effc}.status{padding:16px 20px;background:#e3f4ef;color:#175447;border-left:5px solid #138473;border-radius:12px;font-size:18px}.hint{font-size:17px;color:var(--muted);line-height:1.6}.notice{background:#fff2d4;color:#684600;border-left:5px solid #d99b22;padding:17px 20px;border-radius:12px}.notice:empty{display:none}summary{cursor:pointer;font-weight:700;min-height:52px;padding:10px 0}footer{font-size:16px;color:var(--muted);margin-top:32px;padding-top:20px;border-top:1px solid var(--line)}.address{font-family:ui-monospace,monospace;font-size:18px;display:block;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}.full{width:100%}form{margin:0}button[aria-current='page']{background:#12477f;box-shadow:0 0 0 3px #bdd5f4}form[action='/add'] button,form[action='/search'] button,form[action='/refresh'] button{background:var(--teal);color:white}form[action='/remove'] button,form[action='/board-remove'] button{background:#fff0f0;border-color:#edbebe;color:#a52626}form[action='/move'] button{background:#eaf1fc;color:#174f91}form[action='/page']+ol{margin-top:12px}@media(max-width:520px){body{font-size:19px}header{padding:18px 16px}main{padding:22px 14px 36px}.card{padding:20px 16px;margin:20px 0}h2{font-size:24px}.row{gap:8px}.row form{flex:1 1 80px}.row button{font-size:18px;padding:13px 7px}nav{gap:8px}nav a{flex:1 1 100%;text-align:left}li{display:block}li>form{margin-top:16px}li b{font-size:21px}button,.button{width:100%}header b{font-size:28px}}
-</style></head><body><header><div><b>▤ Trämli Bern</b><span>DEINE ABFAHRTSTAFELN</span></div></header><main>)TRAMLI";
+input[type=checkbox]{display:inline-block;width:24px;min-height:24px;height:24px;margin:0 12px 0 0;vertical-align:middle}</style></head><body><header><div><b>▤ Trämli Bern</b><span>DEINE ABFAHRTSTAFELN</span></div></header><main>)TRAMLI";
   html += "<h1>" + escapeHtml(title) + "</h1><p class='muted'>" + escapeHtml(boardLabel()) + " · " + escapeHtml(currentAddress()) + "</p>";
-  html += "<nav aria-label='Navigation'><a href='/'>Haltestellen</a><a href='/boards'>Meine Boards</a><a href='/settings'>Einstellungen</a><a href='/system'>System</a></nav>";
-  html += "<form method='post' action='/display/wake'><button class='subtle full'>Probudit displej</button></form>";
+  if (title != "Menü") html += "<nav aria-label='Navigation'><a href='/'>← Menü</a><a href='/boards'>▣ Meine Boards</a></nav>";
   return html;
 }
-String pageEnd() { return "<footer>TramliBern · Lokalni ovladani · Verze " TRAMLIBERN_VERSION " · Seite 1-2: je 2 Haltestellen / 3 Abfahrten · Seite 3: 1 Haltestelle / 7 Abfahrten</footer></main></body></html>"; }
+String pageEnd() { return "<footer>Trämli Bern · Lokale Bedienung · Version 4.0 RC26 HomeCross · 3 Seiten · Je Seite 1–3 Haltestellen</footer></main></body></html>"; }
 void sendPage(String html, int code = 200) {
   server.sendHeader("Cache-Control", "no-store");
   server.send(code, "text/html; charset=utf-8", html + pageEnd());
@@ -881,7 +962,7 @@ void sendPage(String html, int code = 200) {
 void showMessage(const String &message, int code = 400) {
   sendPage(pageStart("Hinweis") + "<section class='card'><p>" + escapeHtml(message) + "</p><a class='button' href='/'>Zurück zur Bedienung</a></section>", code);
 }
-void redirectHome() { server.sendHeader("Location", "/"); server.send(303); }
+void redirectHome() { server.sendHeader("Location", "/stops"); server.send(303); }
 void redirectBoards() { server.sendHeader("Location", "/boards"); server.send(303); }
 // Nur lokale IPv4-Adressen oder einfache Hostnamen, keine Pfade/Anmeldedaten.
 String normalizeBoardAddress(String address) {
@@ -906,47 +987,9 @@ bool readIndex(int limit, int &index) {
 }
 
 void setupRoutes() {
-  // Lokalni webova aplikace: pouze odjezdy, zadne GTFS vystrahy.
-  server.on("/diagnose", HTTP_GET, []() {
-    String html=pageStart("Diagnostika odjezdu");
-    html += "<section class='card'><h2>Pripojeni</h2><p>Wi-Fi: <b>"+
-       String(WiFi.status()==WL_CONNECTED?"Pripojeno":"Odpojeno")+"</b></p>";
-    if(WiFi.status()==WL_CONNECTED){
-      html += "<p>SSID: "+escapeHtml(WiFi.SSID())+"</p>";
-      html += "<p>IP: "+WiFi.localIP().toString()+"</p>";
-    }
-    html += "<p>Firmware: <b>" TRAMLIBERN_VERSION "</b></p>";
-    html += "<p>Ulozene Wi-Fi: "+String(profileCount)+" / 4, neuspesne pokusy: "+String(wifiFailureCount)+"</p>";
-    html += "<p>Posledni stav Wi-Fi: "+escapeHtml(wifiLastIssue)+"</p>";
-    html += "<p>Orientacni baterie: "+String(batteryVoltage(),2)+" V</p>";
-    html += "<p>Volna RAM: "+String(ESP.getFreeHeap())+" B</p>";
-    html += "<p>Stav: "+escapeHtml(statusText)+"</p></section>";
-    html += "<section class='card'><h2>Zastavky a cerstvost dat</h2>";
-    bool any=false;
-    for(int i=0;i<MAX_STOPS;i++){
-      if(!stops[i].length())continue;
-      any=true;
-      html += "<div style='padding:14px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere'>";
-      html += "<p><b>"+escapeHtml(stops[i])+"</b>, strana "+String(i/2+1)+"</p>";
-      if(lastSuccess[i]){
-        uint32_t secs=(millis()-lastSuccess[i])/1000UL;
-        html += "<p>Posledni uspesne nacteni: pred "+String(secs<60?secs:secs/60)+
-          String(secs<60?" sekundami":" minutami")+"</p>";
-      } else html += "<p>Od restartu zatim nebyla prijata data.</p>";
-      if(stopFetchFailed[i]){
-        String problem=stopErrors[i];
-        if(problem.indexOf("HTTP -")>=0)problem="Chyba spojeni nebo vyprsel cas";
-        else if(problem.indexOf("JSON")>=0)problem="Chybna odpoved serveru";
-        else if(problem.indexOf("HTTP 5")>=0)problem="Server docasne nedostupny";
-        html += "<p class='notice'>Chyba: "+escapeHtml(problem)+"</p>";
-      } else if(lastSuccess[i])html += "<p>Posledni stazeni bylo uspesne.</p>";
-      html += "</div>";
-    }
-    if(!any)html += "<p>Zatim nejsou vybrane zastavky.</p>";
-    html += "<p class='hint'>Cas meri dobu od stazeni odpovedi, nikoli presnost odjezdu dopravce.</p></section>";
-    sendPage(html);
-  });
-  server.on("/", HTTP_GET, []() {
+  server.on("/page-layout",HTTP_POST,[](){int page,count;if(!numericArg("page",0,PAGE_COUNT-1,page)||!numericArg("count",1,STOPS_PER_PAGE,count)){showMessage("Ungueltige Seitenbelegung");return;}setPageSlots(page,count);if(touchMenuOpen){if(touchMode==4)drawCityMenu();else drawExtendedMenu();}else drawBoard();redirectHome();});
+  // Local configuration routes; no traffic-alert processing.
+  server.on("/stops", HTTP_GET, []() {
     String html = pageStart("Meine Haltestellen");
     html += "<section class='card'><h2>Seite frei wählen</h2><div class='row'>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
@@ -960,23 +1003,29 @@ void setupRoutes() {
     html += "</select><button style='background:#175ac8'>Stadt wechseln</button></form>";
     html += "<p class='hint'>Jede Stadt speichert ihre eigenen Haltestellen. Deine Berner Haltestellen bleiben erhalten.</p></section>";
     for (int i = 0; i < MAX_STOPS; ++i) {
-      if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopErrors[i]) + "</p>";
+      if (stopFetchFailed[i]) html += "<p class='notice'>" + escapeHtml(stops[i]) + ": " + escapeHtml(stopHealth(i)) + "</p>";
     }
     html += "<p class='status'>Anzeige: " + escapeHtml(statusText) + "</p><p class='notice'>" + escapeHtml(warningText()) + "</p>";
-    html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Seite 1 und 2: je zwei Haltestellen mit drei Abfahrten. Seite 3: eine Haltestelle mit sieben Abfahrten. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
+    if(menuNotice.length())html+="<p class='notice'>"+escapeHtml(menuNotice)+"</p>";
+    html += "<section class='card'><h2>Displayseiten verwalten</h2><p class='hint'>Jede Seite: 1–3 Haltestellen. 1: sieben Abfahrten; 2: je drei; 3: je zwei. Bei weniger Plätzen bleiben ausgeblendete Haltestellen gespeichert. Die Position einer Haltestelle waehlen und auf Verschieben tippen. Falls der Platz belegt ist, werden die beiden Haltestellen getauscht.</p>";
     for (int page = 0; page < PAGE_COUNT; ++page) {
       html += "<h2>Seite " + String(page + 1) + (activePage == page ? " (aktiv)" : "") + "</h2>";
-      html += "<form action='/page' method='post'><input type='hidden' name='page' value='" + String(page) + "'><button class='subtle'>Diese Seite anzeigen</button></form><ol>";
-      for (int pos = 0; pos < (page == 2 ? 1 : STOPS_PER_PAGE); ++pos) {
+      html += "<form action='/page' method='post'><input type='hidden' name='page' value='" + String(page) + "'><button class='subtle'>Diese Seite anzeigen</button></form>";
+      html += "<form action='/page-layout' method='post'><input type='hidden' name='page' value='"+String(page)+"'><label>Anzahl Haltestellen</label><select name='count'>";
+      for(int n=1;n<=3;++n)html+="<option value='"+String(n)+"'"+String(pageSlots[page]==n?" selected":"")+">"+String(n)+"</option>";
+      html+="</select><button>Speichern</button></form><ol>";
+      for (int pos = 0; pos < pageSlots[page]; ++pos) {
         int index = page * STOPS_PER_PAGE + pos;
         if (!stops[index].length()) {
           html += "<li><span>Platz " + String(pos + 1) + ": Frei</span></li>";
           continue;
         }
-        html += "<li><div><b>" + escapeHtml(stops[index]) + "</b><small class='muted'> · " + String(page == 2 ? 7 : 3) + " Abfahrten</small>";
+        html += "<li><div><b>" + escapeHtml(stops[index]) + "</b><small class='muted'> · " + String(pageRows(page)) + " Abfahrten</small>";
+        html += "<form action='/search' method='get'><input type='hidden' name='slot' value='" + String(index) + "'><label>Neue Haltestelle</label><input name='q' minlength='2' maxlength='100' required><button>Ersetzen suchen</button></form>";
         html += "<form action='/move' method='post'><input type='hidden' name='index' value='" + String(index) + "'>";
         html += "<label>Position</label><select name='slot' style='width:100%;padding:10px;margin:7px 0'>";
         for (int target = 0; target < MAX_STOPS; ++target) {
+          if(!slotEnabled(target))continue;
           html += "<option value='" + String(target) + "'" + (index == target ? " selected" : "") + ">Seite " + String(target / STOPS_PER_PAGE + 1) + ", Platz " + String(target % STOPS_PER_PAGE + 1) + "</option>";
         }
         html += "</select><button class='subtle'>Verschieben / Tauschen</button></form>";
@@ -985,15 +1034,15 @@ void setupRoutes() {
       html += "</ol>";
     }
     if (!stopCount) html += "<p>Noch keine Haltestelle ausgewaehlt.</p>";
-    html += "<p class='hint'>" + String(stopCount) + " von 5 Haltestellen ausgewaehlt. Jeder Platz ist frei waehlbar. Leere Seiten bleiben leer.</p>";
+    html += "<p class='hint'>" + String(stopCount) + " aktive Haltestellen ausgewaehlt (bis zu 9). Jeder Platz ist frei waehlbar. Leere Seiten bleiben leer.</p>";
     html += "<form action='/refresh' method='post'><button class='subtle'>Anzeige aktualisieren</button></form></section>";
     html += "<section class='card'><h2>Haltestelle hinzufügen</h2>";
-    if (stopCount >= MAX_STOPS) html += "<p class='notice'>Alle fünf Plätze sind belegt. Entferne zuerst eine Haltestelle, um eine andere hinzuzufügen.</p>";
+    if (stopCount >= MAX_STOPS) html += "<p class='notice'>Alle neun Plätze sind belegt. Nutze die Suche zum Ersetzen direkt bei der gewünschten Position.</p>";
     else {
       int target = firstFreeSlotOnPage(activePage);
       html += "<form action='/search' method='get'><label>Zielplatz</label><select name='slot' required>";
       html += "<option value=''" + String(target < 0 ? " selected" : "") + " disabled>Bitte freien Platz wählen</option>";
-      for (int slot = 0; slot < MAX_STOPS; ++slot) if (!stops[slot].length())
+      for (int slot = 0; slot < MAX_STOPS; ++slot) if (slotEnabled(slot) && !stops[slot].length())
         html += "<option value='" + String(slot) + "'" + (slot == target ? " selected" : "") + ">Seite " + String(slot / STOPS_PER_PAGE + 1) + ", Platz " + String(slot % STOPS_PER_PAGE + 1) + "</option>";
       html += "</select><label for='q'>Name der Haltestelle</label><input id='q' name='q' type='text' minlength='2' maxlength='100' placeholder='z. B. Bahnhof' required><button class='full'>Haltestelle suchen</button></form>";
     }
@@ -1015,10 +1064,9 @@ void setupRoutes() {
     int target = firstFreeSlotOnPage(activePage);
     if (server.hasArg("slot")) {
       String value = server.arg("slot");
-      if (value.length() != 1 || value[0] < '0' || value[0] > '4') { showMessage("Bitte einen Zielplatz wählen."); return; }
-      target = value.toInt();
+      if(!numericArg("slot",0,MAX_STOPS-1,target)||!slotEnabled(target)){showMessage("Bitte einen aktiven Zielplatz wählen.");return;}
     }
-    if (target < 0 || stops[target].length()) { showMessage("Zielplatz belegt. Bitte einen freien Platz wählen."); return; }
+    if (target < 0) { showMessage("Bitte einen Zielplatz wählen."); return; }
     String html = pageStart("Suchergebnisse");
     html += "<section class='card'><h2>" + escapeHtml(q) + "</h2><ul>";
     if (q.length() >= 2 && q.length() <= 100 && WiFi.status() == WL_CONNECTED) {
@@ -1033,13 +1081,13 @@ void setupRoutes() {
           for (int i = 0; i < MAX_STOPS; ++i) if (stops[i] == name) selected = true;
           html += "<li><span>" + escapeHtml(name) + "</span>";
           if (selected) html += "<small>Ausgewählt</small>";
-          else if (stopCount < MAX_STOPS) {
+          else {
             html += "<form action='/add' method='post'><input type='hidden' name='name' value='" + escapeHtml(name) + "'><label>Zielplatz</label><select name='slot'>";
-            for (int slot = 0; slot < MAX_STOPS; ++slot) if (!stops[slot].length())
+            for (int slot = 0; slot < MAX_STOPS; ++slot) if (slot == target)
               html += "<option value='" + String(slot) + "'" + (slot == target ? " selected" : "") + ">Seite " + String(slot / STOPS_PER_PAGE + 1) + ", Platz " + String(slot % STOPS_PER_PAGE + 1) + "</option>";
-            html += "</select><button>Hinzufügen</button></form>";
+            html += "</select><input type='hidden' name='expected' value='" + escapeHtml(stops[target]) + "'><button>Speichern / Ersetzen</button></form>";
           }
-          else html += "<small>5 Plätze belegt</small>";
+
           html += "</li>";
         }
         if (!n) html += "<li>Keine Haltestelle gefunden. Versuche einen anderen Namen.</li>";
@@ -1052,11 +1100,10 @@ void setupRoutes() {
     String name = server.arg("name"); name.trim();
     if (!name.length() || name.length() >= 100) { showMessage("Ungültiger Haltestellenname."); return; }
     for (int i = 0; i < MAX_STOPS; ++i) if (stops[i] == name) { redirectHome(); return; }
-    if (stopCount >= MAX_STOPS) { showMessage("Es sind bereits fünf Haltestellen ausgewählt."); return; }
+
     String position = server.arg("slot");
-    if (position.length() != 1 || position[0] < '0' || position[0] > '4') { showMessage("Bitte einen Platz auswaehlen."); return; }
-    int slot = position.toInt();
-    if (stops[slot].length()) { showMessage("Dieser Platz ist inzwischen belegt."); return; }
+    int slot; if(!numericArg("slot",0,MAX_STOPS-1,slot)||!slotEnabled(slot)){showMessage("Bitte einen aktiven Platz auswaehlen.");return;}
+    if (stops[slot] != server.arg("expected")) { showMessage("Platz inzwischen geaendert. Suche erneut oeffnen."); return; }
     stops[slot] = name; saveStops(); selectPage(slot / STOPS_PER_PAGE); lastRefresh = 0; drawBoard(); redirectHome();
   });
   // Web-App: aktive Anzeigeseite vom Handy aus wechseln.
@@ -1077,8 +1124,7 @@ void setupRoutes() {
     int index, slot;
     if (!readIndex(MAX_STOPS, index)) { showMessage("Ungueltige Haltestelle."); return; }
     String value = server.arg("slot");
-    if (value.length() != 1 || value[0] < '0' || value[0] > '4') { showMessage("Ungueltige Position."); return; }
-    slot = value.toInt();
+    if(!numericArg("slot",0,MAX_STOPS-1,slot)||!slotEnabled(slot)||!slotEnabled(index)){showMessage("Ungueltige Position.");return;}
 
     if (slot != index) {
       String temp = stops[index];
@@ -1144,28 +1190,7 @@ void setupRoutes() {
   server.on("/settings", HTTP_GET, []() {
     String html = pageStart("Einstellungen");
     html += "<section class='card'><h2>Name dieses Boards</h2><form action='/device' method='post'><label for='boardname'>Name</label><input id='boardname' name='name' maxlength='60' value='" + escapeHtml(boardLabel()) + "' required><button class='full'>Namen speichern</button></form></section>";
-    html += "<section class='card'><h2>Ulozene Wi-Fi site</h2>";
-    html += "<p class='hint'>Az ctyri site, automaticke pripojeni a opakovani po vypadku.</p>";
-    for(uint8_t i=0;i<profileCount;i++){
-      html += "<p><b>" + escapeHtml(profileSsid[i]) + "</b>";
-      if(WiFi.status()==WL_CONNECTED && WiFi.SSID()==profileSsid[i]) html += " (pripojeno)";
-      html += "</p>";
-      if(profileCount>1){
-        html += "<form method='post' action='/wifi/remove'><input type='hidden' name='index' value='"+String(i)+"'>";
-        html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='confirm' value='yes' required> Potvrzuji odstraneni</label><button class='subtle'>Odebrat sit</button></form>";
-      }
-    }
-    html += "<p><a class='button subtle' href='/wifi/scan'>Vyhledat dostupne Wi-Fi</a></p>";
-    html += "<h2>Pridat nebo upravit Wi-Fi</h2>";
-    html += "<form method='post' action='/wifi'><label>Nazev site SSID</label><input name='ssid' maxlength='32' required>";
-    html += "<label>Heslo</label><input id='wpass' type='password' name='pass' maxlength='63' autocomplete='new-password'>";
-    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' onclick=\"document.getElementById('wpass').type=this.checked?'text':'password'\"> Zobrazit heslo</label>";
-    html += "<p class='hint'>Prazdne heslo u jiz ulozene site znamena zachovat puvodni heslo.</p>";
-    html += "<button>Ulozit Wi-Fi</button></form></section>";
-    html += "<p><a class='button' href='/diagnose'>Diagnostika odjezdu</a></p>";
-    html += "<section class='card'><h2>Displej a firmware</h2>";
-    html += "<p><a class='button' href='/display'>Zhasnuti a probuzeni</a></p>";
-    html += "<p><a class='button' href='/ota'>Aktualizace firmware</a></p></section>";
+    html += "<section class='card'><a class='button full' href='/wifi'>WLAN-Netze</a><p><a class='button full' href='/display'>Helligkeit und Nachtmodus</a></p></section>";
     sendPage(html);
   });
   server.on("/device", HTTP_POST, []() {
@@ -1173,248 +1198,44 @@ void setupRoutes() {
     if (!name.length() || name.length() > 60) { showMessage("Bitte einen Namen mit höchstens 60 Zeichen eingeben."); return; }
     prefs.putString("boardname", name); redirectBoards();
   });
-  server.on("/wifi/scan", HTTP_GET, []() {
-    String html=pageStart("Vyhledat Wi-Fi");
-    html+="<section class='card'><h2>Dostupne site</h2>";
-    int state=WiFi.scanComplete();
-    if(state==WIFI_SCAN_RUNNING) html+="<p>Hledani probiha, zkus obnovit za chvili.</p>";
-    else if(state<0) {
-      if(!otaAllowed()){WiFi.scanNetworks(true);html+="<p>Hledani spusteno, obnov stranku.</p>";}
-      else html+="<p>Behem OTA skenovani vypnuto.</p>";
-    } else {
-      for(int i=0;i<state&&i<20;i++)html+="<p>"+escapeHtml(WiFi.SSID(i))+" ("+String(WiFi.RSSI(i))+" dBm)</p>";
-      if(!state)html+="<p>Zadne site nebyly nalezeny.</p>";
-      WiFi.scanDelete();
-    }
-    html+="<p><a class='button' href='/wifi/scan'>Obnovit vyhledavani</a></p>";
-    html+="<p><a class='button subtle' href='/settings'>Zpet do nastaveni</a></p></section>";
-    sendPage(html);
-  });
-  server.on("/wifi", HTTP_POST, []() {
-    String ssid=server.arg("ssid"),pass=server.arg("pass");
-    bool known=false;
-    for(uint8_t i=0;i<profileCount;i++)if(profileSsid[i]==ssid){known=true;break;}
-    if(!saveWiFiProfile(ssid,pass,pass.length() || !known)){
-      showMessage("Neplatna Wi-Fi nebo limit 4 siti.");return;
-    }
-    wifiAttemptPending=false;
-    wifiSwitchAt=millis()+2000;
-    server.sendHeader("Location","/settings");server.send(303);
-    // Nove ulozene heslo otestujeme pri nasledujicim automatickem pokusu. 
-  });
-  server.on("/wifi/remove", HTTP_POST, []() {
-    if(server.arg("confirm")!="yes"){
-      showMessage("Potvrd odstraneni site.");return;
-    }
-    String input=server.arg("index");
-    if(input.length()!=1||input[0]<'0'||input[0]>'3'||
-       !deleteWiFiProfile((uint8_t)input.toInt())) {
-      showMessage("Neplatny vyber nebo posledni ulozena sit.");return;
-    }
-    server.sendHeader("Location","/settings");server.send(303);
-  });
-  server.on("/system", HTTP_GET, []() {
-    String html=pageStart("System");
-    html+="<section class='card'><h2>System</h2>";
-    html+="<p>Firmware: <b>" TRAMLIBERN_VERSION "</b></p>";
-    html+="<p>OTA partition: "+String((unsigned)otaMaxBytes())+" B</p>";
-    html+="<p>Volna RAM: "+String(ESP.getFreeHeap())+" B</p>";
-    html+="<p><a class='button' href='/display'>Displej, jas a baterie</a></p>";
-    html+="<p><a class='button' href='/diagnose'>Diagnostika</a></p>";
-    html+="<p><a class='button' href='/ota'>OTA firmware</a></p>";
-    html+="<form action='/refresh' method='post'><button>Aktualizovat odjezdy</button></form></section>";
-    sendPage(html);
-  });
-  server.on("/display", HTTP_GET, []() {
-    String html = pageStart("Displej");
-    html += "<section class='card'><h2>Displej</h2><p>Stav: " +
-            String(displaySleeping ? "Zhasnuty" : "Zapnuty") + "</p>";
-    html += "<form method='post' action='/display/wake'><button class='full'>Probudit displej</button></form>";
-    html += "<form method='post' action='/display/off'><button class='full subtle'>Zhasnout displej</button></form>";
-    html += "<form method='post' action='/display/config'><label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='auto' value='1'";
-    if (displayAutoOff) html += " checked";
-    html += "> Automaticky zhasinat</label><label>Po minutach (1 az 240)</label><input name='minutes' type='number' min='1' max='240' value='" + String(displayIdleMinutes) + "'>";
-    html += "<button class='full'>Ulozit nastaveni</button></form>";
-    html += "<h2>Jas a nocni rezim (PWM experimentalni)</h2>";
-    html += "<p class='notice'>GPIO27 je overen jen pro zapnuti/vypnuti. PWM stmivani nejprve otestuj na fyzickem displeji.</p>";
-    html += "<form method='post' action='/display/brightness'>";
-    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='enable' value='1'";
-    if(brightnessPwmEnabled)html+=" checked";
-    html += "> Zapnout experimentalni PWM</label>";
-    html += "<label>Denni jas 35-100%</label><input type='number' min='35' max='100' name='day' value='"+String(dayBrightness)+"'>";
-    html += "<label>Nocni jas 15-100%</label><input type='number' min='15' max='100' name='night' value='"+String(nightBrightness)+"'>";
-    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='schedule' value='1'";
-    if(nightEnabled)html+=" checked";
-    html += "> Nocni rezim podle casu</label>";
-    html += "<label>Noc od (0-23)</label><input type='number' min='0' max='23' name='from' value='"+String(nightFrom)+"'>";
-    html += "<label>Den od (0-23)</label><input type='number' min='0' max='23' name='to' value='"+String(nightTo)+"'>";
-    html += "<button>Ulozit jas</button></form><h2>Baterie</h2>";
-    html += "<p>Orientacni napeti: "+String(batteryVoltage(),2)+" V</p>";
-    html += "<form method='post' action='/display/battery'>";
-    html += "<label><input style='display:inline;width:auto;min-height:0' type='checkbox' name='enable' value='1'";
-    if(batteryWarningEnabled)html+=" checked";
-    html += "> Zapnout varovani</label>";
-    html += "<label>Prag 3000-3850 mV</label><input type='number' min='3000' max='3850' name='mv' value='"+String(batteryThresholdMv)+"'>";
-    html += "<button>Ulozit baterii</button></form>";
-    html += "<p class='hint'>Po zapnuti napajeni je displej vzdy rozsviceny. Prvni dotyk po zhasnuti pouze probudi.</p></section>";
-    sendPage(html);
-  });
-  server.on("/display/brightness", HTTP_POST, []() {
-    int day=server.arg("day").toInt(),night=server.arg("night").toInt();
-    int from=server.arg("from").toInt(),to=server.arg("to").toInt();
-    if(day<35||day>100||night<15||night>100||from<0||from>23||to<0||to>23){showMessage("Neplatny jas nebo cas.");return;}
-    dayBrightness=day;nightBrightness=night;nightFrom=from;nightTo=to;
-    brightnessPwmEnabled=server.arg("enable")=="1";
-    nightEnabled=server.arg("schedule")=="1";
-    prefs.putUChar("dayBri",dayBrightness);prefs.putUChar("nightBri",nightBrightness);
-    prefs.putUChar("nightFrom",nightFrom);prefs.putUChar("nightTo",nightTo);
-    prefs.putBool("pwmOptIn",brightnessPwmEnabled);prefs.putBool("nightOn",nightEnabled);
-    applyBacklight();server.sendHeader("Location","/display");server.send(303);
-  });
-  server.on("/display/battery", HTTP_POST, []() {
-    int mv=server.arg("mv").toInt();
-    if(mv<3000||mv>3850){showMessage("Neplatny prag baterie.");return;}
-    batteryWarningEnabled=server.arg("enable")=="1";
-    batteryThresholdMv=mv;
-    prefs.putBool("batWarnOn",batteryWarningEnabled);prefs.putUShort("batWarnMv",mv);
-    ++screenRevision;server.sendHeader("Location","/display");server.send(303);
-  });
-  server.on("/display/off", HTTP_POST, []() {
-    displaySleep();
-    server.sendHeader("Location", "/display"); server.send(303);
-  });
-  server.on("/display/wake", HTTP_POST, []() {
-    displayWake();
-    server.sendHeader("Location", "/display"); server.send(303);
-  });
-  server.on("/display/config", HTTP_POST, []() {
-    int n=server.arg("minutes").toInt();
-    if (n < 1 || n > 240) { showMessage("Vyber 1 az 240 minut."); return; }
-    displayIdleMinutes = n;
-    displayAutoOff = server.hasArg("auto") && server.arg("auto") == "1";
-    prefs.putBool("dispAuto", displayAutoOff);
-    prefs.putUShort("dispMin", displayIdleMinutes);
-    displayLastActivity = millis();
-    server.sendHeader("Location", "/display"); server.send(303);
-  });
-  server.on("/ota", HTTP_GET, []() {
-    String html=pageStart("Aktualizace firmware");
-    html += "<section class='card'><h2>Aktualizace pres Safari</h2>";
-    html += "<p>Pro nahrani nejdriv na displeji stiskni MENU a OTA 5 MIN.</p>";
-    html += "<p>Povoleni: " + String(otaAllowed()?"AKTIVNI":"NEAKTIVNI") + "</p>";
-    html += "<p>Maximalni velikost firmware pro nahrani: " + String((unsigned)otaMaxBytes()) + " B.</p>";
-    if (otaAllowed()) {
-      uint32_t remaining = (otaAllowedUntil - millis()) / 1000UL;
-      html += "<p>Cas zbyvajici pro zahajeni nahravani: " + String(remaining) + " s</p>";
-    }
-    html += "<p class='hint'>Pouze aplikacni ESP32 obraz (.ino.bin). Pred prenosem porovnej nazev zarizeni a velikost souboru. Zmena partition table pri nahrani OTA neni mozna.</p>";
-    html += "<script>const otaNonce='" + String(otaAllowed() ? otaSessionNonce : 0, HEX) + "';</script>";
-    html += "<p class='notice'>Nahravej vyhradne samostatny .ino.bin urceny pro tuto desku, ne merged.bin!</p>";
-    html += R"HTML(<input type='file' id='fw' accept='.bin'><button id='send' onclick='go()'>Nahrat firmware</button><p id='status'></p>
-<script>
-async function go(){const f=document.getElementById('fw').files[0],status=document.getElementById('status');
- if(!f || !f.name.endsWith('.ino.bin')){status.textContent='Vyber samostatny soubor .ino.bin';return;}
- status.textContent='Overuji velikost...';
- try {const test=await fetch('/ota/check?size='+f.size+'&nonce='+otaNonce,{cache:'no-store'});
- if(!test.ok){status.textContent=await test.text();return;}
- const form=new FormData();form.append('firmware',f,f.name);
- const xhr=new XMLHttpRequest();xhr.open('POST','/ota/upload?size='+f.size+'&nonce='+otaNonce);
- xhr.upload.onprogress=e=>{if(e.lengthComputable)status.textContent='Prenos do ESP32: '+Math.floor(e.loaded/e.total*100)+' % (po dokonceni probiha kontrola)';};
- xhr.onload=()=>{status.textContent=xhr.responseText;};
- xhr.onerror=()=>{status.textContent='Nahravani selhalo. Zkus znovu.';};xhr.send(form);
- }catch(err){status.textContent='Chyba spojeni: '+err;}}
-</script>)HTML";
-    html += "</section>";
-    sendPage(html);
-  });
-  server.on("/ota/check", HTTP_GET, []() {
-    if (!otaSessionAuthorized()) {
-      server.send(403,"text/plain; charset=utf-8","Povol OTA 5 MIN na displeji a obnov stranku v Safari."); return;
-    }
-    size_t expected = 0;
-    if (!otaParseFirmwareSize(server.arg("size"), expected)) {
-      server.send(413,"text/plain; charset=utf-8","Soubor ma neplatnou velikost nebo se nevejde do OTA oblasti."); return;
-    }
-    server.send(200,"text/plain; charset=utf-8","OK");
-  });
-  server.on("/ota/upload", HTTP_POST, []() {
-    bool ok=otaFinishedOK && otaUploadOK && otaUploadStarted &&
-            otaUploadedBytes == otaExpectedBytes && !Update.hasError();
-    String response=ok ? "Firmware overen a ulozen. ESP32 se restartuje." :
-                         "Aktualizace selhala: " + (otaUploadError.length() ? otaUploadError : "Neznamy problem");
-    server.sendHeader("Cache-Control", "no-store");
-    server.send(ok ? 200 : 400, "text/plain; charset=utf-8", response);
-    otaFinishedOK=false;
-    otaUploadStarted=false;
-    otaUploadOK=false;
-    if (ok) {otaAllowedUntil=0;otaSessionNonce=0;delay(500);ESP.restart();}
-  }, []() {
-    HTTPUpload &upload=server.upload();
-    if(upload.status==UPLOAD_FILE_START) {
-      otaUploadStarted=false;otaUploadOK=false;otaFinishedOK=false;
-      otaUploadedBytes=0;otaExpectedBytes=0;
-      otaUploadError="OTA neni povoleno nebo je soubor neplatny";
-      if (!otaSessionAuthorized()) return;
-      if (!upload.filename.endsWith(".ino.bin")) {
-        otaUploadError="Vyber samostatny .ino.bin, ne merged.bin";return;
-      }
-      size_t expected=0;
-      if (!otaParseFirmwareSize(server.arg("size"), expected)) {
-        otaUploadError="Soubor se nevejde do aktivni OTA oblasti";return;
-      }
-      if (!Update.begin(expected, U_FLASH)) {
-        otaUploadError="Nelze zahajit zapis do OTA oblasti";return;
-      }
-      otaExpectedBytes=expected;
-      otaUploadStarted=true;otaUploadOK=true;otaUploadError="";
-      // Only one upload is accepted during a physical 5-minute authorization.
-      otaAllowedUntil=0;otaSessionNonce=0;
-    } else if(upload.status==UPLOAD_FILE_WRITE) {
-      if (!otaUploadOK || !otaUploadStarted) return;
-      if (!otaUploadedBytes && upload.currentSize && upload.buf[0] != 0xE9) {
-        otaUploadError="Soubor neni platny obraz firmware ESP32";
-        otaUploadOK=false;Update.abort();return;
-      }
-      if (upload.currentSize > otaExpectedBytes-otaUploadedBytes) {
-        otaUploadError="Bylo prijato vice dat nez velikost souboru";
-        otaUploadOK=false;Update.abort();return;
-      }
-      if (Update.write(upload.buf,upload.currentSize) != upload.currentSize) {
-        otaUploadError="Chyba zapisu OTA firmware";
-        otaUploadOK=false;Update.abort();return;
-      }
-      otaUploadedBytes+=upload.currentSize;
-    } else if (upload.status==UPLOAD_FILE_END) {
-      if (!otaUploadOK || !otaUploadStarted) return;
-      if (!otaExpectedBytes || otaUploadedBytes != otaExpectedBytes) {
-        otaUploadError="Prenos nebyl kompletni (chybi cast firmware)";
-        otaUploadOK=false;Update.abort();return;
-      }
-      // Strict end: do not accept an incomplete image or pad missing bytes.
-      if (!Update.end(false)) {
-        otaUploadError="Overeni firmware ESP32 selhalo";
-        otaUploadOK=false;return;
-      }
-      otaFinishedOK=true;
-    } else if(upload.status==UPLOAD_FILE_ABORTED) {
-      if (otaUploadStarted && !otaFinishedOK) Update.abort();
-      otaFinishedOK=false;otaUploadOK=false;
-      otaUploadError="Prenos prerusen. Puvodni firmware nebyl prepsan.";
-    }
-  });
   server.on("/refresh", HTTP_POST, []() { lastRefresh = 0; redirectHome(); });
-  server.on("/refresh", HTTP_GET, []() { lastRefresh = 0; redirectHome(); });
+
   // Neuer optionaler Kalibrierungs-Link; bestehende Web-App bleibt unveraendert.
-  server.on("/touch-kalibrieren", HTTP_GET, []() {
+  server.on("/touch-kalibrieren", HTTP_POST, []() {
     server.send(200, "text/plain; charset=utf-8", "Kalibrierung wird gestartet. Bitte die drei Kreuze am Display antippen.");
     Preferences tp; tp.begin("tramli-touch", false); tp.putBool("valid", false); tp.end();
     delay(100); ESP.restart();
   });
+  setupExtendedRoutes();
   server.onNotFound([]() { showMessage("Diese Seite existiert nicht.", 404); });
   server.begin();
 }
+bool isLowBattery(float voltage, bool verified, float threshold) {
+  return batteryEnabled && batteryWarningEnabled && verified && threshold > 0 && voltage > 0 && voltage < threshold;
+}
+int batteryBarWidth(float voltage) {
+  if (voltage <= 0) return 0;
+  return constrain((int)(voltage / 4.5f * 16 + 0.5f), 1, 16);
+}
+int batteryVisualColor(float voltage) {
+  if (voltage <= 0) return 0x8410; // gray: invalid measurement
+  if (isLowBattery(voltage, BATTERY_VERIFIED, batteryLowMv / 1000.0f)) return BUTTON_RED;
+  if (batteryLowMv == 0 || voltage < batteryLowMv / 1000.0f + 0.20f) return AMBER;
+  return 0x07E0; // green: >= configured threshold + 0.20 V, not a capacity estimate
+}
 float batteryVoltage() {
-  return analogReadMilliVolts(34) * 2.0 / 1000.0;
+  if (!batteryEnabled) return -1.0f;
+  static uint32_t sampledAt = 0;
+  static bool sampled = false;
+  static float voltage = -1.0f;
+  if (sampled && millis() - sampledAt < 1000) return voltage;
+  uint32_t total = 0;
+  for (int i=0; i<16; ++i) total += analogReadMilliVolts(34);
+  const float measured = (total / 16.0f) * BATTERY_DIVIDER / 1000.0f;
+  // Plausibility bounds for the documented single-cell BAT+ input, not charge thresholds.
+  voltage = measured >= 0.5f && measured <= 4.5f ? measured : -1.0f;
+  sampledAt = millis(); sampled = true;
+  return voltage;
 }
 // Touch-Erweiterung 2.7: die bestehende Web-App bleibt unveraendert.
 // XPT2046-Rohwerte: Standard-Kalibrierung. Bei verschobenen Beruehrungen
@@ -1453,15 +1274,15 @@ void loadTouchCalibration() {
 void calibrateTouch() {
   if (!touchReady || calValid) return;
   const int tx[3]={60,420,60}, ty[3]={60,60,260};
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("TOUCH KALIBRIEREN", 100, 8, TRAM_COLOR_AMBER, 2);
-  drawLine("3 Kreuze nacheinander tippen", 105, 30, TRAM_COLOR_WHITE, 1);
+  gfx->fillScreen(BLACK);
+  drawLine("TOUCH KALIBRIEREN", 100, 8, AMBER, 2);
+  drawLine("3 Kreuze nacheinander tippen", 105, 30, WHITE, 1);
   for(int i=0; i<3; ++i) {
-    gfx->fillRect(0,48,480,272,TRAM_COLOR_BLACK);
-    drawLine("Punkt " + String(i+1) + " von 3", 180, 152, TRAM_COLOR_WHITE, 2);
-    gfx->drawCircle(tx[i], ty[i], 13, TRAM_COLOR_AMBER);
-    gfx->drawFastHLine(tx[i]-18,ty[i],37, TRAM_COLOR_AMBER);
-    gfx->drawFastVLine(tx[i],ty[i]-18,37, TRAM_COLOR_AMBER);
+    gfx->fillRect(0,48,480,272,BLACK);
+    drawLine("Punkt " + String(i+1) + " von 3", 180, 152, WHITE, 2);
+    gfx->drawCircle(tx[i], ty[i], 13, AMBER);
+    gfx->drawFastHLine(tx[i]-18,ty[i],37, AMBER);
+    gfx->drawFastVLine(tx[i],ty[i]-18,37, AMBER);
     // Punkt 3 darf unten liegen; Infotext ueberdeckt das Kreuz nicht.
     unsigned long started=millis();
     bool got=false;
@@ -1479,8 +1300,8 @@ void calibrateTouch() {
       delay(15);
     }
     if(!got) {
-      gfx->fillScreen(TRAM_COLOR_BLACK);
-      drawLine("Kalibrierung abgebrochen", 12, 80, TRAM_COLOR_AMBER, 2);
+      gfx->fillScreen(BLACK);
+      drawLine("Kalibrierung abgebrochen", 12, 80, AMBER, 2);
       delay(1200);
       return;
     }
@@ -1489,8 +1310,8 @@ void calibrateTouch() {
   const double c=calRawY[1]-calRawY[0], d=calRawY[2]-calRawY[0];
   const double det=a*d-b*c;
   if(det>-10000.0 && det<10000.0) {
-    gfx->fillScreen(TRAM_COLOR_BLACK);
-    drawLine("Kalibrierung ungueltig", 12, 80, TRAM_COLOR_AMBER, 2);
+    gfx->fillScreen(BLACK);
+    drawLine("Kalibrierung ungueltig", 12, 80, AMBER, 2);
     delay(1500); return;
   }
   Preferences tp; tp.begin("tramli-touch", false);
@@ -1500,17 +1321,33 @@ void calibrateTouch() {
   }
   tp.putBool("valid",true); tp.end();
   calValid=true;
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("Kalibrierung gespeichert", 60, 120, TRAM_COLOR_AMBER, 2);
+  gfx->fillScreen(BLACK);
+  drawLine("Kalibrierung gespeichert", 60, 120, AMBER, 2);
   delay(1200);
 }
 
 
-void touchButton(const String &label, int x, int y, int w, int h, uint16_t color = TRAM_COLOR_AMBER) {
-  gfx->drawRoundRect(x, y, w, h, 4, color);
-  // Textgroesse 2 = 12 Pixel pro Zeichen.
-  int textX = x + max(3, (w - (int)label.length() * 12) / 2);
-  drawLine(label, textX, y + (h - 16) / 2, color, 2);
+void touchButton(const String &label, int x, int y, int w, int h, uint16_t color = AMBER) {
+  bool back = label == "ZURUECK";
+  if (back && touchMode != 10) {
+    gfx->fillRoundRect(x, y, w, h, 4, BUTTON_RED);
+    color = WHITE;
+  }
+  if (touchMode == 10) {
+    // Variant 4: charcoal fill, yellow labels and borders, including Back.
+    gfx->fillRoundRect(x, y, w, h, 4, 0x10A2);
+    color = 0xFF09;
+  }
+  gfx->drawRoundRect(x, y, w, h, 4, (back && touchMode != 10) ? AMBER : color);
+  // Render ZURÜCK with the original bitmap font: U plus two explicit dots.
+  // This avoids UTF-8 byte rendering and keeps the existing font unchanged.
+  int textX = x + max(3, (w - (back ? 6 : (int)label.length()) * 12) / 2);
+  int textY = y + (h - 16) / 2;
+  drawLine(back ? String("ZURUCK") : label, textX, textY, color, 2);
+  if (back) {
+    gfx->fillRect(textX + 38, textY - 3, 2, 2, color);
+    gfx->fillRect(textX + 42, textY - 3, 2, 2, color);
+  }
 }
 
 // Two columns, seven rows. Gaps and the unused final cell are not selectable.
@@ -1520,98 +1357,37 @@ int cityAtTouch(int x, int y) {
   int row = (y - 43) / 37;
   if ((x - 12) % 234 >= 222 || (y - 43) % 37 >= 33) return -1;
   int city = row * 2 + column;
-  return city < CITY_COUNT ? city : -1;
+  return cityForPosition(city);
 }
 void drawCityMenu() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("STADT AUSWAEHLEN", 12, 6, TRAM_COLOR_AMBER, 2);
-  touchButton("ABBRUCH", 352, 4, 116, 25, TRAM_COLOR_WHITE);
-  gfx->drawFastHLine(10, 33, 460, TRAM_COLOR_AMBER);
-  for (int city = 0; city < CITY_COUNT; ++city) {
-    int x = 12 + (city % 2) * 234;
-    int y = 43 + (city / 2) * 37;
-    if (city == activeCity) gfx->fillRoundRect(x, y, 222, 33, 4, BUTTON_BLUE);
-    touchButton(CITY_LABELS[city], x, y, 222, 33, TRAM_COLOR_WHITE);
+  gfx->fillScreen(BLACK);
+  drawLine("STADT AUSWAEHLEN", 12, 6, AMBER, 2);
+  touchButton("ZURUECK", 352, 4, 116, 25, WHITE);
+  gfx->drawFastHLine(10, 33, 460, AMBER);
+  for (int position = 0; position < CITY_COUNT; ++position) {
+    int city=cityForPosition(position);
+    int x = 12 + (position % 2) * 234;
+    int y = 43 + (position / 2) * 37;
+    drawCityBadge(city,x,y,222,33,2,city==activeCity);
   }
-}
-void drawMainMenu() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("TRAMLIBERN MENU",12,7,TRAM_COLOR_AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
-  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
-  touchButton("STADT",30,41,420,35);
-  touchButton("HALTESTELLEN",30,82,420,35);
-  touchButton("SEITEN 1 / 2 / 3",30,123,420,35);
-  touchButton("WLAN",30,164,420,35);
-  touchButton("DIAGNOSE",30,205,420,35);
-  touchButton("SYSTEM",30,246,420,35);
-}
-void drawPageSelectMenu() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("SEITEN EINRICHTEN",12,7,TRAM_COLOR_AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
-  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
-  for(int page=0;page<3;page++){
-    touchButton("SEITE "+String(page+1)+(page==activePage?" AKTIV":""),25,52+64*page,430,50);
-  }
-}
-void drawSystemMenu() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("TRAMLIBERN SYSTEM",12,7,TRAM_COLOR_AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
-  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
-  touchButton("OTA 5 MIN",25,55,430,44);
-  touchButton("DISPLAY AUS",25,113,430,44);
-  drawLine("Usporne nastaveni a OTA v Safari",12,192,TRAM_COLOR_AMBER,1);
-  drawLine("Safari: /display nebo /ota",12,220,TRAM_COLOR_WHITE,1);
-}
-void drawWifiMenu() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("ULOZENE WLAN",12,7,TRAM_COLOR_AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
-  gfx->drawFastHLine(10,35,460,TRAM_COLOR_AMBER);
-  for(int i=0;i<profileCount;i++){
-    String label=profileSsid[i];
-    if(WiFi.status()==WL_CONNECTED && WiFi.SSID()==label)label+=" *";
-    touchButton(clip(label,30),16,51+i*49,448,43);
-  }
-  if(profileCount==0)drawLine("Keine gespeicherte WLAN",20,95,TRAM_COLOR_WHITE,2);
-  drawLine("Pridani a hesla: Safari /settings",12,276,TRAM_COLOR_WHITE,1);
-}
-void drawBoardDiagnostic() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("ABFAHRTEN DIAGNOSE",12,7,TRAM_COLOR_AMBER,2);
-  touchButton("ZURUECK",350,3,118,28,TRAM_COLOR_WHITE);
-  drawLine(WiFi.status()==WL_CONNECTED?"WLAN: VERBUNDEN":"WLAN: GETRENNT",12,53,TRAM_COLOR_WHITE,2);
-  drawLine(clip(statusText,34),12,82,TRAM_COLOR_AMBER,1);
-  for(int pos=0;pos<(activePage==2?1:2);pos++){
-    int i=activePage*2+pos;
-    if(!stops[i].length())continue;
-    int y=116+pos*77;
-    drawLine(clip(stops[i],33),12,y,TRAM_COLOR_WHITE,1);
-    if(lastSuccess[i])drawLine("Data pred "+String((millis()-lastSuccess[i])/60000UL)+" min",12,y+20,TRAM_COLOR_AMBER,1);
-    else drawLine("Zatim bez dat",12,y+20,TRAM_COLOR_AMBER,1);
-    if(stopFetchFailed[i])drawLine("CHYBA: detaily v Safari",12,y+39,TRAM_COLOR_WHITE,1);
-  }
-  drawLine("Podrobnosti: Safari /diagnose",12,281,TRAM_COLOR_WHITE,1);
 }
 void drawTouchMenu() {
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("HALTESTELLE AENDERN", 12, 6, TRAM_COLOR_AMBER, 2);
-  gfx->drawFastHLine(10, 30, 460, TRAM_COLOR_AMBER);
+  gfx->fillScreen(BLACK);
+  drawLine("HALTESTELLE AENDERN", 12, 6, AMBER, 2);
+  gfx->drawFastHLine(10, 30, 460, AMBER);
   if (touchEditIndex < 0 || touchEditIndex >= MAX_STOPS) return;
   String oldName = stops[touchEditIndex].length() ? stops[touchEditIndex] : "Freier Platz";
-  drawLine(clip(oldName, 36), 12, 38, TRAM_COLOR_WHITE, 1);
-  touchButton("ABBRUCH", 352, 4, 116, 25, TRAM_COLOR_WHITE);
+  drawLine(clip(oldName, 36), 12, 38, WHITE, 1);
+  touchButton("ZURUECK", 352, 4, 116, 25, WHITE);
   if (touchMode == 3) {
-    drawLine("Haltestelle entfernen?", 12, 88, TRAM_COLOR_WHITE, 2);
-    drawLine("Andere Plaetze bleiben erhalten.", 12, 120, TRAM_COLOR_WHITE, 1);
+    drawLine("Haltestelle entfernen?", 12, 88, WHITE, 2);
+    drawLine("Andere Plaetze bleiben erhalten.", 12, 120, WHITE, 1);
     touchButton("JA, ENTFERNEN", 12, 170, 220, 45);
-    touchButton("ZURUECK", 248, 170, 220, 45, TRAM_COLOR_WHITE);
+    touchButton("ZURUECK", 248, 170, 220, 45, WHITE);
   } else if (touchMode == 1) {
-    gfx->fillRect(10, 57, 460, 26, TRAM_COLOR_BLACK);
-    gfx->drawRect(10, 57, 460, 26, TRAM_COLOR_AMBER);
-    drawLine(clip(touchQuery.length() ? touchQuery : "Suchbegriff eingeben", 36), 16, 62, TRAM_COLOR_WHITE, 2);
+    gfx->fillRect(10, 57, 460, 26, BLACK);
+    gfx->drawRect(10, 57, 460, 26, AMBER);
+    drawLine(clip(touchQuery.length() ? touchQuery : "Suchbegriff eingeben", 36), 16, 62, WHITE, 2);
     const char *rows[] = {"QWERTZUIOP", "ASDFGHJKL", "YXCVBNM"};
     for (int r = 0; r < 3; ++r) {
       const String line(rows[r]);
@@ -1629,19 +1405,20 @@ void drawTouchMenu() {
     touchButton("LEER", 12, 251, 100, 35);
     touchButton("LOESCH", 126, 251, 120, 35);
     touchButton("SUCHE", 260, 251, 205, 35);
-    if (stops[touchEditIndex].length()) touchButton("HALTESTELLE ENTFERNEN", 12, 290, 454, 28, TRAM_COLOR_WHITE);
+    if (stops[touchEditIndex].length()) touchButton("HALTESTELLE ENTFERNEN", 12, 290, 454, 28, WHITE);
   } else {
-    drawLine("Suchresultate antippen:", 12, 65, TRAM_COLOR_WHITE, 2);
-    if (!touchMatchCount) drawLine("Keine Treffer - erneut suchen", 12, 100, TRAM_COLOR_AMBER, 2);
+    drawLine("Suchresultate antippen:", 12, 65, WHITE, 2);
+    if (!touchMatchCount) drawLine("Keine Treffer - erneut suchen", 12, 100, AMBER, 2);
     for (int i = 0; i < touchMatchCount; ++i) {
       int y = 91 + i * 37;
       touchButton(clip(touchMatches[i], 34), 12, y, 454, 34);
     }
-    touchButton("ZURUECK", 12, 282, 454, 32, TRAM_COLOR_WHITE);
+    touchButton("ZURUECK", 12, 282, 454, 32, WHITE);
   }
 }
 
 void closeTouchMenu() {
+  resetAutoPageTimer();
   touchMenuOpen = false;
   touchMode = 0;
   touchEditIndex = -1;
@@ -1650,10 +1427,10 @@ void closeTouchMenu() {
 }
 
 void touchSearch() {
-  if (WiFi.status() != WL_CONNECTED) { drawLine("WLAN erforderlich", 12, 294, TRAM_COLOR_WHITE, 1); return; }
+  if (WiFi.status() != WL_CONNECTED) { drawLine("WLAN erforderlich", 12, 294, WHITE, 1); return; }
   touchQuery.trim();
-  if (touchQuery.length() < 2) { drawLine("Mindestens 2 Zeichen", 12, 294, TRAM_COLOR_WHITE, 1); return; }
-  touchButton("SUCHE...", 260, 246, 205, 40, TRAM_COLOR_WHITE);
+  if (touchQuery.length() < 2) { drawLine("Mindestens 2 Zeichen", 12, 294, WHITE, 1); return; }
+  touchButton("SUCHE...", 260, 246, 205, 40, WHITE);
   JsonDocument doc;
   touchMatchCount = 0;
   bool ok = getJson("https://transport.opendata.ch/v1/locations?type=station&query=" +
@@ -1676,11 +1453,8 @@ void handleTouchTap(int rawX, int rawY) {
   int x = touchXFromRaw(rawX, rawY), y = touchYFromRaw(rawX, rawY);
   if (x < 0 || y < 0) return;
   Serial.printf("Touch raw %d,%d -> px %d,%d | mode %d\n", rawX, rawY, x, y, touchMode);
-  displayLastActivity = millis();
   if (!touchMenuOpen) {
-    if (y >= 270 && y < 295 && x >= 230 && x < 312) {
-      touchMenuOpen = true; touchMode = 5; drawMainMenu(); return;
-    }
+    if(homeCity<CITY_COUNT && x>=254 && x<314 && y>=270 && y<295){goHome();return;}
     // Direct page selection also works for empty pages.
     if (y >= 270 && y < 295 && x >= 320 && x < 470) {
       selectPage((x - 320) / 50);
@@ -1688,10 +1462,13 @@ void handleTouchTap(int rawX, int rawY) {
       drawBoard();
       return;
     }
-    // Mesto lze vybrat pouze pres MENU; stranky pres 1/2/3 nebo swipe.
+    if (x >= 12 && x < 112 && y >= 270 && y < 295) {
+      touchMenuOpen = true; touchMode = 10; menuNotice = ""; drawExtendedMenu(); return;
+    }
     // Nur der Haltestellentitel oeffnet das Bearbeitungsmenue.
     if (x > 8 && x < 470) {
-      int position = y >= 39 && y < 63 ? 0 : (activePage < 2 && y >= 149 && y < 172 ? 1 : -1);
+      int position=-1;
+      for(int p=0;p<pageSlots[activePage];++p){int hy=stationHeaderY(activePage,p);if(y>=hy-4&&y<hy+20)position=p;}
       if (position >= 0) {
         touchEditIndex = activePage * STOPS_PER_PAGE + position;
         if (touchEditIndex >= MAX_STOPS) return;
@@ -1703,50 +1480,8 @@ void handleTouchTap(int rawX, int rawY) {
     }
     return;
   }
-  if (y < 32 && x > 345) { closeTouchMenu(); return; }
-  if (touchMode == 5) { // hlavni MENU
-    if(x>=30&&x<450) {
-      if(y>=41&&y<76){touchMode=4;drawCityMenu();return;}
-      if(y>=82&&y<117){touchEditIndex=activePage*2;touchQuery="";touchMode=1;drawTouchMenu();return;}
-      if(y>=123&&y<158){touchMode=9;drawPageSelectMenu();return;}
-      if(y>=164&&y<199){touchMode=7;drawWifiMenu();return;}
-      if(y>=205&&y<240){touchMode=6;drawBoardDiagnostic();return;}
-      if(y>=246&&y<281){touchMode=8;drawSystemMenu();return;}
-    }
-    return;
-  }
-  if(touchMode==9) {
-    if(x>=25&&x<455&&y>=52&&y<244){
-      int page=(y-52)/64;
-      if((y-52)%64<50&&page>=0&&page<PAGE_COUNT){
-        selectPage(page);closeTouchMenu();lastRefresh=0;
-      }
-    }
-    return;
-  }
-  if(touchMode==6){closeTouchMenu();return;}
-  if(touchMode==7){ // kliknout na ulozenou sit
-    if(x>=16&&x<464&&y>=51&&y<51+49*profileCount){
-      int i=(y-51)/49;
-      if((y-51)%49<43&&i<profileCount){
-        profilePreferred=i;
-        wifiAttemptPending=false; WiFi.disconnect();wifiNextTryAt=0;
-        closeTouchMenu();
-      }
-    }
-    return;
-  }
-  if(touchMode==8){
-    if(x>=25&&x<455&&y>=55&&y<99){
-      otaSessionNonce=esp_random();
-      if (!otaSessionNonce) otaSessionNonce=1;
-      otaAllowedUntil=millis()+300000UL;
-      drawSystemMenu();drawLine("OTA AKTIV 5 MIN",12,294,TRAM_COLOR_AMBER,1);
-    } else if(x>=25&&x<455&&y>=113&&y<157){
-      closeTouchMenu();displaySleep();
-    }
-    return;
-  }
+  if (extendedTap(x, y)) return;
+  if (y < 32 && x > 345) { touchMode = 10; drawExtendedMenu(); return; }
   if (touchMode == 4) {
     int city = cityAtTouch(x, y);
     if (city >= 0) { changeCity(city); closeTouchMenu(); }
@@ -1773,7 +1508,7 @@ void handleTouchTap(int rawX, int rawY) {
         for (int i=0; i<MAX_STOPS; ++i) {
           if (i != touchEditIndex && stops[i] == chosen) {
             touchMode = 1; drawTouchMenu();
-            drawLine("Haltestelle bereits vorhanden", 12, 293, TRAM_COLOR_WHITE, 1);
+            drawLine("Haltestelle bereits vorhanden", 12, 293, WHITE, 1);
             return;
           }
         }
@@ -1831,34 +1566,37 @@ void setupTouch() {
 
 void checkSwipe() {
   if (!touchReady || !calValid) return;
-  if (displaySleeping) {
-    if (touch.touched()) { displayWake(); wakeTouchWaitRelease = true; }
-    return;
-  }
-  if (wakeTouchWaitRelease) {
-    if (!touch.touched()) wakeTouchWaitRelease = false;
-    return;
-  }
-  static bool pressed = false, waitRelease = false, moved = false;
+  static bool pressed = false, waitRelease = false, moved = false, sliderDrag = false;
   static int firstX = 0, firstY = 0;
   static uint32_t started = 0;
   bool down = touch.touched();
+  if(down) resetAutoPageTimer(); // Never advance beneath a finger or during a swipe.
   if (!down) {
+    if(sliderDrag) { saveDisplaySettings(); sliderDrag=false; pressed=false; return; }
     if (pressed && !waitRelease && !moved && millis() - started < 1500) handleTouchTap(firstX, firstY);
     pressed = false; waitRelease = false; moved = false; return;
   }
   if (waitRelease) return;
   TS_Point p = touch.getPoint();
+  int sx=touchXFromRaw(p.x,p.y), sy=touchYFromRaw(p.x,p.y);
+  if(touchMenuOpen && touchMode==13 && pwmReady && sx>=20 && sx<=460 && ((sy>=67&&sy<87)||(sy>=126&&sy<146))) {
+    int value=constrain((sx-20)*100/440,5,100);
+    int &target=sy<100?brightness:nightBrightness;
+    if(target!=value){target=value;applyBrightness();drawExtendedMenu();}
+    sliderDrag=true;return;
+  }
+  if(sliderDrag) return;
   if (!pressed) { pressed = true; moved = false; firstX = p.x; firstY = p.y; started = millis(); return; }
   if (millis() - started > 1500) { waitRelease = true; return; }
-  int dx = p.x - firstX, dy = p.y - firstY;
-  if (!touchMenuOpen && abs(dx) > 650 && abs(dx) > abs(dy)) {
+  int dx = touchXFromRaw(p.x, p.y) - touchXFromRaw(firstX, firstY);
+  int dy = touchYFromRaw(p.x, p.y) - touchYFromRaw(firstX, firstY);
+  if (!touchMenuOpen && abs(dx) > 75 && abs(dx) > abs(dy)) {
     waitRelease = true;
     int next = constrain(activePage + (dx < 0 ? 1 : -1), 0, PAGE_COUNT - 1);
     if (next != activePage) { selectPage(next); drawBoard(); lastRefresh = 0; }
     return;
   }
-  if (abs(dx) > 180 || abs(dy) > 180) moved = true; // kein Tippen bei Wischgeste
+  if (abs(dx) > 20 || abs(dy) > 20) moved = true; // kein Tippen bei Wischgeste
   // Ein Antippen wird erst beim Loslassen ausgeloest: Wischen bleibt priorisiert.
 }
 
@@ -1866,70 +1604,80 @@ void setup() {
   Serial.begin(115200);
   analogReadResolution(12);
 analogSetPinAttenuation(34, ADC_11db);
-  pinMode(BACKLIGHT_PIN, OUTPUT);
-  digitalWrite(BACKLIGHT_PIN, HIGH); // Always ON after power cycle, never persist sleep
+  pinMode(27, OUTPUT); digitalWrite(27, HIGH);
   pinMode(33, OUTPUT); digitalWrite(33, HIGH); // Touch-CS inaktiv
   pinMode(5, OUTPUT); digitalWrite(5, HIGH);   // SD-CS inaktiv
   gfx->begin(27000000);
   setupTouch();
   loadTouchCalibration();
   gfx->setTextWrap(false);
-  gfx->fillScreen(TRAM_COLOR_BLACK);
-  drawLine("Bern Abfahrtstafel", 12, 20, TRAM_COLOR_AMBER);
+  gfx->fillScreen(BLACK);
   loadSettings();
-  WiFi.mode(WIFI_STA);
-  startWiFiAttempt(); // bez dlouheho blokovani dotyku a webove aplikace
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP("TRAMLI-BERN-2");
-    fallbackAP=true;
-    gfx->fillScreen(TRAM_COLOR_BLACK);
-    drawLine("WLAN: TRAMLI-BERN-2", 12, 32, TRAM_COLOR_AMBER);
-    drawLine("Browser: 192.168.4.1", 12, 70, TRAM_COLOR_WHITE);
-  } else {
-    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org");
-    statusText = "Lade Abfahrten";
-    drawBoard();
-  }
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP("TRAMLI-BERN-2");
+  accessPoint = true;
   configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org");
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  pwmReady = ledcAttach(27, 5000, 8);
+#else
+  pwmReady = ledcSetup(0, 5000, 8) > 0;
+  if (pwmReady) ledcAttachPin(27, 0);
+#endif
+  applyBrightness();
+  // Restore the saved city before starting its intro; no internet dependency.
+  if(introMode!=0) bootIntro.begin(gfx, millis(), activeCity);
+  while (bootIntro.active()) {
+    bootIntro.tick(gfx, millis());
+    delay(1); // Yield to ESP32 background tasks and watchdog.
+  }
   setupRoutes();
   calibrateTouch();
   drawBoard();
+  resetAutoPageTimer();
 }
 
 void loop() {
   server.handleClient();
-  wifiTick();
-  checkSwipe();
-  if((int32_t)(millis()-nextLightCheck)>=0) {
-    nextLightCheck=millis()+30000UL;
-    if(brightnessPwmEnabled && !displaySleeping)applyBacklight();
+  serviceWifiScan();
+  serviceWifi();
+  serviceDepartures();
+  applyBrightness();
+  if (bootIntro.active()) {
+    resetAutoPageTimer();
+    if (bootIntro.tick(gfx, millis())) {
+      ++touchExitRevision; // Force full redraw even after rapid A -> B -> A changes.
+      drawBoard();
+      Serial.printf("[Intro] city=%d freeHeap=%u minHeap=%u\n", activeCity,
+                    (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+    }
+    delay(5);
+    return; // Network/web work above continues; touch and board drawing wait.
   }
-  if (!displaySleeping && displayAutoOff && displayIdleMinutes &&
-      millis()-displayLastActivity >= (uint32_t)displayIdleMinutes*60000UL) displaySleep();
+  checkSwipe();
+  serviceAutoPages();
   static bool wasConnected = false;
   bool connected = WiFi.status() == WL_CONNECTED;
   if (connected != wasConnected) {
     wasConnected = connected;
     lastRefresh = 0;
     if (!connected) {
-      wifiLastIssue="Spojeni preruseno, zkousim ulozene site";
-      if (!fallbackAP && !wifiAttemptPending) {
-        WiFi.mode(WIFI_AP_STA);
-        WiFi.softAP("TRAMLI-BERN-2");fallbackAP=true;
-      }
+      departureCount = 0;
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAP("TRAMLI-BERN-2");
     }
     if (!touchMenuOpen) drawBoard();
   }
-  if (connected && (lastRefresh == 0 || millis() - lastRefresh >= REFRESH_MS)) {
+  if (!touchMenuOpen && connected && (lastRefresh == 0 || millis() - lastRefresh >= REFRESH_MS)) {
     refreshBoard();
     lastRefresh = millis();
   }
-  retryFailedStops();
+  if (!touchMenuOpen) retryFailedStops();
   static uint32_t lastBlink = 0;
   if (millis() - lastBlink >= 500) {
     lastBlink = millis();
-    if (!touchMenuOpen && !displaySleeping) { drawHeader(); if (connected && stopCount) drawDepartureRows(); }
+    if (!touchMenuOpen) { drawHeader(); if (connected && stopCount) drawDepartureRows(); }
   }
   static uint32_t lastWarning = 0;
   if (millis() - lastWarning >= 220) {
@@ -1939,3 +1687,565 @@ void loop() {
 
 }
 
+
+// ---- Extended controls. Legacy NVS namespace and slot keys remain unchanged. ----
+String wifiKey(int i) { return "wifi" + String(i); }
+void storeNetwork(int i) { prefs.putBytes(wifiKey(i).c_str(), &networks[i], sizeof(WifiProfile)); }
+int networkCount() { int n=0; for (auto &v:networks) if(v.ssid[0]) ++n; return n; }
+void loadExtendedSettings() {
+  // RC3 explicitly enables the manual indicator once, including upgrades from RC2.
+  // Later user choices remain persistent and are never reset on ordinary reboot.
+  if (!prefs.getBool("batteryRC3", false)) {
+    prefs.putBool("batteryOn", true);
+    prefs.putBool("batteryRC3", true);
+  }
+  batteryEnabled = prefs.getBool("batteryOn", true);
+  batteryWarningEnabled = prefs.getBool("batteryWarn", false);
+  batteryLowMv = prefs.getInt("batteryLowMv", 0);
+  if (batteryLowMv < 2500 || batteryLowMv > 4300 || batteryLowMv % 50) batteryLowMv = 0;
+  if (!prefs.getBool("wifiV2", false)) {
+    if (wifiSsid.length() && wifiSsid.length() <= 32 && wifiPassword.length() <= 63) {
+      strlcpy(networks[0].ssid, wifiSsid.c_str(), sizeof(networks[0].ssid));
+      strlcpy(networks[0].pass, wifiPassword.c_str(), sizeof(networks[0].pass));
+      networks[0].worked = 1; storeNetwork(0);
+    }
+    prefs.putBool("wifiV2", true);
+  }
+  for (int i=0;i<4;++i) {
+    if (prefs.getBytesLength(wifiKey(i).c_str()) == sizeof(WifiProfile))
+      prefs.getBytes(wifiKey(i).c_str(), &networks[i], sizeof(WifiProfile));
+    networks[i].ssid[32]=0; networks[i].pass[63]=0;
+  }
+  wifiPreferred = constrain((int)prefs.getUChar("wifiPref",0),0,3);
+  brightness = constrain(prefs.getInt("bright",100),5,100);
+  nightBrightness = constrain(prefs.getInt("nightBright",15),5,100);
+  nightStart = constrain(prefs.getInt("nightStart",1320),0,1439);
+  nightEnd = constrain(prefs.getInt("nightEnd",420),0,1439);
+  nightEnabled = prefs.getBool("nightOn",false);
+  wifiPassword = ""; // Loaded passwords are never rendered or logged.
+}
+bool validNetwork(const String &ssid, const String &pass) {
+  return ssid.length()>0 && ssid.length()<=32 && (pass.length()==0 || (pass.length()>=8 && pass.length()<=63));
+}
+int saveNetwork(const String &ssid, const String &pass) {
+  if (!validNetwork(ssid,pass)) return -1;
+  int slot=-1;
+  for(int i=0;i<4;++i) if(String(networks[i].ssid)==ssid) { slot=i; break; }
+  if(slot<0) for(int i=0;i<4;++i) if(!networks[i].ssid[0]) { slot=i; break; }
+  if(slot<0) return -1;
+  // A proven credential is never overwritten by an untested password.
+  if(networks[slot].worked && String(networks[slot].pass)!=pass) return -1;
+  bool known=networks[slot].worked;
+  memset(&networks[slot],0,sizeof(WifiProfile));
+  strlcpy(networks[slot].ssid,ssid.c_str(),sizeof(networks[slot].ssid));
+  strlcpy(networks[slot].pass,pass.c_str(),sizeof(networks[slot].pass));
+  networks[slot].worked=known; storeNetwork(slot);
+  return slot;
+}
+bool deleteNetwork(int i) {
+  if(i<0||i>=4||!networks[i].ssid[0]||networkCount()<=1) return false;
+  int proven=0; for(auto &v:networks) if(v.ssid[0]&&v.worked) ++proven;
+  if(networks[i].worked && proven<=1) return false;
+  bool active=WiFi.status()==WL_CONNECTED && WiFi.SSID()==networks[i].ssid;
+  memset(&networks[i],0,sizeof(WifiProfile)); storeNetwork(i);
+  if(active||wifiTrying==i) { WiFi.disconnect(); wifiAttempting=false; wifiTrying=-1; }
+  return true;
+}
+void chooseNetwork(int i) {
+  if(i<0||i>=4||!networks[i].ssid[0]) return;
+  wifiPreferred=i; prefs.putUChar("wifiPref",i);
+  WiFi.disconnect(); wifiAttempting=false; wifiTrying=-1;
+}
+void serviceWifi() {
+  if(wifiScanning) return;
+  if(WiFi.status()==WL_CONNECTED) {
+    if(wifiTrying>=0 && !networks[wifiTrying].worked && WiFi.SSID()==networks[wifiTrying].ssid) {
+      networks[wifiTrying].worked=1; storeNetwork(wifiTrying);
+    }
+    wifiAttempting=false;
+    if(accessPoint) { WiFi.softAPdisconnect(true); accessPoint=false; }
+    return;
+  }
+  if(!accessPoint) { WiFi.mode(WIFI_AP_STA); WiFi.softAP("TRAMLI-BERN-2"); accessPoint=true; }
+  if(wifiAttempting && millis()-wifiAttemptAt<15000) return;
+  int next=wifiTrying<0 ? wifiPreferred : (wifiTrying+1)%4;
+  for(int n=0;n<4;++n,next=(next+1)%4) if(networks[next].ssid[0]) {
+    WiFi.disconnect(); wifiTrying=next; wifiAttemptAt=millis(); wifiAttempting=true;
+    WiFi.begin(networks[next].ssid,networks[next].pass); return;
+  }
+}
+// Asynchronous discovery; bounded cache, no password storage and no automatic join.
+void startWifiScan(bool force) {
+  if(wifiScanning || (!force && wifiScanDone && millis()-wifiScanAt<60000)) return;
+  if(WiFi.status()!=WL_CONNECTED) {
+    WiFi.disconnect(); wifiAttempting=false; wifiTrying=-1;
+    if(!accessPoint) { WiFi.mode(WIFI_AP_STA); WiFi.softAP("TRAMLI-BERN-2"); accessPoint=true; }
+  }
+  WiFi.scanDelete();
+  nearbyCount=0; nearbyPage=0; wifiScanError=false; wifiScanDone=false;
+  wifiScanAt=millis(); wifiScanning=true;
+  int result=WiFi.scanNetworks(true,false);
+  if(result==WIFI_SCAN_FAILED) {wifiScanning=false;wifiScanDone=true;wifiScanError=true;}
+}
+void serviceWifiScan() {
+  if(!wifiScanning) return;
+  int n=WiFi.scanComplete();
+  if(n==WIFI_SCAN_RUNNING && millis()-wifiScanAt<30000) return;
+  if(n<0) {esp_wifi_scan_stop();wifiScanError=true;}
+  else for(int i=0;i<n;++i) {
+    String ssid=WiFi.SSID(i); if(!ssid.length() || ssid.length()>32) continue;
+    int rssi=WiFi.RSSI(i), found=-1;
+    bool open=WiFi.encryptionType(i)==WIFI_AUTH_OPEN;
+    for(int j=0;j<nearbyCount;++j) if(nearbyWifi[j].ssid==ssid && nearbyWifi[j].open==open) {found=j;break;}
+    if(found>=0) {if(rssi>nearbyWifi[found].rssi) nearbyWifi[found].rssi=rssi;}
+    else {
+      int slot=nearbyCount;
+      if(slot>=16) {slot=15;if(rssi<=nearbyWifi[slot].rssi) continue;}
+      else ++nearbyCount;
+      nearbyWifi[slot]={ssid,rssi,open};
+    }
+    for(int a=0;a<nearbyCount;++a)for(int b=a+1;b<nearbyCount;++b)
+      if(nearbyWifi[b].rssi>nearbyWifi[a].rssi) {NearbyWifi temp=nearbyWifi[a];nearbyWifi[a]=nearbyWifi[b];nearbyWifi[b]=temp;}
+  }
+  WiFi.scanDelete(); wifiScanning=false; wifiScanDone=true;wifiScanAt=millis();nearbyPage=0;
+  if(touchMenuOpen && touchMode==24) drawExtendedMenu();
+}
+String wifiScanJson() {
+  JsonDocument d; d["busy"]=wifiScanning;d["error"]=wifiScanError;
+  JsonArray rows=d["networks"].to<JsonArray>();
+  for(int i=0;i<nearbyCount;++i) {JsonObject row=rows.add<JsonObject>();row["ssid"]=nearbyWifi[i].ssid;row["rssi"]=nearbyWifi[i].rssi;row["open"]=nearbyWifi[i].open;}
+  String out;serializeJson(d,out);return out;
+}
+bool nightAt(int minute) {
+  if(nightStart==nightEnd) return false;
+  return nightStart<nightEnd ? minute>=nightStart && minute<nightEnd : minute>=nightStart || minute<nightEnd;
+}
+void applyBrightness() {
+  if(!pwmReady) return;
+  int value=brightness;
+  time_t now=time(nullptr);
+  if(nightEnabled && now>1700000000) {
+    struct tm t; localtime_r(&now,&t);
+    if(nightAt(t.tm_hour*60+t.tm_min)) value=min(brightness,nightBrightness);
+  }
+  static int previous=-1;
+  if(value==previous) return;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  if(!ledcWrite(27,value*255/100)) { pwmReady=false; return; }
+#else
+  ledcWrite(0,value*255/100);
+#endif
+  previous=value;
+}
+void saveDisplaySettings() {
+  prefs.putInt("bright",brightness); prefs.putInt("nightBright",nightBrightness);
+  prefs.putBool("nightOn",nightEnabled); prefs.putInt("nightStart",nightStart); prefs.putInt("nightEnd",nightEnd);
+  applyBrightness();
+}
+String clockMinutes(int value) { value=constrain(value,0,1439); char b[6]; snprintf(b,sizeof(b),"%02d:%02d",value/60,value%60); return String(b); }
+int readClock(const String &s) {
+  if(s.length()!=5||s[2]!=':') return -1;
+  for(int i: {0,1,3,4}) if(s[i]<'0'||s[i]>'9') return -1;
+  int h=s.substring(0,2).toInt(),m=s.substring(3).toInt();
+  return h<24 && m<60 ? h*60+m : -1;
+}
+bool numericArg(const char *name,int low,int high,int &out) {
+  String v=server.arg(name); if(!v.length()||v.length()>5) return false;
+  for(size_t i=0;i<v.length();++i) if(v[i]<'0'||v[i]>'9') return false;
+  out=v.toInt(); return out>=low&&out<=high;
+}
+String stopHealth(int i) {
+  if(!stops[i].length()) return "Freier Platz";
+  if(WiFi.status()!=WL_CONNECTED) return "WLAN getrennt - Wiederverbindung automatisch";
+  if(stopFetchFailed[i]) return "Server/Verbindung voruebergehend nicht verfuegbar - Wiederholung automatisch";
+  if(!lastSuccess[i]) return "Noch nicht abgerufen - Seite auswaehlen";
+  if(millis()-lastSuccess[i]>90000) return "Gespeicherte Antwort ist veraltet";
+  return "Antwort empfangen; Echtzeitstatus des Betreibers nicht bestaetigt";
+}
+String diagnosticsHtml() {
+  String h="<section class='card'><h2>Verbindung und Gerät</h2><p>";
+  h+=WiFi.status()==WL_CONNECTED ? "WLAN verbunden: "+escapeHtml(WiFi.SSID()) : "WLAN getrennt; gespeicherte Netze werden automatisch versucht";
+  h+="</p><p>IP: "+escapeHtml(currentAddress())+"</p><p>RAM frei: "+String(ESP.getFreeHeap())+" Byte; Minimum: "+String(ESP.getMinFreeHeap())+" Byte</p><p>"+String(VERSION);
+  h += "</p><p>Intro-Grafik: " + String(IntroAssets::assetBytes + IntroCrests::assetBytes + MenuCrests::assetBytes) + " Byte Flash; Renderer: " + String(sizeof(BootIntro)) + " Byte RAM";
+  h += "</p><p>Programm: " + String(ESP.getSketchSize()) + " Byte</p><p>Batterie: ";
+  float v=batteryVoltage();
+  if(!batteryEnabled) h+="Anzeige ausgeschaltet (Menü → Baterie).";
+  else if(v<0) h+="kein plausibler BAT+ Messwert / eventuell nicht angeschlossen. Keine Prozentangabe.";
+  else h+=String(v,2)+" V"+(isLowBattery(v,BATTERY_VERIFIED,(batteryLowMv / 1000.0f))?" - WARNUNG: Batteriespannung niedrig":"");
+  h+="</p><p>Batteriewarnung: "+String(!batteryWarningEnabled?"aus":!batteryEnabled?"wartet: Batterieanzeige ausgeschaltet":(!BATTERY_VERIFIED || (batteryLowMv / 1000.0f)<=0)?"vorbereitet; Spannungsschwelle noch nicht festgelegt":"eingeschaltet");
+  h+="</p><p>Helligkeitssteuerung: "+String(pwmReady?"PWM bereit":"nicht verfuegbar")+"</p><p>Uhr: "+String(time(nullptr)>1700000000?"synchronisiert":"wartet auf NTP")+"</p></section>";
+  for(int i=0;i<MAX_STOPS;++i) {
+    h+="<section class='card'><h2>Seite "+String(i/STOPS_PER_PAGE+1)+", Platz "+String(i%STOPS_PER_PAGE+1)+"</h2><p>"+escapeHtml(stops[i])+"</p><p>"+escapeHtml(stopHealth(i))+"</p>";
+    if(lastSuccess[i]) {
+      uint32_t age=millis()-lastSuccess[i];
+      h+="<p>Letzter erfolgreicher Empfang vor "+String(age/1000)+" s.</p>";
+      if(time(nullptr)>1700000000) {
+        time_t stamp=time(nullptr)-age/1000; struct tm t;localtime_r(&stamp,&t);char b[24];strftime(b,sizeof(b),"%d.%m.%Y %H:%M:%S",&t);
+        h+="<p>Empfang: "+String(b)+" (aus Laufzeit abgeleitet).</p>";
+      }
+    }
+    if(stopFetchFailed[i]) h+="<p>Naechster Versuch auf aktiver Seite in hoechstens "+String(retryDelay[i]/1000)+" s nach Ende des letzten Versuchs.</p>";
+    h+="</section>";
+  }
+  h+="<p class='hint'>Empfangszeit ist nicht der Aktualisierungszeitpunkt des Verkehrsbetreibers. Inaktive Seiten werden bei Auswahl geladen. Alte Abfahrten werden nach 3 Minuten ausgeblendet. Technische Verbindungsfehler sind keine Verkehrsmeldungen.</p>";
+  return h;
+}
+void setBatteryEnabled(bool enabled) {
+  batteryEnabled = enabled;
+  prefs.putBool("batteryOn", enabled);
+  ++screenRevision;
+  if (!touchMenuOpen) drawHeader();
+}
+void setBatteryWarningEnabled(bool enabled) {
+  batteryWarningEnabled = enabled;
+  prefs.putBool("batteryWarn", enabled);
+  ++screenRevision;
+  if (!touchMenuOpen) drawHeader();
+}
+void setBatteryThreshold(int mv) {
+  if (mv != 0 && (mv < 2500 || mv > 4300 || mv % 50)) return;
+  batteryLowMv = mv;
+  prefs.putInt("batteryLowMv", mv);
+  ++screenRevision;
+  if (!touchMenuOpen) drawHeader();
+}
+void setupExtendedRoutes() {
+  server.on("/battery",HTTP_GET,[](){
+    String h=pageStart("Baterie")+"<section class='card'><h2>Batterieanzeige</h2><p>"+String(batteryEnabled?"Eingeschaltet":"Ausgeschaltet")+"</p><form method='post' action='/battery'><label><input type='checkbox' name='enabled' value='yes'"+String(batteryEnabled?" checked":"")+"> Batterie anzeigen</label><label><input type='checkbox' name='warn' value='yes'"+String(batteryWarningEnabled?" checked":"")+"> Warnung bei niedriger Spannung</label><p class='hint'>Warnschwelle passend zur eingesetzten Batterie waehlen. Unterhalb: rotes Symbol und Diagnosemeldung. Keine automatische Abschaltung.</p></form><p class='hint'>Gespeichert auch nach Neustart. 16 ADC-Messungen, Teiler R2/R3: 100k/100k. Anzeige in Volt, keine geschaetzten Prozentwerte. Ohne plausiblen Wert: --. Mit USB kann BAT+ auch ohne Batterie Spannung fuehren.</p></section>";
+    String options="<label>Warnschwelle (Volt)<select name='threshold'><option value='0'>Nicht eingestellt</option>";
+    for(int mv=2500;mv<=4300;mv+=50) options+="<option value='"+String(mv)+"'"+String(mv==batteryLowMv?" selected":"")+">"+String(mv/1000.0f,2)+" V</option>";
+    options+="</select></label><button>Speichern</button></form>";
+    h.replace("</form>",options);
+    sendPage(h);
+  });
+  server.on("/battery",HTTP_POST,[](){
+    if(server.hasArg("enabled") && server.arg("enabled")!="yes") {showMessage("Ungueltiger Batteriestatus");return;}
+    if(server.hasArg("warn") && server.arg("warn")!="yes") {showMessage("Ungueltige Warnungseinstellung");return;}
+    int threshold=batteryLowMv;
+    if(server.hasArg("threshold") && (!numericArg("threshold",0,4300,threshold) || (threshold && (threshold<2500 || threshold%50)))) {showMessage("Ungueltige Warnschwelle");return;}
+    setBatteryThreshold(threshold);
+    setBatteryEnabled(server.arg("enabled")=="yes");
+    setBatteryWarningEnabled(server.arg("warn")=="yes");
+    server.sendHeader("Location","/battery");server.send(303);
+  });
+  server.on("/",HTTP_GET,[](){
+    String h=pageStart("Menü");
+    const char *paths[]={"/wifi","/stops","/cities","/display","/diagnostics","/system","/boards","/battery"};
+    const char *labels[]={"◉ Wi-Fi-Netze","▤ Seiten und Haltestellen","↔ Stadt auswählen","☀ Helligkeit / Nachtmodus","i · Diagnose","⚙ System","▣ Meine Boards","▣ Baterie"};
+    for(int i=0;i<8;++i) h+="<section class='card'><a class='button full' href='"+String(paths[i])+"'>"+labels[i]+"</a></section>";
+    h+="<section class='card'><a class='button full' href='/comfort'>Favoriten / Intro / Seiten / Home</a></section>";
+    if(homeCity<CITY_COUNT)h+="<form method='post' action='/home'><button>Home</button></form>";
+    sendPage(h);
+  });
+  setupComfortRoutes();
+  server.on("/cities",HTTP_GET,[](){
+    String h=pageStart("Stadt auswählen")+"<section class='card'><form method='post' action='/city'><label>Stadt</label><select name='city'>";
+    for(int position=0;position<CITY_COUNT;++position){int i=cityForPosition(position);h+="<option value='"+String(i)+"'"+(i==activeCity?" selected":"")+">"+escapeHtml(CITY_QUERIES[i])+"</option>";}
+    sendPage(h+"</select><button>Auswählen</button></form></section>");
+  });
+  server.on("/wifi/scan",HTTP_GET,[](){server.sendHeader("Cache-Control","no-store");server.send(200,"application/json",wifiScanJson());});
+  server.on("/wifi/scan",HTTP_POST,[](){startWifiScan(true);server.send(202,"application/json",wifiScanJson());});
+  server.on("/wifi",HTTP_GET,[](){
+    startWifiScan();
+    String h=pageStart("Wi-Fi-Netze")+"<p class='hint'>Vier Speicherplätze. 2,4-GHz-WLAN. Die letzte gespeicherte und die letzte erfolgreich verwendete Verbindung bleiben geschützt. Nach einem Netzwechsel kann sich die IP ändern.</p>";
+    h+=R"SCAN(<section class='card'><h2>Verfügbare Netze</h2><p id='scanStatus' role='status'>Suche läuft…</p><div id='scanRows'></div><button type='button' id='scanAgain'>Erneut suchen</button><p class='hint'>Bis zu 16 Netze, stärkstes Signal zuerst. Auswahl übernimmt den Namen unten. Versteckte Netze manuell eingeben.</p></section>
+<script>
+(function(){let timer;const status=document.getElementById('scanStatus'),rows=document.getElementById('scanRows'),again=document.getElementById('scanAgain');
+async function poll(restart){clearTimeout(timer);again.disabled=true;try{const r=await fetch('/wifi/scan',{method:restart?'POST':'GET',cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();rows.textContent='';status.textContent=d.busy?'Suche läuft…':d.error?'Suche fehlgeschlagen. Erneut versuchen.':d.networks.length?'Netz auswählen:':'Keine sichtbaren Netze gefunden.';
+if(!d.busy)d.networks.forEach(n=>{const b=document.createElement('button');b.type='button';b.className='full';b.style.marginBottom='8px';b.textContent=n.ssid+' · '+n.rssi+' dBm · '+(n.open?'Offen':'Gesichert');b.onclick=()=>{const f=document.querySelector('input[name="ssid"]');f.value=n.ssid;document.querySelector('input[name="pass"]').value='';f.scrollIntoView({block:'center'});document.querySelector('input[name="pass"]').focus();};rows.appendChild(b);});
+if(d.busy)timer=setTimeout(()=>poll(false),1200);else again.disabled=false;
+}catch(e){status.textContent='Keine Antwort. Verbindung prüfen und erneut suchen.';again.disabled=false;}}
+again.onclick=()=>poll(true);poll(false);})();
+</script>)SCAN";
+    for(int i=0;i<4;++i) if(networks[i].ssid[0]) {
+      h+="<section class='card'><h2>"+escapeHtml(networks[i].ssid)+"</h2><p>"+String(networks[i].worked?"Bereits verbunden":"Noch nicht erfolgreich verbunden")+"</p>";
+      h+="<form action='/wifi/select' method='post'><input type='hidden' name='index' value='"+String(i)+"'><button>Verbinden</button></form>";
+      h+="<form action='/wifi/delete' method='post'><input type='hidden' name='index' value='"+String(i)+"'><label><input type='checkbox' name='confirm' value='yes' required> Dieses Netz entfernen</label><button class='subtle'>Entfernen bestätigen</button></form></section>";
+    }
+    h+="<section class='card'><h2>Netz hinzufügen</h2><form method='post' action='/wifi'><label>SSID</label><input name='ssid' maxlength='32' autocapitalize='none' spellcheck='false' required><label>Passwort</label><input name='pass' type='password' maxlength='63' autocomplete='new-password'><p class='hint'>8–63 Zeichen, oder leer für ein offenes Netz. Ein bewährtes Passwort wird nicht ungetestet überschrieben.</p><button>Speichern und verbinden</button></form></section>";
+    sendPage(h);
+  });
+  server.on("/wifi",HTTP_POST,[](){
+    int i=saveNetwork(server.arg("ssid"),server.arg("pass"));
+    if(i<0){showMessage("SSID/Passwort ungueltig, Speicher voll oder bestehendes Passwort geschuetzt.");return;}
+    sendPage(pageStart("WLAN gespeichert")+"<p>Verbindung wird versucht. Falls kein gespeichertes Netz erreichbar ist: TRAMLI-BERN-2 / 192.168.4.1.</p>");
+    chooseNetwork(i);
+  });
+  server.on("/wifi/select",HTTP_POST,[](){int i;if(!readIndex(4,i)||!networks[i].ssid[0]){showMessage("Netz ungueltig");return;}sendPage(pageStart("Netzwechsel")+"<p>Neue IP am Display ablesen.</p>");chooseNetwork(i);});
+  server.on("/wifi/delete",HTTP_POST,[](){int i;if(server.arg("confirm")!="yes"||!readIndex(4,i)||!deleteNetwork(i)){showMessage("Nicht entfernt: letzte gespeicherte oder letzte bewaehrte Verbindung ist geschuetzt.");return;}server.sendHeader("Location","/wifi");server.send(303);});
+  server.on("/diagnostics",HTTP_GET,[](){sendPage(pageStart("Diagnose")+diagnosticsHtml());});
+  server.on("/display",HTTP_GET,[](){
+    String h=pageStart("Display")+"<section class='card'>";
+    if(!pwmReady) {sendPage(h+"<p>PWM konnte nicht initialisiert werden. Helligkeit nicht steuerbar.</p></section>");return;}
+    h+="<form method='post' action='/display'><label>Manueller Tageswert: "+String(brightness)+" %</label><input aria-label='Helligkeit' name='brightness' type='range' oninput='this.previousElementSibling.textContent = this.value + String.fromCharCode(37)' min='5' max='100' value='"+String(brightness)+"'><label>Nachtwert: "+String(nightBrightness)+" %</label><input aria-label='Nachthelligkeit' name='nightBrightness' type='range' oninput='this.previousElementSibling.textContent = this.value + String.fromCharCode(37)' min='5' max='100' value='"+String(nightBrightness)+"'><label><input type='checkbox' name='enabled' value='yes'"+String(nightEnabled?" checked":"")+"> Nachtmodus</label><label>Beginn</label><input name='start' type='time' value='"+clockMinutes(nightStart)+"' required><label>Ende</label><input name='end' type='time' value='"+clockMinutes(nightEnd)+"' required><button>Speichern</button></form><p class='hint'>Ortszeit Schweiz. Ohne synchronisierte Uhr bleibt der Tageswert aktiv. Gleiche Start- und Endzeit deaktiviert das Zeitfenster. Nachts wird der Tageswert nicht erhöht.</p></section>";
+    sendPage(h);
+  });
+  server.on("/display",HTTP_POST,[](){
+    int b,n,start=readClock(server.arg("start")),end=readClock(server.arg("end"));
+    if(!pwmReady||!numericArg("brightness",5,100,b)||!numericArg("nightBrightness",5,100,n)||start<0||end<0){showMessage("Ungueltige Displayeinstellungen");return;}
+    brightness=b;nightBrightness=n;nightStart=start;nightEnd=end;nightEnabled=server.arg("enabled")=="yes";saveDisplaySettings();
+    server.sendHeader("Location","/display");server.send(303);
+  });
+  server.on("/system",HTTP_GET,[](){
+    sendPage(pageStart("System")+"<section class='card'><h2>"+String(VERSION)+"</h2><p>Private Abfahrtstafel. Daten: <a href='https://transport.opendata.ch/'>transport.opendata.ch</a>. Kein Verkehrsmeldungsdienst.</p><form action='/refresh' method='post'><button>Daten aktualisieren</button></form><p><a class='button' href='/settings'>Boardname / Einstellungen</a></p><form action='/touch-kalibrieren' method='post'><button class='subtle'>Touch neu kalibrieren (Neustart)</button></form></section>");
+  });
+}
+
+void menuTop(const String &title) {
+  gfx->fillScreen(BLACK); drawLine(title,12,8,touchMode==10?0xFF09:AMBER,2);
+  touchButton("ZURUECK",352,4,116,27,BUTTON_BLUE);gfx->drawFastHLine(10,36,460,touchMode==10?0xFF09:AMBER);
+}
+void sliderDraw(int y,int value,const String &label) {
+  drawLine(label+" "+String(value)+"%",12,y,AMBER,2);
+  gfx->drawRoundRect(20,y+22,440,20,6,AMBER);
+  gfx->fillRoundRect(20,y+22,max(8,value*440/100),20,6,AMBER);
+}
+const char *keyboardRow(int r) {
+  static const char *keys[3][4]={
+    {"qwertzuiop","asdfghjkl","yxcvbnm","0123456789"},
+    {"QWERTZUIOP","ASDFGHJKL","YXCVBNM","0123456789"},
+    {"!@#$%^&*()","-_=+[]{}\\|",";:'\",.<>/?","`~"}
+  };
+  return keys[keyboardPage][r];
+}
+void drawExtendedMenu() {
+  if(touchMode==25) {
+    menuTop("KOMFORT");
+    touchButton("FAVORITEN",12,46,456,40);
+    touchButton(introMode==2?"INTRO: START + STADT":introMode==1?"INTRO: NUR START":"INTRO: AUS",12,94,456,40);
+    touchButton("-",12,142,66,40);
+    touchButton(autoPageSeconds?"AUTO-SEITEN: "+String(autoPageSeconds)+" S":"AUTO-SEITEN: AUS",86,142,308,40);
+    touchButton("+",402,142,66,40);
+    touchButton("AKTUELLE SEITE ALS HOME",12,190,456,40);
+    touchButton(homeCity<CITY_COUNT?"HOME: "+String(CITY_LABELS[homeCity])+" / "+String(homePage+1):"HOME: NICHT GESETZT",12,238,456,40);
+    drawLine("Antippen aendert und speichert die Einstellung.",12,295,WHITE,1);
+  } else if(touchMode==26) {
+    menuTop("FAVORITEN");
+    // Keep the editor in canonical order so toggling does not move the target.
+    for(int city=0;city<CITY_COUNT;++city)
+      drawCityBadge(city,12+(city%2)*234,43+(city/2)*37,222,33,2,(favoriteCities>>city)&1);
+  } else if(touchMode==10) {
+    menuTop("MENU");
+    const char *labels[]={"WI-FI NETZE","EINSTELLUNG","SEITEN","STADT","DIAGNOSE","AKTUALISIEREN","UEBER / SYSTEM","HALTESTELLEN"};
+    for(int i=0;i<8;++i)touchButton(labels[i],12+(i%2)*234,46+(i/2)*57,222,49);
+    touchButton("BATERIE",12,278,456,34);
+  } else if(touchMode==11) {
+    menuTop("SEITEN / PLATZE");
+    for(int i=0;i<3;++i)touchButton("SEITE "+String(i+1),12+i*156,46,144,38,i==activePage?BUTTON_BLUE:AMBER);
+    for(int pos=0;pos<pageSlots[activePage];++pos){int i=activePage*STOPS_PER_PAGE+pos;touchButton(String(activePage+1)+"."+String(pos+1)+" "+clip(stops[i].length()?stops[i]:"Frei",28),12,94+pos*40,456,36);}
+    touchButton("PLATZE: "+String(pageSlots[activePage])+"  (1-3)",12,270,456,38);
+    if(menuNotice.length())drawLine(clip(menuNotice,70),12,257,AMBER,1);
+  } else if(touchMode==12) {
+    menuTop("WI-FI NETZE");
+    for(int i=0;i<4;++i)touchButton(String(i+1)+" "+clip(networks[i].ssid[0]?String(networks[i].ssid):"Freier Platz",29),12,46+i*45,456,40);
+    touchButton("NETZE SUCHEN",12,232,222,44);
+    touchButton("MANUELL",246,232,222,44);
+    drawLine(clip(menuNotice,70),12,290,WHITE,1);
+  } else if(touchMode==24) {
+    menuTop("NETZE SUCHEN");
+    if(wifiScanning) drawLine("Suche laeuft...",12,55,AMBER,2);
+    else if(wifiScanError) drawLine("Suche fehlgeschlagen",12,55,AMBER,2);
+    else if(!nearbyCount) drawLine("Keine Netze gefunden",12,55,WHITE,2);
+    else for(int r=0;r<4;++r) {int i=nearbyPage*4+r;if(i>=nearbyCount)break;
+      touchButton(clip(nearbyWifi[i].ssid,22)+" "+String(nearbyWifi[i].rssi)+(nearbyWifi[i].open?" O":" S"),12,46+r*48,456,44);
+    }
+    touchButton("<",12,243,66,44);touchButton("NEU SUCHEN",86,243,220,44);touchButton(">",314,243,66,44);touchButton("NAME",388,243,80,44);
+    drawLine("O=offen S=gesichert | "+String(nearbyPage+1)+"/"+String(max(1,(nearbyCount+3)/4)),12,300,WHITE,1);
+  } else if(touchMode==13) {
+    menuTop("DISPLAY");
+    touchButton("FAVORITEN / INTRO / HOME",12,276,456,36);
+    if(!pwmReady){drawLine("PWM nicht verfuegbar",12,70,WHITE,2);return;}
+    sliderDraw(45,brightness,"HELLIGKEIT");sliderDraw(104,nightBrightness,"NACHTWERT");
+    touchButton(nightEnabled?"NACHT EIN":"NACHT AUS",12,163,222,36);
+    touchButton("ZEITEN",246,163,222,36);
+    drawLine(clockMinutes(nightStart)+" - "+clockMinutes(nightEnd),12,217,WHITE,2);
+    drawLine("Speichert automatisch. Ohne Uhr: Tageswert.",12,253,WHITE,1);
+  } else if(touchMode==14) {
+    menuTop("DIAGNOSE");
+    drawLine(WiFi.status()==WL_CONNECTED?"WLAN: "+clip(WiFi.SSID(),26):"WLAN getrennt; Auto-Versuch",12,48,WHITE,1);
+    drawLine("IP "+currentAddress()+"  RAM "+String(ESP.getFreeHeap()),12,68,WHITE,1);
+    for(int pos=0;pos<pageSlots[activePage];++pos){int i=activePage*STOPS_PER_PAGE+pos;drawLine(String(activePage+1)+"."+String(pos+1)+": "+clip(stops[i],36),12,96+pos*40,AMBER,1);drawLine(clip(stopHealth(i),70),12,108+pos*40,WHITE,1);}
+    drawLine(batteryEnabled?"BAT+: "+(batteryVoltage()>0?String(batteryVoltage(),2)+" V":"--")+" (Details im Web)":"Batterieanzeige ausgeschaltet.",12,270,WHITE,1);
+    touchButton("NEU LADEN",12,287,222,29);
+  } else if(touchMode==15) {
+    menuTop("UEBER / SYSTEM");
+    drawLine(VERSION,12,58,AMBER,2);drawLine("Daten: transport.opendata.ch",12,97,WHITE,2);
+    drawLine("Keine Verkehrsmeldungen",12,137,WHITE,2);
+    drawLine("BAT+ Messung: GPIO34, Teiler 1:2",12,177,WHITE,1);
+    drawLine("Kalibrierung / Boardname in der Web-App",12,202,WHITE,1);
+    touchButton("DATEN AKTUALISIEREN",12,246,456,45);
+  } else if(touchMode==16) {
+    menuTop("HALTESTELLE");
+    drawLine(clip(stops[touchEditIndex].length()?stops[touchEditIndex]:"Freier Platz",37),12,51,WHITE,2);
+    touchButton("SUCHEN / AENDERN",12,94,456,45);touchButton("VERSCHIEBEN / TAUSCHEN",12,151,456,45);touchButton("ENTFERNEN",12,208,456,45);
+  } else if(touchMode==17) {
+    menuTop("ZIELPLATZ WAEHLEN");
+    for(int page=0;page<PAGE_COUNT;++page)touchButton("SEITE "+String(page+1),12+page*156,46,144,38,page==moveTargetPage?BUTTON_BLUE:AMBER);
+    for(int pos=0;pos<pageSlots[moveTargetPage];++pos){int i=moveTargetPage*STOPS_PER_PAGE+pos;touchButton(String(moveTargetPage+1)+"."+String(pos+1)+" "+clip(stops[i].length()?stops[i]:"Frei",28),12,94+pos*40,456,36,i==moveSource?BUTTON_BLUE:AMBER);}
+  } else if(touchMode==18) {
+    menuTop("WI-FI AUSWAHL");
+    drawLine(clip(networks[wifiEdit].ssid,36),12,51,WHITE,2);
+    touchButton("VERBINDEN",12,100,456,48);touchButton("ENTFERNEN",12,166,456,48);
+    drawLine(clip(menuNotice,70),12,250,WHITE,1);
+  } else if(touchMode==19) {
+    menuTop("NETZ ENTFERNEN?");
+    drawLine(clip(networks[wifiEdit].ssid,36),12,60,WHITE,2);
+    drawLine("Letzte bewaehrte Verbindung ist geschuetzt.",12,110,WHITE,1);
+    touchButton("JA, ENTFERNEN",12,169,222,47);touchButton("ABBRECHEN",246,169,222,47);
+  } else if(touchMode==20||touchMode==21) {
+    menuTop(touchMode==20?"WLAN NAME":"WLAN PASSWORT");
+    String shown=inputText;
+    if(touchMode==21){shown="";for(size_t i=0;i<inputText.length();++i)shown+='*';}
+    drawLine(clip(shown,36),12,45,WHITE,2);
+    for(int r=0;r<4;++r){String row=keyboardRow(r);for(int c=0;c<(int)row.length();++c)touchButton(row.substring(c,c+1),12+c*46,73+r*39,42,35);}
+    touchButton("abc/#+",12,232,105,34);touchButton("LEER",125,232,100,34);touchButton("DEL",233,232,100,34);touchButton(touchMode==20?"WEITER":"SICHERN",341,232,127,34);
+    const char *um[]={"AE","OE","UE","SS"};for(int i=0;i<4;++i)touchButton(um[i],12+i*114,274,106,32);
+  } else if(touchMode==23) {
+    menuTop("BATERIE");
+    drawLine(batteryEnabled?"ANZEIGE EIN":"ANZEIGE AUS",12,60,WHITE,2);
+    touchButton(batteryEnabled?"AUSSCHALTEN":"EINSCHALTEN",12,112,456,50);
+    touchButton(batteryWarningEnabled?"WARNUNG EIN":"WARNUNG AUS",12,172,456,40);
+    touchButton("-",12,224,70,44);
+    touchButton("+",398,224,70,44);
+    drawLine(batteryLowMv?"SCHWELLE "+String(batteryLowMv/1000.0f,2)+" V":"SCHWELLE --",98,238,AMBER,2);
+    drawLine("BAT+: "+(batteryVoltage()>0?String(batteryVoltage(),2)+" V":"--")+"  | Schritt 0.05 V",12,280,WHITE,1);
+    drawLine("Automatisch gespeichert. Passend zur Batterie waehlen.",12,300,WHITE,1);
+  } else if(touchMode==22) {
+    menuTop("NACHTZEITEN");
+    drawLine("BEGINN "+clockMinutes(nightStart),12,54,WHITE,2);
+    drawLine("ENDE   "+clockMinutes(nightEnd),12,163,WHITE,2);
+    const char *lab[]={"-1H","+1H","-1M","+1M"};
+    for(int r=0;r<2;++r)for(int c=0;c<4;++c)touchButton(lab[c],12+c*117,85+r*109,105,45);
+  }
+}
+void eraseUtf8(String &s) { if(!s.length())return;int p=s.length()-1;while(p>0&&((uint8_t)s[p]&0xc0)==0x80)--p;s.remove(p); }
+bool extendedTap(int x,int y) {
+  if(touchMode<10) return false;
+  if(y>=4&&y<31&&x>=352&&x<468) {
+    if(touchMode==10){closeTouchMenu();return true;}
+    if(touchMode==21){touchMode=20;inputText=pendingSsid;}
+    else if(touchMode==24||touchMode==20||touchMode==18||touchMode==19){touchMode=12;inputText="";pendingSsid="";}
+    else if(touchMode==16||touchMode==17){touchMode=11;}
+    else if(touchMode==22||touchMode==25){touchMode=13;}
+    else if(touchMode==26){touchMode=25;}
+    else touchMode=10;
+    drawExtendedMenu();return true;
+  }
+  if(touchMode==25) {
+    if(x>=12&&x<468&&y>=46&&y<278&&(y-46)%48<40) {
+      int row=(y-46)/48;
+      if(row==0){touchMode=26;drawExtendedMenu();return true;}
+      if(row==1)introMode=(introMode+1)%3;
+      if(row==2){
+        if(x<78){if(autoPageSeconds>0)--autoPageSeconds;}
+        else if(x>=402){if(autoPageSeconds<60)++autoPageSeconds;}
+        else if(x>=86&&x<394)autoPageSeconds=autoPageSeconds?0:15;
+        else return true;
+      }
+      if(row==3){homeCity=activeCity;homePage=activePage;}
+      if(row==4){goHome();return true;}
+      saveComfortSettings();drawExtendedMenu();
+    }return true;
+  }
+  if(touchMode==26) {
+    if(x>=12&&x<468&&y>=43&&y<302&&(x-12)%234<222&&(y-43)%37<33){
+      int city=((y-43)/37)*2+(x-12)/234;
+      if(city<CITY_COUNT){favoriteCities^=uint16_t(1)<<city;saveComfortSettings();drawExtendedMenu();}
+    }return true;
+  }
+  if(touchMode==23){if(x>=12&&x<468&&y>=112&&y<162){setBatteryEnabled(!batteryEnabled);drawExtendedMenu();}else if(x>=12&&x<468&&y>=172&&y<212){setBatteryWarningEnabled(!batteryWarningEnabled);drawExtendedMenu();}else if(y>=224&&y<268&&((x>=12&&x<82)||(x>=398&&x<468))){int mv=batteryLowMv;if(x<82)mv=mv<=2500?0:mv-50;else mv=mv==0?2500:min(4300,mv+50);setBatteryThreshold(mv);drawExtendedMenu();}return true;}
+  if(touchMode==10) {
+    if(x>=12&&x<468&&y>=278&&y<312){touchMode=23;drawExtendedMenu();return true;}
+    if(x<12||x>=468||y<46||y>=274)return true;
+    int col=(x-12)/234,row=(y-46)/57;if((x-12)%234>=222||(y-46)%57>=49)return true;
+    const int modes[]={12,13,11,4,14,0,15,11};int mode=modes[row*2+col];
+    if(mode==0){lastRefresh=0;closeTouchMenu();return true;}
+    touchMode=mode;if(mode==12)startWifiScan();if(mode==4)drawCityMenu();else drawExtendedMenu();return true;
+  }
+  if(touchMode==11){
+    if(y>=46&&y<84&&x>=12&&x<468){selectPage((x-12)/156);lastRefresh=0;closeTouchMenu();return true;}
+    if(y>=270&&y<308&&x>=12&&x<468){setPageSlots(activePage,pageSlots[activePage]%3+1);drawExtendedMenu();return true;}
+    if(y>=94&&y<254&&x>=12&&x<468){int pos=(y-94)/40;if(pos<pageSlots[activePage]&&(y-94)%40<36){touchEditIndex=activePage*STOPS_PER_PAGE+pos;touchMode=16;drawExtendedMenu();}}return true;
+  }
+  if(touchMode==12){
+    if(y>=46&&y<226&&x>=12&&x<468){int i=(y-46)/45;if((y-46)%45<40&&networks[i].ssid[0]){wifiEdit=i;touchMode=18;menuNotice="";drawExtendedMenu();}}
+    else if(y>=232&&y<272&&x>=12&&x<468){if(networkCount()>=4 && x>=234){menuNotice="Speicher voll. Erst ein unbenoetigtes Netz entfernen.";}else{touchMode=x<234?24:20;inputText="";pendingSsid="";keyboardPage=0;if(touchMode==24)startWifiScan();}drawExtendedMenu();}return true;
+  }
+  if(touchMode==24){
+    if(y>=243&&y<287) {
+      if(x>=12&&x<78)nearbyPage=max(0,nearbyPage-1);
+      else if(x>=86&&x<306)startWifiScan(true);
+      else if(x>=314&&x<380)nearbyPage=min(max(0,(nearbyCount-1)/4),nearbyPage+1);
+      else if(x>=388&&x<468){touchMode=20;inputText="";pendingSsid="";keyboardPage=0;}
+      drawExtendedMenu();
+    } else if(!wifiScanning && x>=12&&x<468&&y>=46&&y<238&&(y-46)%48<44) {
+      int i=nearbyPage*4+(y-46)/48;if(i<nearbyCount){
+        for(int j=0;j<4;++j) if(nearbyWifi[i].ssid==networks[j].ssid){wifiEdit=j;touchMode=18;drawExtendedMenu();return true;}
+        if(networkCount()>=4){touchMode=12;menuNotice="Speicher voll. Erst ein Netz entfernen.";drawExtendedMenu();return true;}
+        pendingSsid=nearbyWifi[i].ssid;inputText="";keyboardPage=0;touchMode=21;drawExtendedMenu();}
+    }return true;
+  }
+  if(touchMode==13){
+    if(x>=12&&x<468&&y>=276&&y<312){touchMode=25;drawExtendedMenu();return true;}
+    if(!pwmReady)return true;
+    if(x>=20&&x<=460&&((y>=67&&y<87)||(y>=126&&y<146))){int v=constrain((x-20)*100/440,5,100);if(y<100)brightness=v;else nightBrightness=v;saveDisplaySettings();drawExtendedMenu();}
+    else if(y>=163&&y<199){if(x>=12&&x<234){nightEnabled=!nightEnabled;saveDisplaySettings();drawExtendedMenu();}else if(x>=246&&x<468){touchMode=22;drawExtendedMenu();}}return true;
+  }
+  if(touchMode==14){if(y>=287&&x<234)drawExtendedMenu();return true;}
+  if(touchMode==15){if(y>=246&&y<291){lastRefresh=0;closeTouchMenu();}return true;}
+  if(touchMode==16){
+    if(y>=94&&y<139){touchMode=1;touchQuery="";drawTouchMenu();}
+    else if(y>=151&&y<196){moveSource=touchEditIndex;moveTargetPage=activePage;touchMode=17;drawExtendedMenu();}
+    else if(y>=208&&y<253&&stops[touchEditIndex].length()){touchMode=3;drawTouchMenu();}return true;
+  }
+  if(touchMode==17){
+    if(y>=46&&y<84&&x>=12&&x<468&&(x-12)%156<144){moveTargetPage=(x-12)/156;drawExtendedMenu();return true;}
+    if(y>=94&&y<254&&x>=12&&x<468&&(y-94)%40<36){int target=moveTargetPage*STOPS_PER_PAGE+(y-94)/40;if(slotEnabled(target)){if(target!=moveSource){String old=stops[target];stops[target]=stops[moveSource];stops[moveSource]=old;saveStops();selectPage(target/STOPS_PER_PAGE);lastRefresh=0;}closeTouchMenu();}}return true;
+  }
+  if(touchMode==18){if(y>=100&&y<148){chooseNetwork(wifiEdit);closeTouchMenu();}else if(y>=166&&y<214){touchMode=19;drawExtendedMenu();}return true;}
+  if(touchMode==19){if(y>=169&&y<216){if(x>=12&&x<234){menuNotice=deleteNetwork(wifiEdit)?"Netz entfernt":"Geschuetzt: letzte gespeicherte/bewaehrte Verbindung";touchMode=12;}else if(x>=246&&x<468)touchMode=18;drawExtendedMenu();}return true;}
+  if(touchMode==20||touchMode==21){
+    int limit=touchMode==20?32:63;
+    if(y>=73&&y<229&&x>=12&&x<472&&(y-73)%39<35&&(x-12)%46<42){int row=(y-73)/39,col=(x-12)/46;String keys=keyboardRow(row);if(col<(int)keys.length()&&(int)inputText.length()<limit)inputText+=keys[col];}
+    else if(y>=232&&y<266){
+      if(x>=12&&x<117)keyboardPage=(keyboardPage+1)%3;
+      else if(x>=125&&x<225&&(int)inputText.length()<limit)inputText+=' ';
+      else if(x>=233&&x<333)eraseUtf8(inputText);
+      else if(x>=341&&x<468){
+        if(touchMode==20){if(inputText.length()){pendingSsid=inputText;inputText="";touchMode=21;}}
+        else{int i=saveNetwork(pendingSsid,inputText);inputText="";pendingSsid="";if(i>=0){chooseNetwork(i);closeTouchMenu();return true;}touchMode=12;menuNotice="Nicht gespeichert: Passwort/SSID oder geschuetztes Netz.";}
+      }
+    }else if(y>=274&&y<306&&x>=12&&x<468){int i=(x-12)/114;const char *lower[]={"ä","ö","ü","ß"};const char *upper[]={"Ä","Ö","Ü","ß"};String c=keyboardPage==1?upper[i]:lower[i];if(inputText.length()+c.length()<=(size_t)limit)inputText+=c;}
+    drawExtendedMenu();return true;
+  }
+  if(touchMode==22){int r=y>=85&&y<130?0:y>=194&&y<239?1:-1;if(r>=0&&x>=12&&x<468&&(x-12)%117<105){const int delta[]={-60,60,-1,1};int &v=r==0?nightStart:nightEnd;v=(v+delta[(x-12)/117]+1440)%1440;saveDisplaySettings();drawExtendedMenu();}return true;}
+  return true;
+}
+
+
+void setupComfortRoutes() {
+  server.on("/home",HTTP_POST,[](){goHome();redirectHome();});
+  server.on("/comfort",HTTP_GET,[](){
+    String h=pageStart("Komfort")+"<section class='card'><form method='post' action='/comfort'><h2>Favoriten</h2>";
+    for(int city=0;city<CITY_COUNT;++city)h+="<label><input type='checkbox' name='fav"+String(city)+"' value='yes'"+String((favoriteCities>>city)&1?" checked":"")+"> "+escapeHtml(CITY_QUERIES[city])+"</label>";
+    h+="<label>Intro</label><select name='intro'>";
+    const char* modes[]={"Aus","Nur beim Start","Beim Start und Stadtwechsel"};
+    for(int i=0;i<3;++i)h+="<option value='"+String(i)+"'"+String(introMode==i?" selected":"")+">"+modes[i]+"</option>";
+    h+="</select><label>Automatischer Seitenwechsel: Sekunden (0 = Aus)</label><input name='auto' type='number' inputmode='numeric' min='0' max='60' step='1' required value='"+String(autoPageSeconds)+"'>";
+    h+="<p>1–60 Sekunden, in Einzelschritten. 0 schaltet aus. Leere Seiten werden übersprungen. Pause im Menü und Intro. Manuelle Auswahl startet die Wartezeit neu.</p><label>Home-Stadt</label><select name='home'>";
+    h+="<option value='255'"+String(homeCity==255?" selected":"")+">Nicht gesetzt</option>";
+    for(int city=0;city<CITY_COUNT;++city)h+="<option value='"+String(city)+"'"+String(homeCity==city?" selected":"")+">"+escapeHtml(CITY_QUERIES[city])+"</option>";
+    h+="</select><label>Home-Seite</label><select name='page'>";
+    for(int i=0;i<PAGE_COUNT;++i)h+="<option value='"+String(i)+"'"+String(homePage==i?" selected":"")+">"+String(i+1)+"</option>";
+    sendPage(h+"</select><button>Speichern</button></form></section>");
+  });
+  server.on("/comfort",HTTP_POST,[](){
+    int intro,seconds,city,page;
+    if(!numericArg("intro",0,2,intro)||!numericArg("auto",0,60,seconds)||!validAutoSeconds(seconds)||!numericArg("home",0,255,city)||(city>=CITY_COUNT&&city!=255)||!numericArg("page",0,PAGE_COUNT-1,page)){showMessage("Ungueltige Komforteinstellungen",400);return;}
+    uint16_t favorites=0;
+    for(int i=0;i<CITY_COUNT;++i)if(server.arg("fav"+String(i))=="yes")favorites|=uint16_t(1)<<i;
+    favoriteCities=favorites;introMode=intro;autoPageSeconds=seconds;homeCity=city;homePage=page;saveComfortSettings();
+    if(touchMenuOpen){if(touchMode==4)drawCityMenu();else drawExtendedMenu();}else{++touchExitRevision;drawBoard();}
+    server.sendHeader("Location","/comfort");server.send(303);
+  });
+}
