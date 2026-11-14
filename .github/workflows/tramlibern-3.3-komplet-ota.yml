@@ -1,0 +1,63 @@
+name: TramliBern 3.3 KOMPLET OTA ESP32 build
+on:
+  push:
+    branches: ['test/tramlibern-3.3-komplet-ota-20261114']
+    paths:
+      - 'firmware/TramliBern/**'
+      - '.github/workflows/tramlibern-3.3-komplet-ota.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - name: Install pinned ESP32 core and libraries
+        run: bash ci/install.sh
+      - name: Compile firmware with OTA-capable dual app partition
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/build
+          fqbn='esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=default,PSRAM=disabled'
+          echo "$fqbn" > reports/board.txt
+          sha256sum firmware/TramliBern/TramliBern.ino | tee reports/sketch.sha256
+          arduino-cli compile --fqbn "$fqbn" --warnings default --output-dir reports/build firmware/TramliBern 2>&1 | tee reports/compile.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log=Path('reports/compile.log').read_text(errors='replace')
+          for name,pattern in [
+            ('Flash',r'Sketch uses (\d+) bytes.*?Maximum is (\d+) bytes'),
+            ('Static RAM',r'Global variables use (\d+) bytes.*?Maximum is (\d+) bytes')]:
+              m=re.search(pattern,log)
+              if not m:raise SystemExit(f'Missing verified memory result: {name}')
+              used,limit=map(int,m.groups())
+              print(f'{name}: {used} / {limit}, free {limit-used}, {used/limit*100:.2f}%')
+          bins=list(Path('reports/build').glob('TramliBern.ino.bin'))
+          if len(bins)!=1:raise SystemExit('Expected exactly one compiled app .ino.bin')
+          size=bins[0].stat().st_size
+          maximum=0x140000
+          print(f'OTA app bin: {size} bytes; app partition: {maximum} bytes')
+          if size > maximum:raise SystemExit('Binary too large for 4MB default OTA app slot')
+          Path('reports/size.txt').write_text(f'binary_bytes={size}\napp_partition_bytes={maximum}\n')
+          PY
+      - name: Upload real compiled firmware and build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TramliBern-3.3-KOMPLET-OTA-build
+          path: |
+            reports/build/TramliBern.ino.bin
+            reports/compile.log
+            reports/install.log
+            reports/sketch.sha256
+            reports/board.txt
+            reports/size.txt
+          if-no-files-found: warn
+          retention-days: 30
