@@ -1,7 +1,7 @@
 name: TramliBern 3.3 KOMPLET OTA ESP32 build
 on:
   push:
-    branches: ['test/tramlibern-3.3-komplet-ota-20261114']
+    branches: ['test/tramlibern-3.3-komplet-ota-20261114', 'test/tramlibern-3.3-gfx-colors-fix-20261114']
     paths:
       - 'firmware/TramliBern/**'
       - '.github/workflows/tramlibern-3.3-komplet-ota.yml'
