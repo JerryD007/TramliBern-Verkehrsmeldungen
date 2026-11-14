@@ -1,0 +1,67 @@
+name: TramliBern 3.3.1 OTA SAFE ESP32 compile
+on:
+  push:
+    branches: ['test/tramlibern-3.3.1-ota-safe-20261114']
+    paths: ['firmware/TramliBern/**', '.github/workflows/tramlibern-3.3.1-ota-safe.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - name: Install ESP32 board core and libraries
+        run: bash ci/install.sh
+      - name: Build ESP32 application for installed Minimal SPIFFS OTA partition
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/build
+          fqbn='esp32:esp32:esp32:CPUFreq=240,FlashSize=4M,PartitionScheme=min_spiffs,PSRAM=disabled,FlashFreq=40,FlashMode=qio'
+          echo "$fqbn" > reports/board.txt
+          sha256sum firmware/TramliBern/TramliBern.ino > reports/source-sha256.txt
+          arduino-cli compile --fqbn "$fqbn" --warnings default --output-dir reports/build firmware/TramliBern 2>&1 | tee reports/compile.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log=Path('reports/compile.log').read_text(errors='replace')
+          lines=['TramliBern 3.3.1 OTA SAFE ESP32 results']
+          for name,pattern in [
+            ('Flash',r'Sketch uses (\d+) bytes.*?Maximum is (\d+) bytes'),
+            ('Static RAM',r'Global variables use (\d+) bytes.*?Maximum is (\d+) bytes')]:
+              match=re.search(pattern,log)
+              if not match: raise SystemExit('Missing ESP32 memory report: '+name)
+              used,limit=map(int,match.groups())
+              lines.append(f'{name}: {used} / {limit}; free {limit-used}; used {100*used/limit:.2f}%')
+          fw=Path('reports/build/TramliBern.ino.bin')
+          if not fw.exists(): raise SystemExit('Firmware .ino.bin missing')
+          app_partition=1966080
+          size=fw.stat().st_size
+          lines.append(f'OTA .ino.bin bytes: {size}')
+          lines.append(f'Minimal SPIFFS OTA app slot: {app_partition}')
+          lines.append(f'OTA slot free bytes: {app_partition-size}')
+          if size > app_partition: raise SystemExit('Firmware does NOT fit installed OTA layout')
+          if fw.read_bytes()[0] != 0xE9:raise SystemExit('Not a valid ESP32 app header')
+          lines.append('Compilation and OTA partition sizing: PASS')
+          result='\n'.join(lines)+'\n'
+          print(result)
+          Path('reports/TESTY_KOMPILACE.txt').write_text(result)
+          PY
+      - name: Upload compiled .ino.bin and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TramliBern-3.3.1-OTA-SAFE-APP
+          path: |
+            reports/build/TramliBern.ino.bin
+            reports/TESTY_KOMPILACE.txt
+            reports/board.txt
+            reports/source-sha256.txt
+            reports/compile.log
+          if-no-files-found: warn
+          retention-days: 30
