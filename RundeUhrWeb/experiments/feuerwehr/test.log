@@ -1,0 +1,1 @@
+PASS: 20 px/s scroll, start/end pauses, stationary short text, clipped glyphs, no outside-circle pixels, static fields unchanged, explicit demo/unconfigured/unavailable/empty states. Host test only.

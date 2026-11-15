@@ -1,0 +1,14 @@
+name: Feuerwehr prototype host tests
+on:
+  push:
+    branches: [test/rundeuhr-feuerwehr-prototype]
+permissions:
+  contents: read
+jobs:
+  renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git clone --depth 1 --branch 1.12.1 https://github.com/adafruit/Adafruit-GFX-Library.git /tmp/gfx
+      - run: GFX_DIR=/tmp/gfx bash experiments/feuerwehr/run.sh
+        working-directory: RundeUhrWeb
