@@ -3,7 +3,7 @@ import base64,gzip,json
 root=Path(__file__).resolve().parent.parent
 thumbs=json.loads((root/'web/thumbs.json').read_text())
 js='const thumbs='+json.dumps(['data:image/png;base64,'+s for s in thumbs])+';\n'
-js+='\n'.join((root/'web'/name).read_text() for name in ['api.js','app.js','modules.js','ota.js'])
+js+='\n'.join((root/'web'/name).read_text() for name in ['api.js','app.js','modules.js','ota.js','fleet.js'])
 html=(root/'web/index.html').read_text().replace('/*STYLE*/',(root/'web/style.css').read_text()).replace('/*SCRIPT*/',js)
 (root/'preview/App.html').write_text(html)
 data=gzip.compress(html.encode(),compresslevel=9,mtime=0)
