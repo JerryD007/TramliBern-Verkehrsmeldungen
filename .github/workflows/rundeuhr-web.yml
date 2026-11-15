@@ -1,0 +1,38 @@
+name: RundeUhr Web 3.0 test
+on:
+  push:
+    branches: ['test/rundeuhr-web-3.0-rc1']
+    paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 and pinned libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config set board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.0
+          arduino-cli lib install 'Adafruit GFX Library@1.12.1' 'Adafruit GC9A01A@1.1.0' 'Adafruit BusIO@1.17.2' 'ArduinoJson@7.4.2'
+      - name: Host logic and migration tests
+        working-directory: RundeUhrWeb
+        run: |
+          mkdir -p build
+          g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/web_logic_test.cpp -o build/web_logic
+          build/web_logic
+      - name: Compile ESP32-C3
+        working-directory: RundeUhrWeb
+        run: |
+          arduino-cli compile --jobs 4 --fqbn 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40,UploadSpeed=115200' --output-dir build RundeUhr 2>&1 | tee build/compile.log
+          python3 tests/verify_binary.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RundeUhr-3.0.0-rc1
+          path: |
+            RundeUhrWeb/build/RundeUhr.ino.bin
+            RundeUhrWeb/build/compile.log
