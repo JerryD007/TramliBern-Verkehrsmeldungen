@@ -1,6 +1,7 @@
 #pragma once
 #include "FinanceParse.h"
 #include "FinanceTrust.h"
+#include "TlsBufferSizes.h"
 struct FinanceResult {Config config;FinanceData data;};
 QueueHandle_t financeResultQueue;
 inline void fetchQuote(Quote&q,const char*base,const char*currency,bool btc){
@@ -19,14 +20,17 @@ inline void fetchQuote(Quote&q,const char*base,const char*currency,bool btc){
  if(count<0||body.overflowed()||body.allocationFailed()||(length>=0&&count!=length)){strcpy(q.error,"Antwort unvollstaendig");return;}
  JsonDocument d;if(deserializeJson(d,body.bytes(),body.size())||!parseFinance(d,q,base,currency,btc,time(nullptr)))strcpy(q.error,"Ungueltige Preisdaten");
 }
-// Core 3.3.0 uses two separate 16 KiB TLS record buffers, not one 36 KiB block.
-// Probe BOTH buffers with 2 KiB overhead each. Keep the original total-heap guard.
-// This is admission control, not a guarantee that every TLS handshake can fit.
+// Match the compiled mbedTLS buffers, including TLS framing and cipher overhead.
+// Keep the total-heap safety floor; success is admission, not a handshake guarantee.
 inline bool financeMemoryReady(Quote&q){
  q.heapBefore=ESP.getFreeHeap();q.largestBefore=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+ q.probeIn=RUNDE_TLS_INPUT_BYTES;q.probeOut=RUNDE_TLS_OUTPUT_BYTES;
+ q.largestAfterFirst=0;q.memoryGate=1;
  if(q.heapBefore<65000)return false;
- void*a=malloc(18432);void*b=a?malloc(18432):nullptr;
- bool ready=a&&b;free(b);free(a);return ready;
+ void*a=malloc(q.probeIn);if(!a){q.memoryGate=2;return false;}
+ q.largestAfterFirst=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+ void*b=malloc(q.probeOut);q.memoryGate=b?0:3;
+ bool ready=b!=nullptr;free(b);free(a);return ready;
 }
 // Called by the existing single network worker: never concurrent with weather TLS.
 inline void financeTick(const Config&c,bool reset){
@@ -40,7 +44,7 @@ inline void financeTick(const Config&c,bool reset){
  // Skip TLS instead of starving the web server when memory is already scarce.
  q.memoryDeferred=false;q.http=q.tls=0;
  bool identity=i>0&&!strcmp(c.fxBase[i-1],c.fxQuote[i-1]);
- if(!identity&&!financeMemoryReady(q)){q.memoryDeferred=true;snprintf(q.error,sizeof(q.error),"RAM: volno %lu B, blok %lu B; dalsi pokus za 15 s",(unsigned long)q.heapBefore,(unsigned long)q.largestBefore);}
+ if(!identity&&!financeMemoryReady(q)){q.memoryDeferred=true;snprintf(q.error,sizeof(q.error),"RAM %s: %lu B; blok %lu/%lu; za 15 s",q.memoryGate==1?"celkem":q.memoryGate==2?"TLS vstup":"TLS vystup",(unsigned long)q.heapBefore,(unsigned long)q.largestBefore,(unsigned long)q.largestAfterFirst);}
  else fetchQuote(q,i==0?"BTC":c.fxBase[i-1],i==0?c.btcCurrency:c.fxQuote[i-1],i==0);
  networkBusy=false;last[i]=millis();attempted[i]=true;cursor=(i+1)%4;
  FinanceResult result;result.config=c;result.data=data;xQueueOverwrite(financeResultQueue,&result);return;

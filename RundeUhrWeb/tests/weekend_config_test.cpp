@@ -1,0 +1,6 @@
+#include "../RundeUhr/ConfigCodec.h"
+#include <cassert>
+#include <iostream>
+time_t at(const char* date,int h=0,int m=0,int sec=0){time_t t;assert(parseDate(date,t));tm local;localtime_r(&t,&local);local.tm_hour=h;local.tm_min=m;local.tm_sec=sec;local.tm_isdst=-1;return mktime(&local);}
+void fixture(JsonDocument& d){deserializeJson(d,R"({"schema":4,"city":"Bern","lat":46.948,"lon":7.4474,"event":"Ferien","date":"","view":7,"mask":129,"interval":15,"automatic":true,"countdownType":2,"animations":true,"countdownDates":["2027-01-01","1990-01-01","","",""],"customEvent":"Mein Ereignis","ssid":"SavedWiFi","pass":"test_password"})");d["countdownDates"][1]="2024-01-01";}
+int main(){setenv("TZ",ZURICH_TZ,1);tzset();JsonDocument d;fixture(d);Config c;bool m=false;assert(loadConfig(d,c,m));assert(!c.weekendTransition);d["weekendTransition"]=true;assert(loadConfig(d,c,m));assert(c.weekendTransition);assert(!strcmp(c.ssid,"SavedWiFi"));assert(!strcmp(c.pass,"test_password"));d["weekendTransition"]="yes";assert(!decodeConfig(d,c));assert(c.weekendTransition);d["weekendTransition"]=false;assert(decodeConfig(d,c));assert(!c.weekendTransition);puts("PASS persisted transition setting, backwards default, bool validation, atomic rejection, Wi-Fi retention");}

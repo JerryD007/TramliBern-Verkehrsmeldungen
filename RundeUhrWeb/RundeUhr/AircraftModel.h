@@ -6,7 +6,7 @@ struct AircraftData {
  bool checked=false,found=false,altValid=false,speedValid=false,memoryDeferred=false;
  char callsign[17]="",hex[9]="",registration[17]="",type[17]="",error[96]="Zatim bez dat";
  double distance=0,altitude=0,speed=0;time_t received=0,positionAt=0;
- uint32_t heapBefore=0,largestBefore=0;int http=0,tls=0;
+ uint32_t heapBefore=0,largestBefore=0,largestAfterFirst=0;uint16_t probeIn=0,probeOut=0;uint8_t memoryGate=0;int http=0,tls=0;
 };
 inline bool aircraftConfigEqual(const Config&a,const Config&b){return a.aircraftLat==b.aircraftLat&&a.aircraftLon==b.aircraftLon&&a.aircraftRadius==b.aircraftRadius&&!strcmp(a.aircraftPlace,b.aircraftPlace);}
 inline bool aircraftStale(const AircraftData&a,time_t now){return !a.checked||a.error[0]||now<a.received||now-a.received>90||(a.found&&(now<a.positionAt||now-a.positionAt>90));}

@@ -1,7 +1,7 @@
 name: RundeUhr aircraft test
 on:
   push:
-    branches: ['test/rundeuhr-weekend-3.2-rc4']
+    branches: ['test/rundeuhr-tls-3.2-rc5']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -28,6 +28,7 @@ jobs:
           mkdir -p build
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/web_logic_test.cpp -o build/web_logic
           build/web_logic
+          python3 tests/tls_fragmentation_test.py
           g++ -std=c++17 tests/weekend_transition_test.cpp -o build/weekend_transition
           build/weekend_transition
           g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/weekend_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/weekend_render
@@ -52,7 +53,7 @@ jobs:
           python3 tests/verify_binary.py
       - uses: actions/upload-artifact@v4
         with:
-          name: RundeUhr-3.2.0-rc4
+          name: RundeUhr-3.2.0-rc5
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
