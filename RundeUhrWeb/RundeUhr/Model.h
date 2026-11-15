@@ -19,7 +19,7 @@ struct Config {
  double lat=46.948,lon=7.4474;
  uint16_t mask=1011,interval=15;
  uint8_t view=0; bool automatic=false;
- bool aircraftPriority=false;
+ bool aircraftPriority=false,aircraftInRange=false;
  char aircraftPlace[49]="Bern";double aircraftLat=46.948,aircraftLon=7.4474;uint16_t aircraftRadius=50;
  char btcCurrency[4]="CHF";
  char fxBase[3][4]={"CHF","EUR","EUR"},fxQuote[3][4]={"CZK","CZK","CHF"};

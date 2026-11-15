@@ -1,6 +1,7 @@
 #pragma once
 #include "Model.h"
 struct AircraftData {
+ char destination[97]="";int routeHTTP=0;
  bool approaching=false;
  bool checked=false,found=false,altValid=false,speedValid=false,memoryDeferred=false;
  char callsign[17]="",hex[9]="",registration[17]="",type[17]="",error[96]="Zatim bez dat";
@@ -18,7 +19,7 @@ inline bool aircraftClosing(double lat,double lon,double observerLat,double obse
  double bearing=atan2(sin(dl)*cos(observerLat*rad),cos(lat*rad)*sin(observerLat*rad)-sin(lat*rad)*cos(observerLat*rad)*cos(dl));
  return cos(track*rad-bearing)>.15;
 }
-inline bool aircraftPriorityActive(const Config&c,const AircraftData&a,time_t now,bool online){return c.automatic&&c.aircraftPriority&&online&&a.found&&a.approaching&&!aircraftStale(a,now)&&now-a.positionAt<=60;}
+inline bool aircraftPriorityActive(const Config&c,const AircraftData&a,time_t now,bool online){return c.automatic&&c.aircraftPriority&&online&&a.found&&(c.aircraftInRange||a.approaching)&&!aircraftStale(a,now)&&now-a.positionAt<=60;}
 inline uint16_t aircraftCycleMask(const Config&c){return c.aircraftPriority?uint16_t(mergedScreenMask(c.mask)&~4096):mergedScreenMask(c.mask);}
 inline int aircraftDisplayView(const Config&c,const AircraftData&a,time_t now,bool online){
  if(aircraftPriorityActive(c,a,now,online))return 12;

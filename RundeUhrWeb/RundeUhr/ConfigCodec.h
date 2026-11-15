@@ -35,6 +35,7 @@ inline bool decodeConfig(JsonDocument &d,Config &c){
   if(!d[key].is<JsonArray>()||d[key].size()!=3)return false;
   for(int k=0;k<3;k++){if(!d[key][k].is<const char*>()||!validCurrency(d[key][k]))return false;strcpy(!strcmp(key,"fxBase")?t.fxBase[k]:t.fxQuote[k],d[key][k]);}
  }
+ if(!d["aircraftInRange"].isNull()){if(!d["aircraftInRange"].is<bool>())return false;t.aircraftInRange=d["aircraftInRange"];}
  if(!d["aircraftPriority"].isNull()){if(!d["aircraftPriority"].is<bool>())return false;t.aircraftPriority=d["aircraftPriority"];}
  if(!d["aircraftPlace"].isNull()&&!textValue(d,"aircraftPlace",t.aircraftPlace,sizeof(t.aircraftPlace),false))return false;
  for(auto key:{"aircraftLat","aircraftLon"})if(!d[key].isNull()){if(!number(d[key]))return false;double x=d[key];int limit=!strcmp(key,"aircraftLat")?90:180;if(!isfinite(x)||x < -limit||x>limit)return false;if(limit==90)t.aircraftLat=x;else t.aircraftLon=x;}
