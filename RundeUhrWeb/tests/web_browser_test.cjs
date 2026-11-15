@@ -1,7 +1,7 @@
 const {webkit,chromium}=require('playwright');
 const fs=require('fs'),assert=require('assert');
 const html=fs.readFileSync('preview/App.html','utf8');
-const base={schema:4,deviceName:'Kuchyň',deviceLabel:'RundeUhr Kuchyň',hostname:'rundeuhr-kuchyn-abcd',setupSSID:'RundeUhr-Kuchyn-ABCD',btcCurrency:'CHF',fxBase:['CHF','EUR','EUR'],fxQuote:['CZK','CZK','CHF'],aircraftPlace:'Bern',aircraftLat:46.948,aircraftLon:7.4474,aircraftRadius:50,firmware:'3.2.0-rc1',model:'ESP32-C3',flash:4194304,sketchSize:1503632,heap:85000,minHeap:62000,boardId:'0123456789ab',bootId:'bootA',token:'tokenA',view:0,mask:1015,interval:15,automatic:false,animations:true,city:'Bern',lat:46.948,lon:7.4474,event:'Ferien',date:'',countdownDates:['2027-08-01','2027-01-01','','','2027-03-01'],customEvent:'Výlet',countdownType:0,weekendStartDay:5,weekendEndDay:1,weekendStartMinute:960,weekendEndMinute:0,wifi:true,ssid:'Domov',ip:'192.168.1.42',rssi:-51,timeValid:true,weatherAge:30,weatherAt:1794726000,weatherBusy:false};
+const base={schema:4,deviceName:'Kuchyň',deviceLabel:'RundeUhr Kuchyň',hostname:'rundeuhr-kuchyn-abcd',setupSSID:'RundeUhr-Kuchyn-ABCD',btcCurrency:'CHF',fxBase:['CHF','EUR','EUR'],fxQuote:['CZK','CZK','CHF'],aircraftPlace:'Bern',aircraftLat:46.948,aircraftLon:7.4474,aircraftRadius:50,firmware:'3.2.0-rc1',model:'ESP32-C3',flash:4194304,sketchSize:1503632,heap:85000,minHeap:62000,boardId:'0123456789ab',bootId:'bootA',token:'tokenA',view:0,mask:1011,interval:15,automatic:false,animations:true,city:'Bern',lat:46.948,lon:7.4474,event:'Ferien',date:'',countdownDates:['2027-08-01','2027-01-01','','','2027-03-01'],customEvent:'Výlet',countdownType:0,weekendStartDay:5,weekendEndDay:1,weekendStartMinute:960,weekendEndMinute:0,wifi:true,ssid:'Domov',ip:'192.168.1.42',rssi:-51,timeValid:true,weatherAge:30,weatherAt:1794726000,weatherBusy:false};
 function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.length,2);b.writeUInt32LE(118,10);b.writeUInt32LE(40,14);b.writeInt32LE(240,18);b.writeInt32LE(240,22);b.writeUInt16LE(1,26);b.writeUInt16LE(4,28);b.writeUInt32LE(28800,34);b.writeUInt32LE(16,46);return b;}
 (async()=>{
  for(const [engine,launch] of (process.env.WEBKIT_ONLY?[['webkit',webkit]]:process.env.CHROMIUM_ONLY?[['chromium',chromium]]:[['webkit',webkit],['chromium',chromium]])){
@@ -29,12 +29,12 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  });
  await page.goto('http://rundeuhr.local/');await page.waitForFunction(()=>document.getElementById('connection').textContent==='Zařízení připojeno');
  await page.waitForFunction(()=>document.getElementById('previewStatus').textContent.includes('Skutečný snímek'));
- assert.equal(await page.locator('.screen-card').count(),12);
+ assert.equal(await page.locator('.screen-card').count(),11);
  await page.locator('[data-goto="screens"]').first().click();
- for(let i=0;i<13;i++){if(i===4)continue;await page.locator('#card'+i+' .tile').click();await page.waitForFunction(i=>document.querySelector('#card'+i+' .tile').getAttribute('aria-pressed')==='true',i);}
+ for(let i=0;i<13;i++){if(i===2||i===4)continue;await page.locator('#card'+i+' .tile').click();await page.waitForFunction(i=>document.querySelector('#card'+i+' .tile').getAttribute('aria-pressed')==='true',i);}
  await page.locator('#cycle3').uncheck();await page.waitForFunction(()=>!(state.mask&8));assert.equal(state.mask&8,0);await page.locator('#card3 .tile').click();assert.equal(state.view,3);
  await page.evaluate(()=>{state.mask=1;paint();});state.mask=1;await page.locator('#cycle0').click();await page.waitForTimeout(100);assert(await page.locator('#cycle0').isChecked());assert((await page.locator('#message').innerText()).includes('alespoň'));
- await page.evaluate(()=>{state.mask=1015;paint();});state.mask=1015;
+ await page.evaluate(()=>{state.mask=1011;paint();});state.mask=1011;
  await page.locator('nav a[href="#controls"]').click();await page.locator('#automatic').check();await page.locator('#interval').fill('27');await page.locator('#cycleForm button').click();await page.waitForFunction(()=>state.interval===27);assert(state.automatic);assert.equal(state.interval,27);
  await page.locator('nav a[href="#countdowns"]').click();await page.locator('#countdownType').selectOption('4');await page.locator('#event').fill('Moje událost');await page.locator('#date').fill('2027-05-09');await page.locator('#countdownForm button').click();await page.waitForTimeout(150);assert.equal(state.customEvent,'Moje událost');assert.equal(state.countdownDates[0],'2027-08-01');assert.equal(state.countdownDates[4],'2027-05-09');
  await page.locator('#weekendStartTime').fill('15:30');await page.locator('#weekendForm button').click();await page.waitForTimeout(150);assert.equal(state.weekendStartMinute,930);

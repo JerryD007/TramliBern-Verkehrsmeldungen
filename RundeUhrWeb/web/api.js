@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const demo=location.protocol==='file:'||new URLSearchParams(location.search).has('demo');
 let state=null,token='',uploading=false,online=false,inFlight=false,loaded=false,frameBusy=false,frameUrl='',scanTimer=null,activePage='overview';
-const names=['Analoguhr','Wettervorschau','Regen','Sonne & Mond','Sonne & Mond','Ferien','Geburtstag','Wochenende','Arschloch weg','Frei wählbar','Bitcoin','Currency','Nächstes Flugzeug'];
+const names=['Analoguhr','Wetter & Regen','Wetter & Regen','Sonne & Mond','Sonne & Mond','Ferien','Geburtstag','Wochenende','Arschloch weg','Frei wählbar','Bitcoin','Currency','Nächstes Flugzeug'];
 const days=['Neděle','Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota'];
 const configKeys=['aircraftPriority','aircraftPlace','aircraftLat','aircraftLon','aircraftRadius','btcCurrency','fxBase','fxQuote','schema','city','lat','lon','event','date','view','mask','interval','automatic','countdownType','countdownDates','customEvent','animations','weekendStartDay','weekendEndDay','weekendStartMinute','weekendEndMinute'];
 function notify(text){$('message').textContent=text;$('message').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('message').hidden=true,9000);}

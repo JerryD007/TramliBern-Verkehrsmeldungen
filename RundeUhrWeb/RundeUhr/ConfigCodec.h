@@ -40,7 +40,7 @@ inline bool decodeConfig(JsonDocument &d,Config &c){
  for(auto key:{"aircraftLat","aircraftLon"})if(!d[key].isNull()){if(!number(d[key]))return false;double x=d[key];int limit=!strcmp(key,"aircraftLat")?90:180;if(!isfinite(x)||x < -limit||x>limit)return false;if(limit==90)t.aircraftLat=x;else t.aircraftLon=x;}
  if(!d["aircraftRadius"].isNull()){if(!d["aircraftRadius"].is<int>())return false;int x=d["aircraftRadius"];if(x<5||x>100)return false;t.aircraftRadius=x;}
  t.countdownType=type;t.animations=d["animations"];syncCountdown(t);
- t.view=mergedSkyView(v);t.mask=mergedSkyMask(m);t.interval=i;t.automatic=d["automatic"];c=t;return true;
+ t.view=mergedScreenView(v);t.mask=mergedScreenMask(m);t.interval=i;t.automatic=d["automatic"];c=t;return true;
 }
 inline bool loadConfig(JsonDocument &d,Config&c,bool&migrated){
  migrated=false;Config t;

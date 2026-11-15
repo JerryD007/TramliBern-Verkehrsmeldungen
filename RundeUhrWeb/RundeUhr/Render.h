@@ -65,8 +65,26 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
  if(!valid){txt(g,"Zeit fehlt",77,3,ORANGE);txt(g,"NTP ueber WLAN",126,2);txt(g,"Verbindung pruefen",153,1);return;}
  switch(v){
  case 0:{for(int i=0;i<60;i++){double a=i*M_PI/30;int r=i%5?105:100;g.drawLine(120+sin(a)*r,120-cos(a)*r,120+sin(a)*109,120-cos(a)*109,i%5?DIM:WHITE);}for(int i=1;i<=12;i++){double a=i*M_PI/6;txt(g,String(i),int(113-cos(a)*87),2,WHITE,0,int(120+sin(a)*87));}txt(g,fmtTime(now,"%d.%m.%Y"),158,2);hand(g,((t.tm_hour%12)+t.tm_min/60.0)*M_PI/6,51,2,WHITE);hand(g,(t.tm_min+t.tm_sec/60.0)*M_PI/30,77,2,WHITE);hand(g,t.tm_sec*M_PI/30,87,0,ORANGE);g.fillCircle(120,120,5,ORANGE);break;}
- case 1:{txt(g,"Wettervorschau",43,2);int j=nextHour(w,now);if(w.valid&&j>=0){for(int k=0;k<3;k++){int i=j+k,y=77+k*45;if(i>=w.count){txt(g,"Keine weiteren Daten",y,0,ORANGE);break;}txt(g,fmtTime(w.hours[i]),y+4,2,WHITE,0,57);if(w.fields[i]&2)weatherIcon(g,w.codes[i],115,y+6);else txt(g,"?",y+5,2,DIM,0,115);String temperature=(w.fields[i]&1)?String(w.temps[i],0):String("--");if(temperature.length()>2)txt(g,temperature+" C",y+4,2,WHITE,0,180);else{txt(g,temperature,y,3,WHITE,0,177);txt(g,"C",y+9,0,YELLOW,0,201);}}}else{txt(g,"Keine Vorhersage",112,2);txt(g,"Internet pruefen",145,1,ORANGE);}txt(g,c.city,204,0,CYAN,25);break;}
- case 2:{txt(g,"Regen",32,3);int i=nextHour(w,now);if(w.valid&&i>=0){weatherIcon(g,61,120,85);txt(g,((w.fields[i]&4)?String(w.probability[i]):String("--"))+" %",121,5);txt(g,((w.fields[i]&8)?String(w.amount[i],1):String("--"))+" mm",166,2);txt(g,fmtTime(w.hours[i]-3600)+" - "+fmtTime(w.hours[i]),192,2);}else txt(g,"Keine Regendaten",113,2);break;}
+ case 1:case 2:{
+ txt(g,c.city,20,0,CYAN,20);txt(g,"Wetter & Regen",38,2);g.drawLine(40,58,200,58,DIM);
+ int j=nextHour(w,now);
+ if(w.valid&&j>=0){
+  if(w.fields[j]&2)weatherIcon(g,w.codes[j],73,98,w.codes[j]<=3?2:1);else txt(g,"?",82,3,DIM,0,73);
+  String temp=(w.fields[j]&1)?String(w.temps[j],0):String("--");
+  txt(g,temp,72,temp.length()>2?3:5,WHITE,0,165);g.drawCircle(199,75,2,YELLOW);txt(g,"C",81,0,YELLOW,0,207);txt(g,fmtTime(w.hours[j]),112,2,WHITE,0,165);
+  txt(g,((w.fields[j]&4)?String(w.probability[j]):String("--"))+"%",138,2,CYAN,0,68);
+  txt(g,((w.fields[j]&8)?String(w.amount[j],1):String("--"))+" mm",138,2,CYAN,0,167);g.drawLine(120,137,120,153,DIM);
+  g.drawLine(37,162,203,162,DIM);
+  for(int k=1;k<=2;k++){int i=j+k,y=170+(k-1)*24;
+   if(i>=w.count){txt(g,"Keine weiteren Daten",y,0,DIM);break;}
+   txt(g,fmtTime(w.hours[i]),y,0,WHITE,0,68);
+   // Compact cloud/sun symbol; probability conveys rain without mislabelling snow.
+   if(w.fields[i]&2){int code=w.codes[i];if(code<=2)g.fillCircle(101,y+3,4,YELLOW);if(code>0){g.fillCircle(104,y+5,3,WHITE);g.drawFastHLine(99,y+7,10,WHITE);}}
+   txt(g,((w.fields[i]&1)?String(w.temps[i],0):String("--"))+" C",y,0,WHITE,0,132);
+   txt(g,((w.fields[i]&4)?String(w.probability[i]):String("--"))+"%",y,0,CYAN,0,175);
+  }
+ }else{txt(g,"Keine Vorhersage",105,2);txt(g,"Internet pruefen",140,1,ORANGE);}
+ break;}
  case 3:case 4:{
  txt(g,"SONNE &",23,2,WHITE);txt(g,"MOND",44,2,WHITE);
  g.drawLine(120,65,120,177,DIM);g.drawLine(55,187,185,187,DIM);

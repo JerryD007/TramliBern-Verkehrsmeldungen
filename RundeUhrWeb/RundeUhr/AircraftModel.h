@@ -19,7 +19,7 @@ inline bool aircraftClosing(double lat,double lon,double observerLat,double obse
  return cos(track*rad-bearing)>.15;
 }
 inline bool aircraftPriorityActive(const Config&c,const AircraftData&a,time_t now,bool online){return c.automatic&&c.aircraftPriority&&online&&a.found&&a.approaching&&!aircraftStale(a,now)&&now-a.positionAt<=60;}
-inline uint16_t aircraftCycleMask(const Config&c){return c.aircraftPriority?uint16_t(mergedSkyMask(c.mask)&~4096):mergedSkyMask(c.mask);}
+inline uint16_t aircraftCycleMask(const Config&c){return c.aircraftPriority?uint16_t(mergedScreenMask(c.mask)&~4096):mergedScreenMask(c.mask);}
 inline int aircraftDisplayView(const Config&c,const AircraftData&a,time_t now,bool online){
  if(aircraftPriorityActive(c,a,now,online))return 12;
  if(c.automatic&&c.aircraftPriority&&c.view==12){auto mask=aircraftCycleMask(c);return mask?nextView(12,mask):0;}
