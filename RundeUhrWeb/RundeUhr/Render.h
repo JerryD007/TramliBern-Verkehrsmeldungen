@@ -8,7 +8,7 @@
 static const uint16_t palette[]={0x0000,0xffff,0x07ff,0xfc10,0x4208,0xffe0,0xb35f,0xf800,0x47e9,0x9bd3,0xc618,0x8410,0xfd20,0xfdb8,0x04b5,0x2104};
 static const uint16_t* activePalette=palette;
 enum {BG,WHITE,CYAN,ORANGE,DIM,YELLOW,PURPLE,RED,GREEN,BROWN,SILVER,GRAY,GOLD,SKIN,SEA,SHADOW};
-inline String latin(String s){s.replace("ä","ae");s.replace("ö","oe");s.replace("ü","ue");s.replace("Ä","Ae");s.replace("Ö","Oe");s.replace("Ü","Ue");s.replace("ß","ss");s.replace("é","e");s.replace("è","e");s.replace("à","a");String o;for(unsigned i=0;i<s.length();i++){uint8_t c=s[i];if(c>=32&&c<127)o+=char(c);else if((c&0xc0)!=0x80)o+='?';}return o;}
+#include "RenderText.h"
 inline String shorten(String s,int n){s=latin(s);return s.length()>(unsigned)n?s.substring(0,n-2)+"..":s;}
 inline String fmtTime(time_t t,const char* format="%H:%M"){if(!t)return "--:--";tm z;localtime_r(&t,&z);char b[40];strftime(b,sizeof(b),format,&z);return String(b);}
 inline void txt(Adafruit_GFX &g,String s,int y,int size=2,int color=WHITE,int maxchars=0,int cx=120){
