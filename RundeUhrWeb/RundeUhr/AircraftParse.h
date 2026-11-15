@@ -13,6 +13,7 @@ inline bool parseAircraft(JsonDocument&d,AircraftData&out,const Config&c,time_t 
   double lat=a["lat"],lon=a["lon"],age=a["seen_pos"];if(lat < -90||lat>90||lon < -180||lon>180||age<0||age>60||now-(source-age)>60)continue;
   if(a["alt_baro"].is<const char*>()&&!strcmp(a["alt_baro"],"ground"))continue;
   double distance=aircraftDistance(c.aircraftLat,c.aircraftLon,lat,lon);if(distance>c.aircraftRadius||distance>=best)continue;
+  next.approaching=aircraftNumber(a["track"])&&aircraftNumber(a["gs"])&&aircraftClosing(lat,lon,c.aircraftLat,c.aircraftLon,a["track"].as<double>(),a["gs"].as<double>());
   next.found=true;best=distance;next.distance=distance;next.positionAt=time_t(source-age);
   aircraftText(next.callsign,sizeof(next.callsign),a["flight"]);aircraftText(next.hex,sizeof(next.hex),a["hex"]);aircraftText(next.registration,sizeof(next.registration),a["r"]);aircraftText(next.type,sizeof(next.type),a["t"]);
   next.altValid=aircraftNumber(a["alt_baro"])&&a["alt_baro"].as<double>()>=-2000&&a["alt_baro"].as<double>()<=100000;next.altitude=next.altValid?a["alt_baro"].as<double>()*.3048:0;
