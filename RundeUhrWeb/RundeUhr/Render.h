@@ -3,6 +3,7 @@
 #include "Model.h"
 #include "WeekendFrames.h"
 #include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 static const uint16_t palette[]={0x0000,0xffff,0x07ff,0xfc10,0x4208,0xffe0,0xb35f,0xf800,0x47e9,0x9bd3,0xc618,0x8410,0xfd20,0xfdb8,0x04b5,0x2104};
@@ -12,7 +13,7 @@ enum {BG,WHITE,CYAN,ORANGE,DIM,YELLOW,PURPLE,RED,GREEN,BROWN,SILVER,GRAY,GOLD,SK
 inline String shorten(String s,int n){s=latin(s);return s.length()>(unsigned)n?s.substring(0,n-2)+"..":s;}
 inline String fmtTime(time_t t,const char* format="%H:%M"){if(!t)return "--:--";tm z;localtime_r(&t,&z);char b[40];strftime(b,sizeof(b),format,&z);return String(b);}
 inline void txt(Adafruit_GFX &g,String s,int y,int size=2,int color=WHITE,int maxchars=0,int cx=120){
- s=latin(s);if(maxchars>0)s=shorten(s,maxchars);g.setTextSize(size==6?2:1);g.setFont(size==0?nullptr:size>=5?&FreeSansBold24pt7b:size>=3?&FreeSansBold18pt7b:&FreeSansBold9pt7b);
+ s=latin(s);if(maxchars>0)s=shorten(s,maxchars);g.setTextSize(size==6?2:1);g.setFont(size==0?nullptr:size==7?&FreeSansBold12pt7b:size>=5?&FreeSansBold24pt7b:size>=3?&FreeSansBold18pt7b:&FreeSansBold9pt7b);
  int16_t x1,y1;uint16_t w,h;g.getTextBounds(s.c_str(),0,0,&x1,&y1,&w,&h);
  int dy=max(abs(y-120),abs(y+int(h)-120));int half=sqrt(fmax(0,112*112-dy*dy));int available=2*min(cx-(120-half),(120+half)-cx);
  if(w>available){String original=s;int n=s.length();do{s=original.substring(0,--n)+"..";g.getTextBounds(s.c_str(),0,0,&x1,&y1,&w,&h);}while(n>0&&w>available);}

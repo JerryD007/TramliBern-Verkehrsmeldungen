@@ -3,6 +3,7 @@
 enum class AircraftKind : uint8_t { Unknown, Plane, Helicopter };
 struct AircraftData {
  AircraftKind kind=AircraftKind::Unknown;
+ char origin[97]="";
  char destination[97]="";int routeHTTP=0;
  bool approaching=false;
  bool checked=false,found=false,altValid=false,speedValid=false,memoryDeferred=false;

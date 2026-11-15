@@ -1,7 +1,7 @@
 name: RundeUhr aircraft test
 on:
   push:
-    branches: ['test/rundeuhr-text-3.2-rc8']
+    branches: ['test/rundeuhr-routes-3.2-rc9']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -54,7 +54,7 @@ jobs:
           python3 tests/verify_binary.py
       - uses: actions/upload-artifact@v4
         with:
-          name: RundeUhr-3.2.0-rc8
+          name: RundeUhr-3.2.0-rc9
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
