@@ -14,7 +14,7 @@ inline void fetchAircraft(AircraftData&a,const Config&c,uint32_t&retry){
  BoundedBody body(length>0?size_t(length):limit);if(!body.ready()){strcpy(a.error,"RAM chybi pri prijmu");http.end();return;}
  int count=http.writeToStream(&body);http.end();client.stop();
  if(count<0||body.overflowed()||body.allocationFailed()||(length>=0&&count!=length)){strcpy(a.error,"Neuplna odpoved / limit 16 KiB");return;}
- JsonDocument filter;filter["now"]=true;filter["msg"]=true;for(auto k:{"hex","flight","r","t","lat","lon","seen_pos","alt_baro","gs","track"})filter["ac"][0][k]=true;
+ JsonDocument filter;filter["now"]=true;filter["msg"]=true;for(auto k:{"hex","flight","r","t","category","lat","lon","seen_pos","alt_baro","gs","track"})filter["ac"][0][k]=true;
  JsonDocument d;if(deserializeJson(d,body.bytes(),body.size(),DeserializationOption::Filter(filter),DeserializationOption::NestingLimit(8))||!parseAircraft(d,a,c,time(nullptr)))strcpy(a.error,"Neplatna nebo zastarala data");
 }
 inline void aircraftTick(const Config&c){
