@@ -11,13 +11,13 @@ int main(){setenv("TZ",ZURICH_TZ,1);tzset();time_t now;assert(parseDate("2026-11
  deserializeJson(d,R"({"date":"2026-11-13","base":"CHF","quote":"CZK","rate":26.50})");assert(parseFinance(d,f.fx[0],"CHF","CZK",false,now));d["date"]="2026-02-30";assert(!parseFinance(d,f.fx[1],"CHF","CZK",false,now));d["date"]="2099-01-01";assert(!parseFinance(d,f.fx[1],"CHF","CZK",false,now));
  f.fx[1]=f.fx[0];f.fx[1].value=25;f.fx[2]=f.fx[0];f.fx[2].value=.94;
  assert(!quoteStale(f.btc,now+599,true));assert(quoteStale(f.btc,now+601,true));strcpy(f.btc.error,"HTTP 429");assert(quoteStale(f.btc,now,true));f.btc.error[0]=0;
- assert(VIEW_COUNT==13&&c.mask==1023&&nextView(9,4095)==10&&nextView(10,4095)==11&&nextView(11,4095)==0&&nextView(9,1023)==0);
+ assert(VIEW_COUNT==13&&c.mask==1015&&nextView(9,4095)==10&&nextView(10,4095)==11&&nextView(11,4095)==0&&nextView(9,1023)==0);
  GFXcanvas8 g(240,240);
  for(int view=10;view<12;view++){c.view=view;renderFinance(g,c,f,now,true);save(g,view==10?"preview/bitcoin.ppm":"preview/currency.ppm");for(int i=0;i<57600;i++)if((i%240-120)*(i%240-120)+(i/240-120)*(i/240-120)>119*119)assert(g.getBuffer()[i]==BG);}
  for(double price:{.00001,1.,80000.,1234567.,999999999999.}){f.btc.value=price;c.view=10;renderFinance(g,c,f,now,false);}
  Config original;strcpy(original.ssid,"saved");strcpy(original.pass,"secret");
- deserializeJson(d,R"({"schema":4,"city":"Bern","lat":46.948,"lon":7.4474,"event":"Ferien","date":"","view":4,"mask":508,"interval":5,"automatic":true,"countdownType":0,"animations":true,"customEvent":"Mein Ereignis","countdownDates":["","2027-03-25","","2027-05-31",""]})");assert(decodeConfig(d,original));assert(original.mask==508&&!strcmp(original.pass,"secret")&&!strcmp(original.btcCurrency,"CHF"));
- d["view"]=11;d["mask"]=4095;d["btcCurrency"]="USD";assert(decodeConfig(d,original));assert(original.view==11&&original.mask==4095&&!strcmp(original.pass,"secret"));
+ deserializeJson(d,R"({"schema":4,"city":"Bern","lat":46.948,"lon":7.4474,"event":"Ferien","date":"","view":4,"mask":508,"interval":5,"automatic":true,"countdownType":0,"animations":true,"customEvent":"Mein Ereignis","countdownDates":["","2027-03-25","","2027-05-31",""]})");assert(decodeConfig(d,original));assert(original.mask==492&&!strcmp(original.pass,"secret")&&!strcmp(original.btcCurrency,"CHF"));
+ d["view"]=11;d["mask"]=4095;d["btcCurrency"]="USD";assert(decodeConfig(d,original));assert(original.view==11&&original.mask==4079&&!strcmp(original.pass,"secret"));
  Config before=original;d["btcCurrency"]="XXX";assert(!decodeConfig(d,original));assert(!memcmp(&before,&original,sizeof(before)));
  puts("PASS finance: parsers, malformed/nonfinite/negative/mismatched/future data, stale handling, 12-view cycles, original schema4 migration and credentials, invalid settings atomicity, circular renderer.");
 }

@@ -67,15 +67,25 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
  case 0:{for(int i=0;i<60;i++){double a=i*M_PI/30;int r=i%5?105:100;g.drawLine(120+sin(a)*r,120-cos(a)*r,120+sin(a)*109,120-cos(a)*109,i%5?DIM:WHITE);}for(int i=1;i<=12;i++){double a=i*M_PI/6;txt(g,String(i),int(113-cos(a)*87),2,WHITE,0,int(120+sin(a)*87));}txt(g,fmtTime(now,"%d.%m.%Y"),158,2);hand(g,((t.tm_hour%12)+t.tm_min/60.0)*M_PI/6,51,2,WHITE);hand(g,(t.tm_min+t.tm_sec/60.0)*M_PI/30,77,2,WHITE);hand(g,t.tm_sec*M_PI/30,87,0,ORANGE);g.fillCircle(120,120,5,ORANGE);break;}
  case 1:{txt(g,"Wettervorschau",43,2);int j=nextHour(w,now);if(w.valid&&j>=0){for(int k=0;k<3;k++){int i=j+k,y=77+k*45;if(i>=w.count){txt(g,"Keine weiteren Daten",y,0,ORANGE);break;}txt(g,fmtTime(w.hours[i]),y+4,2,WHITE,0,57);if(w.fields[i]&2)weatherIcon(g,w.codes[i],115,y+6);else txt(g,"?",y+5,2,DIM,0,115);String temperature=(w.fields[i]&1)?String(w.temps[i],0):String("--");if(temperature.length()>2)txt(g,temperature+" C",y+4,2,WHITE,0,180);else{txt(g,temperature,y,3,WHITE,0,177);txt(g,"C",y+9,0,YELLOW,0,201);}}}else{txt(g,"Keine Vorhersage",112,2);txt(g,"Internet pruefen",145,1,ORANGE);}txt(g,c.city,204,0,CYAN,25);break;}
  case 2:{txt(g,"Regen",32,3);int i=nextHour(w,now);if(w.valid&&i>=0){weatherIcon(g,61,120,85);txt(g,((w.fields[i]&4)?String(w.probability[i]):String("--"))+" %",121,5);txt(g,((w.fields[i]&8)?String(w.amount[i],1):String("--"))+" mm",166,2);txt(g,fmtTime(w.hours[i]-3600)+" - "+fmtTime(w.hours[i]),192,2);}else txt(g,"Keine Regendaten",113,2);break;}
- case 3:{txt(g,"Sonne",32,3);int i=sunDay(w,now);if(w.valid&&i>=0&&w.sunrise[i]&&w.sunset[i]){for(int a=0;a<=180;a++){double r=a*M_PI/180;g.fillCircle(120-77*cos(r),140-62*sin(r),2,YELLOW);}g.drawLine(40,140,200,140,DIM);if(now>=w.sunrise[i]&&now<=w.sunset[i]){double p=double(now-w.sunrise[i])/(w.sunset[i]-w.sunrise[i]);int sx=120-77*cos(p*M_PI),sy=140-62*sin(p*M_PI);g.fillCircle(sx,sy,12,YELLOW);for(int a=0;a<8;a++){double angle=a*M_PI/4;g.drawLine(sx+cos(angle)*16,sy+sin(angle)*16,sx+cos(angle)*21,sy+sin(angle)*21,YELLOW);}}txt(g,fmtTime(w.sunrise[i]),162,2,YELLOW,0,76);txt(g,fmtTime(w.sunset[i]),162,2,YELLOW,0,164);txt(g,"Aufgang",185,0,WHITE,0,76);txt(g,"Untergang",185,0,WHITE,0,164);txt(g,fmtTime(now,"%d.%m."),201,0,CYAN);}else{txt(g,"Keine Sonnenzeiten",110,1);txt(g,"fuer heute",136,1);}break;}
- case 4:{txt(g,"Mondzyklus",29,2);if(!moon.valid){txt(g,"Berechnung fehlt",112,2);break;}int r=40; // Adjust terminator to actual illumination, keep waxing/waning side.
- double co=1-2*moon.lit/100.0,si=sqrt(fmax(0,1-co*co))*(moon.phase<.5?1:-1);
- const int craters[][3]={{-14,-19,8},{13,-10,6},{-8,13,10},{20,18,7},{7,29,4},{-27,3,5},{8,-30,4}};
- for(int y=-r;y<=r;y++)for(int x=-r;x<=r;x++){double z2=r*r-x*x-y*y;if(z2<0)continue;bool lit=si*x-co*sqrt(z2)>0;int col=lit?SILVER:SHADOW;
- for(auto &cr:craters){int d=(x-cr[0])*(x-cr[0])+(y-cr[1])*(y-cr[1]);if(d<cr[2]*cr[2])col=lit?GRAY:DIM;if(d>=cr[2]*cr[2]&&d<(cr[2]+1)*(cr[2]+1))col=lit?WHITE:SHADOW;}
- g.drawPixel(120+x,95+y,col);}
- g.drawCircle(120,95,r,GRAY);
- const char*names[]={"Neumond","Zunehmend","Erstes Viertel","Zunehmend","Vollmond","Abnehmend","Letztes Viertel","Abnehmend"};txt(g,names[int(moon.phase*8+.5)%8],140,2);txt(g,String(moon.lit,0)+" %",161,3);txt(g,"Vollmond",188,0,PURPLE);txt(g,fmtTime(moon.full,"%d.%m.%Y"),200,2,PURPLE);break;}
+ case 3:case 4:{
+ txt(g,"SONNE &",23,2,WHITE);txt(g,"MOND",44,2,WHITE);
+ g.drawLine(120,65,120,177,DIM);g.drawLine(55,187,185,187,DIM);
+ // Left: existing weather-provided solar times. Missing values never hide Moon.
+ const int sx=66,sy=91;g.fillCircle(sx,sy,14,YELLOW);for(int a=0;a<8;a++){double angle=a*M_PI/4;g.drawLine(sx+cos(angle)*19,sy+sin(angle)*19,sx+cos(angle)*24,sy+sin(angle)*24,YELLOW);}
+ int i=sunDay(w,now);bool times=w.valid&&i>=0&&w.sunrise[i]&&w.sunset[i];
+ txt(g,times?fmtTime(w.sunrise[i]):"--:--",127,2,YELLOW,0,69);txt(g,"Aufgang",148,0,SILVER,0,69);
+ txt(g,times?fmtTime(w.sunset[i]):"--:--",160,2,YELLOW,0,69);
+ // Arrows distinguish sunrise and sunset without crowding the small display.
+ g.drawLine(25,128,25,140,YELLOW);g.drawLine(25,128,21,132,YELLOW);g.drawLine(25,128,29,132,YELLOW);
+ g.drawLine(25,162,25,174,YELLOW);g.drawLine(25,174,21,170,YELLOW);g.drawLine(25,174,29,170,YELLOW);
+ if(moon.valid){int r=23;double co=1-2*moon.lit/100.0,si=sqrt(fmax(0,1-co*co))*(moon.phase<.5?1:-1);
+ for(int y=-r;y<=r;y++)for(int x=-r;x<=r;x++){double z2=r*r-x*x-y*y;if(z2>=0)g.drawPixel(174+x,91+y,si*x-co*sqrt(z2)>0?WHITE:SHADOW);}
+ g.drawCircle(174,91,r,GRAY);txt(g,String(moon.lit,0)+" %",126,2,CYAN,0,174);
+ const char*phases[]={"Neumond","zunehmend","1. Viertel","zunehmend","Vollmond","abnehmend","3. Viertel","abnehmend"};txt(g,phases[int(moon.phase*8+.5)%8],153,0,CYAN,0,174);
+ txt(g,"Vollmond",195,0,SILVER);txt(g,fmtTime(moon.full,"%d.%m.%Y"),208,0,CYAN);
+ }else{g.drawCircle(174,91,23,GRAY);txt(g,"-- %",126,2,CYAN,0,174);txt(g,"Keine Daten",153,0,SILVER,0,174);txt(g,"Vollmond --",201,0,SILVER);}
+ txt(g,"Untergang",177,0,SILVER,0,69);
+ break;}
  case 5:case 6:case 7:case 8:case 9:{int type=v-5;txt(g,countdownName(c,type),35,2,WHITE,24);time_t target;
  if(type<4)countdownIcon(g,type,ms,c.animations);
  if(type==2&&weekendPictureOnly(now,c))return;

@@ -39,7 +39,7 @@ inline bool decodeConfig(JsonDocument &d,Config &c){
  for(auto key:{"aircraftLat","aircraftLon"})if(!d[key].isNull()){if(!number(d[key]))return false;double x=d[key];int limit=!strcmp(key,"aircraftLat")?90:180;if(!isfinite(x)||x < -limit||x>limit)return false;if(limit==90)t.aircraftLat=x;else t.aircraftLon=x;}
  if(!d["aircraftRadius"].isNull()){if(!d["aircraftRadius"].is<int>())return false;int x=d["aircraftRadius"];if(x<5||x>100)return false;t.aircraftRadius=x;}
  t.countdownType=type;t.animations=d["animations"];syncCountdown(t);
- t.view=v;t.mask=m;t.interval=i;t.automatic=d["automatic"];c=t;return true;
+ t.view=mergedSkyView(v);t.mask=mergedSkyMask(m);t.interval=i;t.automatic=d["automatic"];c=t;return true;
 }
 inline bool loadConfig(JsonDocument &d,Config&c,bool&migrated){
  migrated=false;Config t;
@@ -59,5 +59,5 @@ inline bool loadConfig(JsonDocument &d,Config&c,bool&migrated){
  d["view"]=v;d["mask"]=m?m:1;d["schema"]=4;migrated=true;
  }
  if(schema!=1&&schema!=2&&schema!=3&&schema!=4){c=t;return false;}
- bool ok=decodeConfig(d,t);c=t;return ok;
+ bool ok=decodeConfig(d,t);if(ok&&(t.view!=(d["view"]|0)||t.mask!=(d["mask"]|0))){migrated=true;d["view"]=t.view;d["mask"]=t.mask;}c=t;return ok;
 }

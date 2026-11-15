@@ -10,14 +10,14 @@ int main(){setenv("TZ",ZURICH_TZ,1);tzset();
  const char* legacy=R"({"schema":3,"city":"Bern","lat":46.948,"lon":7.4474,"event":"Ferien","date":"2027-01-01","interval":15,"view":5,"mask":63,"automatic":true,"ssid":"SavedWiFi","pass":"secret123","countdownType":0,"countdownDates":["2027-01-01","2027-01-02","2027-01-03","2027-01-04","2027-01-05"],"customEvent":"Pruefung","animations":true})";
  for(int type=0;type<5;type++)for(int view=0;view<6;view++)for(int mask=1;mask<=63;mask++){
   deserializeJson(d,legacy);d["view"]=view;d["mask"]=mask;d["countdownType"]=type;
-  assert(loadConfig(d,c,migrated)&&migrated);assert(c.view==(view==5?5+type:view));assert(c.mask==((mask&31)|((mask&32)?1<<(5+type):0)));
+  assert(loadConfig(d,c,migrated)&&migrated);assert(c.view==mergedSkyView(view==5?5+type:view));assert(c.mask==mergedSkyMask((mask&31)|((mask&32)?1<<(5+type):0)));
   assert(!strcmp(c.ssid,"SavedWiFi")&&!strcmp(c.pass,"secret123"));assert(!strcmp(c.countdownDates[4],"2027-01-05"));
   assert(loadConfig(d,c,migrated)&&!migrated);
  }
  for(int schema=1;schema<=2;schema++){deserializeJson(d,legacy);d["schema"]=schema;d["view"]=schema==1?9:5;d["mask"]=schema==1?512:32;assert(loadConfig(d,c,migrated)&&migrated);assert(c.view==9&&c.mask==512);assert(!strcmp(c.countdownDates[4],"2027-01-01"));}
- for(int mask=1;mask<=1023;mask++)for(int view=0;view<10;view++){int next=nextView(view,mask);assert(next>=0&&next<10&&(mask&(1<<next)));}
+ for(int mask=1;mask<=1023;mask++)for(int view=0;view<10;view++){int next=nextView(view,mask);assert(next>=0&&next<10&&(mergedSkyMask(mask)&(1<<next)));}
  deserializeJson(d,legacy);d["schema"]=4;
- for(int view=0;view<10;view++){d["view"]=view;d["mask"]=1023;assert(decodeConfig(d,c)&&c.view==view);}
+ for(int view=0;view<10;view++){d["view"]=view;d["mask"]=1023;assert(decodeConfig(d,c)&&c.view==mergedSkyView(view));}
  for(int k=0;k<5;k++){d["countdownType"]=k;assert(decodeConfig(d,c));assert(!strcmp(c.date,c.countdownDates[k]));}
  Config good=c;d["view"]=VIEW_COUNT;assert(!decodeConfig(d,c));d["view"]=9;d["mask"]=0;assert(!decodeConfig(d,c));d["mask"]=1023;d["countdownDates"][0]="2027-02-30";assert(!decodeConfig(d,c));assert(!strcmp(c.countdownDates[0],good.countdownDates[0]));d["countdownDates"][0]="2027-01-01";d["animations"]=false;assert(decodeConfig(d,c)&&!c.animations);
  d["deviceName"]="Kuchyň";assert(decodeConfig(d,c));assert(loadConfig(d,c,migrated)&&!strcmp(c.deviceName,"Kuchyň"));d["deviceName"]="Bad\nName";assert(!decodeConfig(d,c));
