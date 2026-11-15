@@ -2,12 +2,13 @@
 #include "Render.h"
 #include "FinanceModel.h"
 inline String quoteNumber(double n,bool btc){char b[32];snprintf(b,sizeof(b),btc?(n<1000000?"%.2f":"%.0f"):(n<.1?"%.6f":n<100?"%.4f":"%.2f"),n);if(strlen(b)>12)snprintf(b,sizeof(b),"%.4g",n);return String(b);}
-// Native pixels avoid font/encoding dependencies. Both directions are red.
+// Native pixels avoid font/encoding dependencies. Green rise, red fall.
 inline void financeArrow(Adafruit_GFX&g,const Quote&q,time_t now,bool btc,bool online,int x,int y){
  if(!online||quoteStale(q,now,btc)||!q.trend)return;
- g.fillRect(x-2,y-6,5,13,RED);
- if(q.trend>0)g.fillTriangle(x,y-11,x-7,y-3,x+7,y-3,RED);
- else g.fillTriangle(x,y+11,x-7,y+3,x+7,y+3,RED);
+ const uint16_t color=q.trend>0?GREEN:RED;
+ g.fillRect(x-2,y-6,5,13,color);
+ if(q.trend>0)g.fillTriangle(x,y-11,x-7,y-3,x+7,y-3,color);
+ else g.fillTriangle(x,y+11,x-7,y+3,x+7,y+3,color);
 }
 inline void financeValue(Adafruit_GFX&g,String value,int y,bool btc){
  const GFXfont* fonts[]={&FreeSansBold24pt7b,&FreeSansBold18pt7b,&FreeSansBold12pt7b,&FreeSansBold9pt7b};

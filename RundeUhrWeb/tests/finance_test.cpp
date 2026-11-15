@@ -23,15 +23,15 @@ int main(){setenv("TZ",ZURICH_TZ,1);tzset();time_t now;assert(parseDate("2026-11
  td["data"]["amount"]="100";assert(parseFinance(td,t,"BTC","CHF",true,now)&&t.trend==-1);
  assert(parseFinance(td,t,"BTC","CHF",true,now)&&t.trend==0);
  f.btc=t;setQuoteValue(f.btc,80000);f.fx[0].trend=1;f.fx[1].trend=-1;f.fx[2].trend=0;
- auto redCount=[&](){int n=0;for(int k=0;k<57600;k++)n+=g.getBuffer()[k]==RED;return n;};
+ auto arrowCount=[&](){int n=0;for(int k=0;k<57600;k++)n+=(g.getBuffer()[k]==RED||g.getBuffer()[k]==GREEN);return n;};
  for(int view=10;view<=11;view++){
-  c.view=view;renderFinance(g,c,f,now,true);assert(redCount()>0);save(g,view==10?"preview/rc12_bitcoin.ppm":"preview/rc12_currency.ppm");
+  c.view=view;renderFinance(g,c,f,now,true);assert(arrowCount()>0);save(g,view==10?"preview/rc13_bitcoin.ppm":"preview/rc13_currency.ppm");
   for(int k=0;k<57600;k++)if((k%240-120)*(k%240-120)+(k/240-120)*(k/240-120)>119*119)assert(g.getBuffer()[k]==BG);
-  renderFinance(g,c,f,now,false);assert(redCount()==0);
-  renderFinance(g,c,f,now+86401,true);assert(redCount()==0);
+  renderFinance(g,c,f,now,false);assert(arrowCount()==0);
+  renderFinance(g,c,f,now+86401,true);assert(arrowCount()==0);
  }
- for(int direction:{-1,0,1}){t.trend=direction;g.fillScreen(BG);financeArrow(g,t,now,true,true,211,120);assert((redCount()>0)==(direction!=0));if(direction)assert(g.getBuffer()[(120+(direction>0?-11:11))*240+211]==RED);}
- puts("PASS finance trends: first/equal/up/down, invalid data retention, independent pairs, red arrow directions, stale/offline hidden and circular bounds.");
+ for(int direction:{-1,0,1}){t.trend=direction;g.fillScreen(BG);financeArrow(g,t,now,true,true,211,120);assert((arrowCount()>0)==(direction!=0));if(direction)assert(g.getBuffer()[(120+(direction>0?-11:11))*240+211]==(direction>0?GREEN:RED));}
+ puts("PASS finance trends: first/equal/up/down, invalid data retention, independent pairs, green up/red down directions, stale/offline hidden and circular bounds.");
  Config original;strcpy(original.ssid,"saved");strcpy(original.pass,"secret");
  deserializeJson(d,R"({"schema":4,"city":"Bern","lat":46.948,"lon":7.4474,"event":"Ferien","date":"","view":4,"mask":508,"interval":5,"automatic":true,"countdownType":0,"animations":true,"customEvent":"Mein Ereignis","countdownDates":["","2027-03-25","","2027-05-31",""]})");assert(decodeConfig(d,original));assert(original.mask==490&&!strcmp(original.pass,"secret")&&!strcmp(original.btcCurrency,"CHF"));
  d["view"]=11;d["mask"]=4095;d["btcCurrency"]="USD";assert(decodeConfig(d,original));assert(original.view==11&&original.mask==4075&&!strcmp(original.pass,"secret"));
