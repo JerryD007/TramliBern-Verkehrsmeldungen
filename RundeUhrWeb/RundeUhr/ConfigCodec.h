@@ -14,7 +14,7 @@ inline bool decodeConfig(JsonDocument &d,Config &c){
  if(!isfinite(t.lat)||!isfinite(t.lon)||t.lat < -90||t.lat>90||t.lon < -180||t.lon>180)return false;
  for(auto k:{"view","mask","interval"})if(!d[k].is<int>())return false;
  int v=d["view"],m=d["mask"],i=d["interval"];
- if(v<0||v>=VIEW_COUNT||m<1||m>1023||i<5||i>3600||!d["automatic"].is<bool>())return false;
+ if(v<0||v>=VIEW_COUNT||m<1||m>4095||i<5||i>3600||!d["automatic"].is<bool>())return false;
  time_t target;if(strlen(t.date)&&!parseDate(t.date,target))return false;
  if(!d["countdownType"].is<int>()||!d["animations"].is<bool>()||!d["countdownDates"].is<JsonArray>()||d["countdownDates"].size()!=5)return false;
  int type=d["countdownType"];if(type<0||type>4)return false;
@@ -30,6 +30,11 @@ inline bool decodeConfig(JsonDocument &d,Config &c){
  if(!d["weekendStartMinute"].isNull())t.weekendStartMinute=d["weekendStartMinute"];
  if(!d["weekendEndMinute"].isNull())t.weekendEndMinute=d["weekendEndMinute"];
  if(t.weekendStartDay==t.weekendEndDay && t.weekendStartMinute==t.weekendEndMinute)return false;
+ if(!d["btcCurrency"].isNull()){if(!d["btcCurrency"].is<const char*>()||!validCurrency(d["btcCurrency"]))return false;strcpy(t.btcCurrency,d["btcCurrency"]);}
+ for(auto key:{"fxBase","fxQuote"})if(!d[key].isNull()){
+  if(!d[key].is<JsonArray>()||d[key].size()!=3)return false;
+  for(int k=0;k<3;k++){if(!d[key][k].is<const char*>()||!validCurrency(d[key][k]))return false;strcpy(!strcmp(key,"fxBase")?t.fxBase[k]:t.fxQuote[k],d[key][k]);}
+ }
  t.countdownType=type;t.animations=d["animations"];syncCountdown(t);
  t.view=v;t.mask=m;t.interval=i;t.automatic=d["automatic"];c=t;return true;
 }

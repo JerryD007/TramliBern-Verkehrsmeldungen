@@ -59,6 +59,7 @@ inline bool fetchWeather(const Config &c,Weather &w,String &error,NetDiagnostics
  }
  return false;
 }
+#include "FinanceNetwork.h"
 inline void networkTask(void*){
  NetConfig state={};bool configured=false,first=true,previousOnline=false;uint32_t last=0;bool success=false;
  for(;;){NetConfig next;if(xQueueReceive(netConfigQueue,&next,0)==pdTRUE){if(!configured||next.generation!=state.generation||next.refresh!=state.refresh)first=true;state=next;configured=true;}
@@ -76,6 +77,7 @@ inline void networkTask(void*){
     r.diagnostics.networkStackFree=uxTaskGetStackHighWaterMark(nullptr);r.diagnostics.busy=false;r.diagnostics.duration=millis()-now;strlcpy(r.error,error.c_str(),sizeof(r.error));xQueueOverwrite(netResultQueue,&r);
    }
   }
+  if(configured&&WiFi.status()==WL_CONNECTED&&!otaActive&&timeValid(time(nullptr)))financeTick(state.config,false);
   vTaskDelay(pdMS_TO_TICKS(150));
  }
 }

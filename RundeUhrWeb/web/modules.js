@@ -1,13 +1,6 @@
-// Registry only. No network clients, background jobs or screen replacements.
-const modules=[
- {id:'currencies',name:'Kurzy světových měn',description:'Budoucí výběr měn a základní měny.'},
- {id:'crypto',name:'Kryptoměny',description:'Budoucí výběr kryptoměn a zobrazované měny.'},
- {id:'aircraft',name:'Sledování letadel',description:'Budoucí konfigurace zdroje dat, polohy a oblasti sledování.'},
- {id:'bambu',name:'Bambu Lab X1C',description:'Budoucí přehled tiskárny a průběhu tisku.'},
- {id:'astronomy',name:'Rozšířená astronomie',description:'Budoucí výběr dalších astronomických informací.'},
- {id:'homeassistant',name:'Home Assistant',description:'Budoucí propojení s místní instalací Home Assistant.'},
- {id:'future',name:'Další moduly',description:'Místo pro další postupně doplňované funkce.'}
-];
-function openModule(id){const m=modules.find(m=>m.id===id);if(!m)return;go('extensions');$('moduleList').hidden=true;$('moduleDetail').hidden=false;$('moduleTitle').textContent=m.name;$('moduleDescription').textContent=m.description;history.replaceState(null,'','#extensions/'+m.id);}
-modules.forEach(m=>{const b=document.createElement('button');b.className='module-card';const left=document.createElement('span'),title=document.createElement('strong'),status=document.createElement('span'),arrow=document.createElement('span');title.textContent=m.name;status.className='badge';status.textContent='Připravuje se';arrow.className='arrow';arrow.textContent='›';left.append(title,status);b.append(left,arrow);b.onclick=()=>openModule(m.id);$('moduleList').append(b);});
-$('closeModule').onclick=()=>{go('extensions');};
+const currencyOptions=['AUD','BRL','CAD','CHF','CNY','CZK','DKK','EUR','GBP','HKD','HUF','IDR','ILS','INR','ISK','JPY','KRW','MXN','MYR','NOK','NZD','PHP','PLN','RON','SEK','SGD','THB','TRY','USD','ZAR'];
+for(let i=0;i<3;i++){const row=document.createElement('div');row.className='field-pair';for(const [key,label] of [['fxBase','Z měny'],['fxQuote','Do měny']]){const l=document.createElement('label');l.textContent=(i+1)+'. '+label;const select=document.createElement('select');select.id=key+i;l.append(select);row.append(l);}$('currencyPairs').append(row);}
+function fillFinance(s){const codes=s.currencies||currencyOptions;for(const id of ['btcCurrency',...Array.from({length:3},(_,i)=>'fxBase'+i),...Array.from({length:3},(_,i)=>'fxQuote'+i)]){const el=$(id);el.replaceChildren(...codes.map(c=>new Option(c,c)));} $('btcCurrency').value=s.btcCurrency||'CHF';for(let i=0;i<3;i++){$('fxBase'+i).value=(s.fxBase||['CHF','EUR','EUR'])[i];$('fxQuote'+i).value=(s.fxQuote||['CZK','CZK','CHF'])[i];}}
+function paintFinance(){if(!state)return;const data=state.finance||[];function line(q,label){const p=document.createElement('p');p.textContent=label+': '+(q?.valid?new Intl.NumberFormat('de-CH',{maximumFractionDigits:6}).format(q.value):'Zatím bez dat')+(q?.date?' · datum kurzu '+q.date:'')+(q?.received?' · načteno '+stamp(q.received):'')+(q?.stale?' · NEAKTUÁLNÍ':'')+(q?.error?' · '+q.error:'');return p;} $('bitcoinStatus').replaceChildren(line(data[0],'1 BTC / '+(state.btcCurrency||'CHF')));$('currencyStatus').replaceChildren(...[0,1,2].map(i=>line(data[i+1],(state.fxBase||['CHF','EUR','EUR'])[i]+' / '+(state.fxQuote||['CZK','CZK','CHF'])[i])));}
+bindForm('bitcoinForm',()=>savePatch({btcCurrency:$('btcCurrency').value}));
+bindForm('currencyForm',()=>savePatch({fxBase:[0,1,2].map(i=>$('fxBase'+i).value),fxQuote:[0,1,2].map(i=>$('fxQuote'+i).value)}));

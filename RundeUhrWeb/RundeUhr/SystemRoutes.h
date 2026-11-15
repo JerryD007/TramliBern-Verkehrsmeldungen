@@ -13,7 +13,7 @@ void systemRoutes(){
   strlcpy(next.deviceName,cfg.deviceName,sizeof(next.deviceName));
   Config original=cfg;cfg=next;JsonDocument save;configJSON(save,true);String s;serializeJson(save,s);
   if(prefs.putString("config",s)!=s.length()){cfg=original;reply(500,"Nastavení se nepodařilo uložit");return;}
-  dirty=false;generation++;weather=Weather();lastSwitch=millis();sendConfig();firstDraw=true;reply(200,"Nastavení obnoveno. Název zařízení a Wi-Fi zůstaly zachovány.");
+  dirty=false;finance=FinanceData();generation++;weather=Weather();lastSwitch=millis();sendConfig();firstDraw=true;reply(200,"Nastavení obnoveno. Název zařízení a Wi-Fi zůstaly zachovány.");
  });
  server.on("/api/restart",HTTP_POST,[]{JsonDocument d;if(!body(d))return;saveConfig();reply(200,"Zařízení se restartuje");rebootAt=millis()+2000;});
 }
