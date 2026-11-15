@@ -20,8 +20,9 @@ inline void renderAircraft(Adafruit_GFX&g,const AircraftData&a,time_t now,bool o
  aircraftKindIcon(g,a.found?a.kind:AircraftKind::Unknown,63);
  bool stale=aircraftStale(a,now);char b[40];
  if(a.found){const char*name=a.callsign[0]?a.callsign:a.registration[0]?a.registration:a.hex[0]?a.hex:"Unbekannt";
- txt(g,name,85,2,WHITE);snprintf(b,sizeof(b),"%.1f km",a.distance);txt(g,b,106,2,CYAN);
- char alt[14]="",speed[14]="";if(a.altValid)snprintf(alt,sizeof(alt),"%.0f m",a.altitude);if(a.speedValid)snprintf(speed,sizeof(speed),"%.0f km/h",a.speed);snprintf(b,sizeof(b),"%s  %s",alt,speed);txt(g,b,128,0,WHITE);
+ bool expanded=!a.origin[0]&&!a.destination[0];
+ txt(g,name,expanded?95:85,expanded?3:2,WHITE);snprintf(b,sizeof(b),"%.1f km",a.distance);txt(g,b,expanded?131:106,expanded?5:2,CYAN);
+ char alt[14]="",speed[14]="";if(a.altValid)snprintf(alt,sizeof(alt),"%.0f m",a.altitude);if(a.speedValid)snprintf(speed,sizeof(speed),"%.0f km/h",a.speed);snprintf(b,sizeof(b),"%s  %s",alt,speed);if(expanded){if(a.altValid)txt(g,alt,178,7,WHITE);if(a.speedValid)txt(g,speed,201,7,WHITE);}else txt(g,b,128,0,WHITE);
  if(a.origin[0]&&a.destination[0]){
   txt(g,"VON",136,0,SILVER);txt(g,a.origin,146,7,CYAN);
   txt(g,"NACH",174,0,SILVER);txt(g,a.destination,184,7,CYAN);
