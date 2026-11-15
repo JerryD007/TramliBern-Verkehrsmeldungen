@@ -21,7 +21,7 @@ jobs:
           arduino-cli config set board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@3.3.0
-          arduino-cli lib install 'Adafruit GFX Library@1.12.1' 'Adafruit GC9A01A@1.1.0' 'Adafruit BusIO@1.17.2' 'ArduinoJson@7.4.2'
+          arduino-cli lib install --no-deps 'Adafruit GFX Library@1.12.1' 'Adafruit GC9A01A@1.1.0' 'Adafruit BusIO@1.17.2' 'ArduinoJson@7.4.2'
       - name: Host logic and migration tests
         working-directory: RundeUhrWeb
         run: |
