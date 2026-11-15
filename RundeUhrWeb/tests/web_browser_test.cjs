@@ -55,6 +55,14 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  otaMode='lost-chunk';await page.locator('#firmwareFile').setInputFiles({name:'valid.ino.bin',mimeType:'application/octet-stream',buffer:fw});await page.locator('#uploadFirmware').click();await page.waitForFunction(()=>!uploading);assert((await page.locator('#otaStatus').innerText()).includes('nebyla dokončena'));assert(calls.some(c=>c.p==='/api/update/cancel'),JSON.stringify(calls.slice(-10))); assert(!calls.some(c=>c.p==='/api/update/finish'));
  otaMode='lost-finish';await page.locator('#uploadFirmware').click();await page.waitForFunction(()=>document.getElementById('otaStatus').textContent.includes('Ověřen restart'),null,{timeout:15000});assert(await page.locator('#uploadFirmware').isDisabled());assert.equal(errors.length,0,errors.join('\n'));
  console.log('PASS '+engine+': real browser + simulated ESP API, 11 visible selections, cycle switches/manual selection, empty-cycle protection, settings/date preservation, weekend edit, Wi-Fi/XSS/password clearing, offline recovery, modules, all 390px layouts, 28918-byte BMP, invalid firmware, interrupted chunks, lost finish acknowledgment + SHA verification.');
+ await page.locator('[data-goto="countdowns"]').first().click();
+ await page.locator('#weekendTransition').check();
+ await page.locator('#weekendForm button').click();
+ await page.waitForTimeout(300);
+ assert.equal(state.weekendTransition,true);
+ await page.reload();await page.waitForTimeout(500);
+ assert.equal(await page.locator('#weekendTransition').isChecked(),true);
+ console.log('PASS weekend transition switch persistence');
  await browser.close();
  }
 })().catch(e=>{console.error(e);process.exit(1);});

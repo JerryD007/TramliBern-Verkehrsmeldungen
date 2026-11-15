@@ -8,6 +8,7 @@ inline bool textValue(JsonDocument &d,const char* key,char* dest,size_t cap,bool
 }
 inline bool decodeConfig(JsonDocument &d,Config &c){
  Config t=c;
+ if(!d["weekendTransition"].isNull()){if(!d["weekendTransition"].is<bool>())return false;t.weekendTransition=d["weekendTransition"];}
  if(!d["deviceName"].isNull()&&!textValue(d,"deviceName",t.deviceName,sizeof(t.deviceName)))return false;
  if(!textValue(d,"city",t.city,sizeof(t.city),false)||!textValue(d,"event",t.event,sizeof(t.event),false)||!textValue(d,"date",t.date,sizeof(t.date)))return false;
  if(!number(d["lat"])||!number(d["lon"]))return false;t.lat=d["lat"];t.lon=d["lon"];

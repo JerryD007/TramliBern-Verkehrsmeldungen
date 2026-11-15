@@ -15,7 +15,7 @@ struct Config {
  char ssid[33]="",pass[65]="",city[49]="Bern",event[49]="Ferien",date[11]="";
  char deviceName[49]="";
  char countdownDates[5][11]={}; char customEvent[49]="Mein Ereignis";
- uint8_t countdownType=0; bool animations=true;
+ uint8_t countdownType=0; bool animations=true; bool weekendTransition=false;
  double lat=46.948,lon=7.4474;
  uint16_t mask=1011,interval=15;
  uint8_t view=0; bool automatic=false;
@@ -83,4 +83,13 @@ inline bool weekendPictureOnly(time_t now,const Config& c=Config()){
  const int week=7*1440,start=c.weekendStartDay*1440+c.weekendStartMinute,end=c.weekendEndDay*1440+c.weekendEndMinute;
  const int minute=local.tm_wday*1440+local.tm_hour*60+local.tm_min;
  return (minute-start+week)%week < (end-start+week)%week;
+}
+
+// Half-open local calendar window; reboot never extends it.
+inline bool weekendTransitionActive(time_t now,const Config& c){
+ if(!c.weekendTransition||!c.animations||!weekendPictureOnly(now,c))return false;
+ tm local={};localtime_r(&now,&local);
+ const int week=7*1440,start=c.weekendStartDay*1440+c.weekendStartMinute;
+ const int minute=local.tm_wday*1440+local.tm_hour*60+local.tm_min;
+ return (minute-start+week)%week<30;
 }

@@ -1,10 +1,12 @@
 #pragma once
 // Shared renderer: firmware and host previews use exactly these drawing routines.
 #include "Model.h"
+#include "WeekendFrames.h"
 #include <Fonts/FreeSansBold9pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 static const uint16_t palette[]={0x0000,0xffff,0x07ff,0xfc10,0x4208,0xffe0,0xb35f,0xf800,0x47e9,0x9bd3,0xc618,0x8410,0xfd20,0xfdb8,0x04b5,0x2104};
+static const uint16_t* activePalette=palette;
 enum {BG,WHITE,CYAN,ORANGE,DIM,YELLOW,PURPLE,RED,GREEN,BROWN,SILVER,GRAY,GOLD,SKIN,SEA,SHADOW};
 inline String latin(String s){s.replace("ä","ae");s.replace("ö","oe");s.replace("ü","ue");s.replace("Ä","Ae");s.replace("Ö","Oe");s.replace("Ü","Ue");s.replace("ß","ss");s.replace("é","e");s.replace("è","e");s.replace("à","a");String o;for(unsigned i=0;i<s.length();i++){uint8_t c=s[i];if(c>=32&&c<127)o+=char(c);else if((c&0xc0)!=0x80)o+='?';}return o;}
 inline String shorten(String s,int n){s=latin(s);return s.length()>(unsigned)n?s.substring(0,n-2)+"..":s;}
@@ -27,9 +29,9 @@ inline void weatherIcon(Adafruit_GFX &g,int code,int x,int y,int scale=1){
 inline void hand(Adafruit_GFX&g,double a,int length,int width,int color){int x=120+sin(a)*length,y=120-cos(a)*length;for(int i=-width;i<=width;i++)g.drawLine(120+i,120,x+i,y,color);g.fillCircle(x,y,width,color);}
 // Native vector icons: no downloaded emoji font or large bitmap buffers.
 inline void mug(Adafruit_GFX&g,int x,int y,bool right){
- g.drawRoundRect(x+(right?-10:24),y+9,15,22,5,GOLD);g.drawRoundRect(x+(right?-9:25),y+10,13,20,4,GOLD);
- g.fillRoundRect(x,y+4,29,36,4,GOLD);g.fillRect(x+4,y+12,3,22,YELLOW);g.fillRect(x+21,y+12,3,22,ORANGE);
- g.fillRoundRect(x-2,y,33,12,5,WHITE);g.fillCircle(x+6,y,6,WHITE);g.fillCircle(x+19,y-2,7,WHITE);
+ g.drawRoundRect(x+(right?-18:43),y+16,27,40,9,GOLD);g.drawRoundRect(x+(right?-16:45),y+18,23,36,7,GOLD);
+ g.fillRoundRect(x,y+7,52,65,7,GOLD);g.fillRect(x+7,y+22,5,40,YELLOW);g.fillRect(x+38,y+22,5,40,ORANGE);
+ g.fillRoundRect(x-4,y,60,22,9,WHITE);g.fillCircle(x+11,y,11,WHITE);g.fillCircle(x+34,y-4,13,WHITE);
 }
 inline void countdownIcon(Adafruit_GFX&g,int type,uint32_t ms,bool animate){
  double phase=animate?sin(ms*0.004):0;int dy=int(phase*3);
@@ -48,8 +50,8 @@ inline void countdownIcon(Adafruit_GFX&g,int type,uint32_t ms,bool animate){
   g.drawCircle(110,y-16,9,YELLOW);g.drawCircle(130,y-16,9,YELLOW);g.fillCircle(120,y-8,4,YELLOW);
   for(int k=0;k<6;k++){int x=79+k*16,yy=64+((k*11+int(animate?ms/100:0))%22);g.fillRect(x,yy,3,4,k%2?CYAN:PURPLE);}
  }else if(type==2){
-  int spread=animate?int((phase+1)*5):2;mug(g,92-spread,98+dy,false);mug(g,121+spread,98-dy,true);
-  if(!animate||phase<-.4){g.drawLine(120,78,120,86,WHITE);g.drawLine(107,82,112,88,YELLOW);g.drawLine(133,82,128,88,YELLOW);}
+  int spread=animate?int((phase+1)*5):2;mug(g,68-spread,80+dy,false);mug(g,120+spread,80-dy,true);
+  if(!animate||phase<-.4){g.drawLine(120,54,120,62,WHITE);g.drawLine(107,58,112,64,YELLOW);g.drawLine(133,58,128,64,YELLOW);}
  }else if(type==3){ // Stylised hand with one raised middle finger.
   int y=dy;g.fillRoundRect(98,103+y,47,35,10,SKIN);g.fillRoundRect(116,63+y,12,60,6,SKIN);
   g.fillRoundRect(101,91+y,13,29,6,SKIN);g.fillRoundRect(130,94+y,12,27,6,SKIN);g.fillRoundRect(141,101+y,10,25,5,SKIN);
@@ -59,7 +61,7 @@ inline void countdownIcon(Adafruit_GFX&g,int type,uint32_t ms,bool animate){
 }
 
 inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moon,time_t now,bool online,bool setup,String apName,String apKey,uint32_t ms=0){
- g.fillScreen(BG);g.setTextWrap(false);int v=c.view;bool valid=timeValid(now);tm t={};if(valid)localtime_r(&now,&t);
+ activePalette=palette;g.fillScreen(BG);g.setTextWrap(false);int v=c.view;bool valid=timeValid(now);tm t={};if(valid)localtime_r(&now,&t);
  const int accents[]={CYAN,YELLOW,PURPLE,YELLOW,PURPLE,ORANGE};g.drawCircle(120,120,116,accents[v<5?v:5]);g.drawCircle(120,120,115,accents[v<5?v:5]);
  if(setup){txt(g,"WLAN einrichten",35,2,CYAN);txt(g,apName,69,2);txt(g,"WLAN-Passwort",98,1);txt(g,apKey,122,2);txt(g,"Safari oeffnen",155,1);txt(g,"http://192.168.4.1",177,1);txt(g,"Setup ohne Internet",203,0,ORANGE);return;}
  if(!valid){txt(g,"Zeit fehlt",77,3,ORANGE);txt(g,"NTP ueber WLAN",126,2);txt(g,"Verbindung pruefen",153,1);return;}
@@ -105,6 +107,7 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
  txt(g,"Untergang",177,0,SILVER,0,69);
  break;}
  case 5:case 6:case 7:case 8:case 9:{int type=v-5;txt(g,countdownName(c,type),35,2,WHITE,24);time_t target;
+ if(type==2&&weekendTransitionActive(now,c)){activePalette=weekendPalette;g.fillScreen(0);g.drawCircle(120,120,116,2);g.drawCircle(120,120,115,2);txt(g,"Wochenende",35,2,1);drawWeekendToast(g,ms);g.drawCircle(120,120,116,2);g.drawCircle(120,120,115,2);return;}
  if(type<4)countdownIcon(g,type,ms,c.animations);
  if(type==2&&weekendPictureOnly(now,c))return;
  if(type==4){
