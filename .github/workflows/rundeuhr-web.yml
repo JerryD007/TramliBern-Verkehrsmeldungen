@@ -36,3 +36,25 @@ jobs:
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser testing tools
+        run: |
+          npm install playwright@1.58.2
+          npx playwright install --with-deps webkit chromium
+      - name: Browser tests (simulated ESP API)
+        working-directory: RundeUhrWeb
+        run: node tests/web_browser_test.cjs 2>&1 | tee tests/browser_ci.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RundeUhr-Web-tests
+          path: |
+            RundeUhrWeb/tests/*.png
+            RundeUhrWeb/tests/browser_ci.log

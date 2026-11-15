@@ -1,0 +1,21 @@
+'use strict';
+const $=id=>document.getElementById(id);
+const demo=location.protocol==='file:'||new URLSearchParams(location.search).has('demo');
+let state=null,token='',uploading=false,online=false,inFlight=false,loaded=false,frameBusy=false,frameUrl='',scanTimer=null,activePage='overview';
+const names=['Analoguhr','Wettervorschau','Regen','Sonne','Mondzyklus','Ferien','Geburtstag','Wochenende','Arschloch weg','Frei wählbar'];
+const days=['Neděle','Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota'];
+const configKeys=['schema','city','lat','lon','event','date','view','mask','interval','automatic','countdownType','countdownDates','customEvent','animations','weekendStartDay','weekendEndDay','weekendStartMinute','weekendEndMinute'];
+function notify(text){$('message').textContent=text;$('message').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('message').hidden=true,9000);}
+async function request(path,opts={},timeout=12000){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);try{const response=await fetch(path,{cache:'no-store',...opts,signal:controller.signal});const data=await response.json();if(!response.ok){const err=Error(data.message||'Zařízení požadavek odmítlo ('+response.status+').');err.httpStatus=response.status;throw err;}return data;}catch(e){if(e.name==='AbortError')throw Error('Vypršel čas čekání na odpověď zařízení. Výsledek požadavku není potvrzen.');if(e instanceof TypeError)throw Error('Spojení bylo přerušeno. Zkontroluj místní Wi-Fi a ponech Safari otevřené.');throw e;}finally{clearTimeout(timer);}}
+async function post(path,data={},timeout){if(demo){if(path==='/api/settings')Object.assign(state,data);if(path==='/api/view')state.view=data.view;notify('Ukázka: nic nebylo odesláno do zařízení.');return {ok:true,message:'Ukázkové nastavení změněno.'};}if(!token||!online)throw Error('Zařízení není připojené. Počkej na obnovení spojení.');return request(path,{method:'POST',headers:{'Content-Type':'application/json','X-Uhr-Token':token},body:JSON.stringify(data)},timeout);}
+function configSnapshot(){return Object.fromEntries(configKeys.filter(k=>state[k]!==undefined).map(k=>[k,Array.isArray(state[k])?[...state[k]]:state[k]]));}
+let saving=false;
+async function savePatch(patch){if(!state)throw Error('Nejprve se připoj k hodinám.');if(uploading||saving)throw Error('Počkej na dokončení předchozí operace.');saving=true;try{const next={...configSnapshot(),...patch};const result=await post('/api/settings',next);Object.assign(state,next);paint();notify(result.message||'Nastavení uloženo.');}finally{saving=false;}}
+function safeAction(fn){return async e=>{try{await fn(e);}catch(err){notify(err.message);}};}
+function size(n){return Number.isFinite(n)?Math.round(n/1024).toLocaleString('cs-CZ')+' KiB':'—';}
+function timeText(min){return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0');}
+function minutes(value){const [h,m]=value.split(':').map(Number);return h*60+m;}
+function stamp(n){return n?new Intl.DateTimeFormat('cs-CZ',{timeZone:'Europe/Zurich',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(n*1000)):'—';}
+function facts(id,rows){$(id).replaceChildren(...rows.map(([label,value])=>{const row=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value??'—';row.append(dt,dd);return row;}));}
+function privateIP(value){let a=value.split('.');if(a.length!==4||a.some(x=>!/^(0|[1-9]\d{0,2})$/.test(x)||+x>255))return false;return +a[0]===10||(+a[0]===192&&+a[1]===168)||(+a[0]===172&&+a[1]>=16&&+a[1]<=31);}
+function boardURL(host){host=host.trim().replace(/^http:\/\//,'').replace(/\/$/,'');if(privateIP(host)||/^[a-z0-9-]+\.local$/i.test(host))return 'http://'+host+'/';throw Error('Zadej místní IP adresu nebo název končící .local.');}
