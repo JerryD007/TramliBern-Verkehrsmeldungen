@@ -6,7 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "Currencies.h"
-constexpr int VIEW_COUNT=12;
+constexpr int VIEW_COUNT=13;
 constexpr const char* ZURICH_TZ="CET-1CEST,M3.5.0,M10.5.0/3";
 struct Config {
  char ssid[33]="",pass[65]="",city[49]="Bern",event[49]="Ferien",date[11]="";
@@ -16,6 +16,7 @@ struct Config {
  double lat=46.948,lon=7.4474;
  uint16_t mask=1023,interval=15;
  uint8_t view=0; bool automatic=false;
+ char aircraftPlace[49]="Bern";double aircraftLat=46.948,aircraftLon=7.4474;uint16_t aircraftRadius=50;
  char btcCurrency[4]="CHF";
  char fxBase[3][4]={"CHF","EUR","EUR"},fxQuote[3][4]={"CZK","CZK","CHF"};
  // Optional schema-4 extension. Old firmware ignores these fields.

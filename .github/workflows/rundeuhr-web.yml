@@ -1,7 +1,7 @@
-name: RundeUhr Web 3.0 test
+name: RundeUhr aircraft test
 on:
   push:
-    branches: ['test/rundeuhr-currency-3.1-rc2']
+    branches: ['test/rundeuhr-aircraft-3.2-rc1']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -29,12 +29,15 @@ jobs:
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/web_logic_test.cpp -o build/web_logic
           build/web_logic
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_finance.sh
+          GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_aircraft.sh
       - name: Verify live finance APIs and TLS roots
         working-directory: RundeUhrWeb
         run: |
           curl --fail --retry 2 --max-time 25 --cacert certificates/finance_roots.pem 'https://api.coinbase.com/v2/prices/BTC-CHF/spot' -o tests/live_btc.json
           curl --fail --retry 2 --max-time 25 --cacert certificates/finance_roots.pem 'https://api.frankfurter.dev/v2/rate/CHF/CZK' -o tests/live_fx.json
+          curl --fail --retry 2 --max-time 25 --cacert certificates/finance_roots.pem 'https://opendata.adsb.fi/api/v3/lat/46.948/lon/7.4474/dist/27' -o tests/live_aircraft.json
           python3 tests/check_live.py
+          python3 tests/check_aircraft_live.py
       - name: Compile ESP32-C3
         working-directory: RundeUhrWeb
         run: |
@@ -42,7 +45,7 @@ jobs:
           python3 tests/verify_binary.py
       - uses: actions/upload-artifact@v4
         with:
-          name: RundeUhr-3.1.0-rc2
+          name: RundeUhr-3.2.0-rc1
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
