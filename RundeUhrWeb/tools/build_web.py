@@ -1,7 +1,7 @@
 from pathlib import Path
 import base64,gzip,json
 root=Path(__file__).resolve().parent.parent
-thumbs=[base64.b64encode((root/'preview'/f'view_{i:02}.png').read_bytes()).decode() for i in range(1,11)]
+thumbs=json.loads((root/'web/thumbs.json').read_text())
 js='const thumbs='+json.dumps(['data:image/png;base64,'+s for s in thumbs])+';\n'
 js+='\n'.join((root/'web'/name).read_text() for name in ['api.js','app.js','modules.js','ota.js'])
 html=(root/'web/index.html').read_text().replace('/*STYLE*/',(root/'web/style.css').read_text()).replace('/*SCRIPT*/',js)

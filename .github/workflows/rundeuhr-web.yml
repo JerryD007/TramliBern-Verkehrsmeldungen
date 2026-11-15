@@ -4,6 +4,9 @@ on:
     branches: ['test/rundeuhr-web-3.0-rc1']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
+defaults:
+  run:
+    shell: bash
 permissions:
   contents: read
 jobs:
