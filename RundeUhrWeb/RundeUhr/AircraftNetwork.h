@@ -25,7 +25,7 @@ inline void aircraftTick(const Config&c){
  if(attempted&&uint32_t(millis()-last)<retry)return;
  networkBusy=true;if(otaActive){networkBusy=false;return;}
  Quote memory;data.memoryDeferred=false;data.http=data.tls=0;retry=300000;
- if(!financeMemoryReady(memory)){data.memoryDeferred=true;snprintf(data.error,sizeof(data.error),"RAM %s: blok %lu/%lu; za 15 s",memory.memoryGate==1?"celkem":memory.memoryGate==2?"TLS vstup":"TLS vystup",(unsigned long)memory.largestBefore,(unsigned long)memory.largestAfterFirst);retry=15000;}
+ if(!financeMemoryReady(memory)){data.memoryDeferred=true;snprintf(data.error,sizeof(data.error),"RAM %s: Block %lu/%lu; in 15 s",memory.memoryGate==1?"gesamt":memory.memoryGate==2?"TLS Eingang":"TLS Ausgang",(unsigned long)memory.largestBefore,(unsigned long)memory.largestAfterFirst);retry=15000;}
  else {data.heapBefore=memory.heapBefore;data.largestBefore=memory.largestBefore;fetchAircraft(data,c,retry);if(!data.error[0])retry=30000;}
  data.heapBefore=memory.heapBefore;data.largestBefore=memory.largestBefore;data.largestAfterFirst=memory.largestAfterFirst;data.probeIn=memory.probeIn;data.probeOut=memory.probeOut;data.memoryGate=memory.memoryGate;last=millis();attempted=true;
  AircraftResult result;result.config=c;result.data=data;xQueueOverwrite(aircraftResultQueue,&result);

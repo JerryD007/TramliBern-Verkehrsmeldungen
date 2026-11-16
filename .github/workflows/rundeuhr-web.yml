@@ -1,7 +1,7 @@
-name: RundeUhr aircraft test
+name: RundeUhr RC18 tests
 on:
   push:
-    branches: ['test/rundeuhr-modules-rc17']
+    branches: ['test/rundeuhr-earthquakes-rc18']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -34,6 +34,10 @@ jobs:
           build/iss_test
           g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/iss_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/iss_render
           build/iss_render
+          g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/quake_test.cpp -o build/quake_test
+          build/quake_test
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/quake_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/quake_render
+          build/quake_render
           python3 tests/tls_fragmentation_test.py
           python3 tests/fleet_cors_test.py
           g++ -std=c++17 tests/weekend_transition_test.cpp -o build/weekend_transition
@@ -55,6 +59,8 @@ jobs:
           curl --fail --retry 2 --max-time 25 --cacert certificates/finance_roots.pem https://api.adsbdb.com/v0/callsign/SWR5GT -o /tmp/route-live.json
           python3 -c 'import json; r=json.load(open("/tmp/route-live.json"))["response"]["flightroute"]; assert r["callsign_icao"]=="SWR5GT" and r["destination"].get("name"); print("PASS live ADSBDB schema and TLS with shipped CA bundle")'
           curl --fail --retry 2 --max-time 25 --cacert certificates/finance_roots.pem https://api.wheretheiss.at/v1/satellites/25544 -o tests/live_iss.json
+          curl --fail --retry 2 --max-time 25 --cacert certificates/finance_roots.pem https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson -o tests/live_quake.json
+          build/quake_test tests/live_quake.json
           python3 tests/check_live.py
           python3 tests/check_aircraft_live.py
       - name: Compile ESP32-C3
@@ -64,7 +70,7 @@ jobs:
           python3 tests/verify_binary.py
       - uses: actions/upload-artifact@v4
         with:
-          name: RundeUhr-3.2.0-rc17
+          name: RundeUhr-3.2.0-rc18
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log

@@ -44,7 +44,7 @@ inline void financeTick(const Config&c,bool reset){
  // Skip TLS instead of starving the web server when memory is already scarce.
  q.memoryDeferred=false;q.http=q.tls=0;
  bool identity=i>0&&!strcmp(c.fxBase[i-1],c.fxQuote[i-1]);
- if(!identity&&!financeMemoryReady(q)){q.memoryDeferred=true;snprintf(q.error,sizeof(q.error),"RAM %s: %lu B; blok %lu/%lu; za 15 s",q.memoryGate==1?"celkem":q.memoryGate==2?"TLS vstup":"TLS vystup",(unsigned long)q.heapBefore,(unsigned long)q.largestBefore,(unsigned long)q.largestAfterFirst);}
+ if(!identity&&!financeMemoryReady(q)){q.memoryDeferred=true;snprintf(q.error,sizeof(q.error),"RAM %s: %lu B; Block %lu/%lu; in 15 s",q.memoryGate==1?"gesamt":q.memoryGate==2?"TLS Eingang":"TLS Ausgang",(unsigned long)q.heapBefore,(unsigned long)q.largestBefore,(unsigned long)q.largestAfterFirst);}
  else fetchQuote(q,i==0?"BTC":c.fxBase[i-1],i==0?c.btcCurrency:c.fxQuote[i-1],i==0);
  networkBusy=false;last[i]=millis();attempted[i]=true;cursor=(i+1)%4;
  FinanceResult result;result.config=c;result.data=data;xQueueOverwrite(financeResultQueue,&result);return;

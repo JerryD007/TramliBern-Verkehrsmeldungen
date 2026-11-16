@@ -26,7 +26,7 @@ for(const mode of ['success','lost-finish','chunk-fail','wrong-id','too-large','
  assert.deepEqual(errors,[]);if(['success','lost-finish'].includes(mode)){assert.deepEqual(begins,[1,2,0]);assert.deepEqual(finishes,[1,2,0]);assert.equal(chunks.length,12);assert((await page.textContent('#fleetStatus')).includes('Hotovo: 3 / 3'));}
  if(mode==='chunk-fail'){assert.deepEqual(begins,[1]);assert.deepEqual(finishes,[]);assert.deepEqual(cancels,[1]);assert.equal(chunks.length,1);}
  if(['wrong-id','too-large','already'].includes(mode))assert.deepEqual(begins,[]);
- if(mode==='wrong-hash'){assert.deepEqual(begins,[1]);assert((await page.textContent('#fleetStatus')).includes('nesouhlasí'));}
- if(mode==='stop'){assert.deepEqual(begins,[1]);assert.deepEqual(finishes,[1]);assert((await page.textContent('#fleetStatus')).includes('Zastaveno'));}
+ if(mode==='wrong-hash'){assert.deepEqual(begins,[1]);assert((await page.textContent('#fleetStatus')).includes('stimmt'));}
+ if(mode==='stop'){assert.deepEqual(begins,[1]);assert.deepEqual(finishes,[1]);assert((await page.textContent('#fleetStatus')).includes('Angehalten'));}
  console.log('PASS',engine.name(),mode,'sequential fleet, identity/size/hash, no blind write retry, explicit status');await page.close();
 }await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

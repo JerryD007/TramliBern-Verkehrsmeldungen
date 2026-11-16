@@ -6,8 +6,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include "Currencies.h"
-// Stable IDs: 2 aliases Wetter & Regen (1); 4 aliases Sonne & Mond (3). Twelve visible screens.
-constexpr int VIEW_COUNT=14;
+// Stable IDs: 2 aliases Wetter & Regen (1); 4 aliases Sonne & Mond (3). Thirteen visible screens.
+constexpr int VIEW_COUNT=15;
 inline uint16_t mergedScreenMask(uint16_t mask){if(mask&16)mask=(mask|8)&~16;if(mask&4)mask=(mask|2)&~4;return mask;}
 inline int mergedScreenView(int view){return view==4?3:view==2?1:view;}
 constexpr const char* ZURICH_TZ="CET-1CEST,M3.5.0,M10.5.0/3";

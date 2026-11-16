@@ -7,13 +7,13 @@ void systemRoutes(){
  });
  server.on("/api/config/restore",HTTP_POST,[]{
   JsonDocument d;if(!body(d))return;
-  if(strcmp(d["backupFamily"]|"","RundeUhr-settings-v1")|| (d["schema"]|0)!=4){reply(400,"Nekompatibilní záloha");return;}
-  Config next=cfg;if(!decodeConfig(d,next)){reply(400,"Záloha obsahuje neplatné nastavení");return;}
+  if(strcmp(d["backupFamily"]|"","RundeUhr-settings-v1")|| (d["schema"]|0)!=4){reply(400,"Inkompatible Sicherung");return;}
+  Config next=cfg;if(!decodeConfig(d,next)){reply(400,"Sicherung enthaelt ungueltige Einstellungen");return;}
   // Restore settings, but keep the current device identity and Wi-Fi credentials.
   strlcpy(next.deviceName,cfg.deviceName,sizeof(next.deviceName));
   Config original=cfg;cfg=next;JsonDocument save;configJSON(save,true);String s;serializeJson(save,s);
-  if(prefs.putString("config",s)!=s.length()){cfg=original;reply(500,"Nastavení se nepodařilo uložit");return;}
-  dirty=false;finance=FinanceData();aircraft=AircraftData();generation++;weather=Weather();lastSwitch=millis();sendConfig();firstDraw=true;reply(200,"Nastavení obnoveno. Název zařízení a Wi-Fi zůstaly zachovány.");
+  if(prefs.putString("config",s)!=s.length()){cfg=original;reply(500,"Einstellungen konnten nicht gespeichert werden");return;}
+  dirty=false;finance=FinanceData();aircraft=AircraftData();generation++;weather=Weather();lastSwitch=millis();sendConfig();firstDraw=true;reply(200,"Einstellungen wiederhergestellt. Geraetename und WLAN bleiben erhalten.");
  });
- server.on("/api/restart",HTTP_POST,[]{JsonDocument d;if(!body(d))return;saveConfig();reply(200,"Zařízení se restartuje");rebootAt=millis()+2000;});
+ server.on("/api/restart",HTTP_POST,[]{JsonDocument d;if(!body(d))return;saveConfig();reply(200,"Geraet startet neu");rebootAt=millis()+2000;});
 }
