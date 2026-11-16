@@ -19,3 +19,14 @@ function stamp(n){return n?new Intl.DateTimeFormat('cs-CZ',{timeZone:'Europe/Zur
 function facts(id,rows){$(id).replaceChildren(...rows.map(([label,value])=>{const row=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value??'—';row.append(dt,dd);return row;}));}
 function privateIP(value){let a=value.split('.');if(a.length!==4||a.some(x=>!/^(0|[1-9]\d{0,2})$/.test(x)||+x>255))return false;return +a[0]===10||(+a[0]===192&&+a[1]===168)||(+a[0]===172&&+a[1]>=16&&+a[1]<=31);}
 function boardURL(host){host=host.trim().replace(/^http:\/\//,'').replace(/\/$/,'');if(privateIP(host)||/^[a-z0-9-]+\.local$/i.test(host))return 'http://'+host+'/';throw Error('Zadej místní IP adresu nebo název končící .local.');}
+
+// Reload embedded previews once when the connected device changes firmware.
+let observedFirmware='',firmwareReloadPending=false;
+function refreshForFirmware(version){
+ if(!version)return false;
+ if(!observedFirmware){observedFirmware=version;return false;}
+ if(version===observedFirmware||uploading||saving)return false;
+ if(firmwareReloadPending)return true;
+ firmwareReloadPending=true;const url=new URL(location.href);url.searchParams.set('fw',version);location.replace(url.href);return true;
+}
+window.addEventListener('pageshow',event=>{if(event.persisted&&!demo)poll();});
