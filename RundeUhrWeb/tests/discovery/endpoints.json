@@ -1,0 +1,34 @@
+[
+  {
+    "name": "iss",
+    "url": "https://api.wheretheiss.at/v1/satellites/25544",
+    "http": 200,
+    "bytes": 312,
+    "seconds": 11.56,
+    "content_type": "application/json"
+  },
+  {
+    "name": "quake",
+    "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson",
+    "http": 200,
+    "bytes": 8020,
+    "seconds": 8.72,
+    "content_type": "application/json; charset=utf-8"
+  },
+  {
+    "name": "launch_dev",
+    "url": "https://lldev.thespacedevs.com/2.3.0/launches/upcoming/?limit=1&mode=list",
+    "http": 200,
+    "bytes": 1272,
+    "seconds": 10.74,
+    "content_type": "application/json"
+  },
+  {
+    "name": "rss",
+    "url": "https://www.tagesschau.de/infoservices/alle-meldungen-100~rss2.xml",
+    "http": 200,
+    "bytes": 55903,
+    "seconds": 8.65,
+    "content_type": "application/xml;charset=UTF-8"
+  }
+]

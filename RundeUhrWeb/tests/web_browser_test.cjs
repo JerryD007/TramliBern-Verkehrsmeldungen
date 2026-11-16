@@ -29,9 +29,9 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  });
  await page.goto('http://rundeuhr.local/');await page.waitForFunction(()=>document.getElementById('connection').textContent==='Zařízení připojeno');
  await page.waitForFunction(()=>document.getElementById('previewStatus').textContent.includes('Skutečný snímek'));
- assert.equal(await page.locator('.screen-card').count(),11);
+ assert.equal(await page.locator('.screen-card').count(),12);
  await page.locator('[data-goto="screens"]').first().click();
- for(let i=0;i<13;i++){if(i===2||i===4)continue;await page.locator('#card'+i+' .tile').click();await page.waitForFunction(i=>document.querySelector('#card'+i+' .tile').getAttribute('aria-pressed')==='true',i);}
+ for(let i=0;i<14;i++){if(i===2||i===4)continue;await page.locator('#card'+i+' .tile').click();await page.waitForFunction(i=>document.querySelector('#card'+i+' .tile').getAttribute('aria-pressed')==='true',i);}
  await page.locator('#cycle3').uncheck();await page.waitForFunction(()=>!(state.mask&8));assert.equal(state.mask&8,0);await page.locator('#card3 .tile').click();assert.equal(state.view,3);
  await page.evaluate(()=>{state.mask=1;paint();});state.mask=1;await page.locator('#cycle0').click();await page.waitForTimeout(100);assert(await page.locator('#cycle0').isChecked());assert((await page.locator('#message').innerText()).includes('alespoň'));
  await page.evaluate(()=>{state.mask=1011;paint();});state.mask=1011;
@@ -62,8 +62,8 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  const fw=Buffer.alloc(2048);fw[0]=0xe9;fw[12]=5;fw[23]=1;fw.write('RUNDEUHR_C3_OTA_LAYOUT_1',64);fw.fill(0xab,fw.length-32);
  otaMode='lost-chunk';await page.locator('#firmwareFile').setInputFiles({name:'valid.ino.bin',mimeType:'application/octet-stream',buffer:fw});await page.locator('#uploadFirmware').click();await page.waitForFunction(()=>!uploading);assert((await page.locator('#otaStatus').innerText()).includes('nebyla dokončena'));assert(calls.some(c=>c.p==='/api/update/cancel'),JSON.stringify(calls.slice(-10))); assert(!calls.some(c=>c.p==='/api/update/finish'));
  otaMode='lost-finish';await page.locator('#uploadFirmware').click();await page.waitForFunction(()=>document.getElementById('otaStatus').textContent.includes('Ověřen restart'),null,{timeout:15000});assert(await page.locator('#uploadFirmware').isDisabled());assert.equal(errors.length,0,errors.join('\n'));
- console.log('PASS '+engine+': real browser + simulated ESP API, 11 visible selections, cycle switches/manual selection, empty-cycle protection, settings/date preservation, weekend edit, Wi-Fi/XSS/password clearing, offline recovery, modules, all 390px layouts, 28918-byte BMP, invalid firmware, interrupted chunks, lost finish acknowledgment + SHA verification.');
- state.firmware='3.2.0-rc16';await page.evaluate(()=>poll());await page.waitForURL(url=>url.searchParams.get('fw')==='3.2.0-rc16');await page.waitForFunction(()=>loaded);assert(await page.evaluate(()=>Array.from(document.querySelectorAll('.screen-card')).every(card=>card.querySelector('img').src===thumbs[Number(card.id.slice(4))])));await page.evaluate(()=>poll());assert.equal(new URL(page.url()).searchParams.get('fw'),'3.2.0-rc16');console.log('PASS firmware-change reload and current embedded thumbnails');
+ console.log('PASS '+engine+': real browser + simulated ESP API, 12 visible selections, cycle switches/manual selection, empty-cycle protection, settings/date preservation, weekend edit, Wi-Fi/XSS/password clearing, offline recovery, modules, all 390px layouts, 28918-byte BMP, invalid firmware, interrupted chunks, lost finish acknowledgment + SHA verification.');
+ state.firmware='3.2.0-rc17';await page.evaluate(()=>poll());await page.waitForURL(url=>url.searchParams.get('fw')==='3.2.0-rc17');await page.waitForFunction(()=>loaded);assert(await page.evaluate(()=>Array.from(document.querySelectorAll('.screen-card')).every(card=>card.querySelector('img').src===thumbs[Number(card.id.slice(4))])));await page.evaluate(()=>poll());assert.equal(new URL(page.url()).searchParams.get('fw'),'3.2.0-rc17');console.log('PASS firmware-change reload and current embedded thumbnails');
  await browser.close();
  }
 })().catch(e=>{console.error(e);process.exit(1);});

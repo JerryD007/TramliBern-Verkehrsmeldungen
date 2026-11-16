@@ -1,0 +1,17 @@
+Průzkum a pořadí rozšíření RundeUhr, 16. 11. 2026
+Základ: RC16, commit 6a1f7fde0aa17d35e432abb0440540728bfdfb7e.
+1. RC17 ISS Radar: vlastní implementace, veřejné HTTPS JSON wheretheiss.at, bez registrace, dokumentovaný limit přibližně 1 požadavek/s. Aplikace načítá po 30 s jen při ručním výběru nebo zařazení do cyklu; po chybě čeká 5 minut. Žádné nové součástky. Sférický výpočet směru/elevace a přímé vzdálenosti; nejde o přesnou předpověď přeletu ani viditelnosti očima.
+2. RC18 zemětřesení: USGS GeoJSON, doporučený strojový feed M4.5+ za 24 h, předběžně obnovování po 5 minutách; lokální údaj není předpověď ani výstražný systém. Nutné testy chybějícího magnituda, prázdného seznamu, změn a starých záznamů. Pokrytí malých švýcarských událostí nelze z tohoto feedu slíbit.
+3. RC19 rakety: Launch Library 2 v2.3.0; free limit 15/h, bez účtu. Pro více hodin sdílejících IP je nutný konzervativní interval a/nebo sdílená cache; předběžně 30 minut/zařízení, nejvýše 5 hodin za jednou IP bez dalšího řešení. HTTP429 respektovat, čas NET je nejdřívější plán, nikoli potvrzení startu. Vývojové testy na lldev používají záměrně stará data. Finální endpoint ještě otestovat před vydáním. Licence dat použití dovoluje, uvést The Space Devs.
+4. RC20 zprávy: tagesschau oficiální RSS dovoluje soukromé nekomerční čtení, nikoli publikování. Zobrazit pouze titulky, zdroj, čas a odkazy v místní aplikaci. Feed ~56 kB vyžaduje streamový XML parser, limity délky/počtu, CDATA, entity a UTF-8 testy; neukládat celý feed do RAM. Nezveřejňovat články ve zdrojích nebo náhledech. Žádný veřejný web.
+5. RC21 Bambu Lab X1 Carbon: uživatel potvrdil model X1C. Monitorování přes místní MQTT/TLS, IP, sériové číslo a LAN access code zadat v lokální aplikaci. Současný firmware tiskárny a režim přístupu zatím neznáme. Nevyžadovat změnu LAN/Developer režimu bez ověření čtení stavu. Protokol nemá záruku stabilního veřejného API. Žádné ovládací příkazy ani kamera v prvním vydání. Trvalé MQTT/TLS koliduje s pamětí ostatních HTTPS služeb; vyžaduje měření na ESP32 a skutečné tiskárně. BambuHelper repository metadata vrací license=null, tudíž jeho kód nepřebírat bez dohledání oprávnění. Implementovat vlastní klient dle ověřeného chování a dokumentace; zatím nebyl proveden test na tiskárně.
+Budoucí rozšíření počtu obrazovek nad 16 vyžaduje migraci 16bit masky cyklu. Rozdělení Flash/NVS se nemění; přidávat a kompilovat postupně. RC18–RC21 zde nejsou hotový firmware.
+Ověřené primární zdroje:
+https://docs.wheretheiss.at/w/developer
+https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
+https://pubs.usgs.gov/documentation/faq
+https://ll.thespacedevs.com/docs
+https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_TSD.md
+https://www.tagesschau.de/infoservices/rssfeeds
+https://blog.bambulab.com/updates-and-third-party-integration-with-bambu-connect/
+https://github.com/Keralots/BambuHelper

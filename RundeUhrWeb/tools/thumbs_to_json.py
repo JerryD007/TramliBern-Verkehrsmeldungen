@@ -4,7 +4,7 @@ import struct,zlib,base64,json
 r=Path(__file__).resolve().parent.parent
 def chunk(t,d):return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
 images=[]
-for i in range(13):
+for i in range(14):
  b=(r/f'build/thumb_{i}.ppm').read_bytes();header=b'P6\n240 240\n255\n';assert b.startswith(header);rgb=b[len(header):];assert len(rgb)==240*240*3
  raw=b''.join(b'\0'+rgb[y*720:(y+1)*720] for y in range(240))
  # Lossless PNG compression.
