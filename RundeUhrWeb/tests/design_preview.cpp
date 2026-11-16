@@ -1,0 +1,6 @@
+#include <Adafruit_GFX.h>
+#include "../RundeUhr/AircraftRender.h"
+#include <fstream>
+#include <cassert>
+void save(GFXcanvas8&g,const char*name){std::ofstream o(name,std::ios::binary);o<<"P6\n240 240\n255\n";for(int i=0;i<57600;i++){auto p=palette[g.getBuffer()[i]&15];char rgb[]={char(((p>>11)&31)*255/31),char(((p>>5)&63)*255/63),char((p&31)*255/31)};o.write(rgb,3);assert((i%240-120)*(i%240-120)+(i/240-120)*(i/240-120)<=119*119||g.getBuffer()[i]==BG);}}
+int main(){setenv("TZ",ZURICH_TZ,1);tzset();time_t now;assert(parseDate("2026-11-16",now));now+=17*3600;Config c;Weather w;Moon m;GFXcanvas8 g(240,240);c.view=1;w.valid=true;w.received=now;w.count=3;for(int i=0;i<3;i++){w.hours[i]=now+(i+1)*3600;w.fields[i]=15;w.temps[i]=10;w.codes[i]=3;w.probability[i]=i==0?75:i==1?80:95;}render(g,c,w,m,now,true,false,"","",0);save(g,"preview/rc15_weather.ppm");for(int t:{-99,-10,0,10,99})for(int p:{0,9,99,100}){for(int i=0;i<3;i++){w.temps[i]=t;w.probability[i]=p;}render(g,c,w,m,now,true,false,"","",0);save(g,"build/weather_extreme.ppm");}c.view=6;strcpy(c.countdownDates[1],"2027-03-25");for(int i=0;i<20;i++){render(g,c,w,m,now,true,false,"","",i*200);save(g,"preview/rc15_birthday.ppm");}puts("PASS RC15 weather: negative temperatures, 100% rain, circle bounds; birthday animation bounds.");}

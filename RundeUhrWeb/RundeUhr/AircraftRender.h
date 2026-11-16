@@ -10,18 +10,29 @@ inline void aircraftKindIcon(Adafruit_GFX&g,AircraftKind kind,int y=83,int scale
   g.drawFastVLine(x-5*scale,y+7*scale,5*scale,RED);g.drawFastVLine(x+6*scale,y+7*scale,5*scale,RED);g.drawFastHLine(x-10*scale,y+12*scale,26*scale,RED);
   g.fillRoundRect(x+3*scale,y-2*scale,6*scale,5*scale,2*scale,BG);
  }else if(kind==AircraftKind::Plane){
-  g.fillRoundRect(x-2*scale,y-16*scale,5*scale,30*scale,2*scale,YELLOW);g.fillTriangle(x,y-9*scale,x-19*scale,y+5*scale,x+19*scale,y+5*scale,YELLOW);g.fillTriangle(x,y+7*scale,x-8*scale,y+15*scale,x+8*scale,y+15*scale,YELLOW);
+  // Compact jet, identical in both route modes: cockpit, engines, swept wings and tail.
+  g.fillTriangle(x,y-7*scale,x-23*scale,y+8*scale,x-23*scale,y+12*scale,YELLOW);
+  g.fillTriangle(x,y-7*scale,x+23*scale,y+8*scale,x+23*scale,y+12*scale,YELLOW);
+  g.fillTriangle(x,y-7*scale,x-23*scale,y+12*scale,x,y+5*scale,YELLOW);
+  g.fillTriangle(x,y-7*scale,x+23*scale,y+12*scale,x,y+5*scale,YELLOW);
+  for(int side:{-1,1}){g.fillRoundRect(x+side*10*scale-2*scale,y+2*scale,5*scale,11*scale,2*scale,YELLOW);g.fillRect(x+side*10*scale-1*scale,y+3*scale,3*scale,2*scale,BG);}
+  g.fillTriangle(x,y+12*scale,x-10*scale,y+21*scale,x,y+18*scale,YELLOW);
+  g.fillTriangle(x,y+12*scale,x+10*scale,y+21*scale,x,y+18*scale,YELLOW);
+  g.fillRoundRect(x-3*scale,y-22*scale,7*scale,40*scale,3*scale,YELLOW);
+  g.fillTriangle(x-3*scale,y+14*scale,x+3*scale,y+14*scale,x,y+24*scale,YELLOW);
+  g.fillRoundRect(x-2*scale,y-17*scale,5*scale,3*scale,1*scale,BG);
+  g.drawFastVLine(x,y-17*scale,3*scale,YELLOW);
  }else{g.drawCircle(x,y,12*scale,DIM);g.setTextSize(2*scale);g.setTextColor(SILVER);g.setCursor(x-5*scale,y-7*scale);g.print("?");}
 }
 inline void aircraftMetric(Adafruit_GFX&g,const char*label,double value,bool valid,const char*unit,int cx,int y){
  if(!valid)return;
  txt(g,label,y,0,SILVER,0,cx);
  char number[16];snprintf(number,sizeof(number),"%.0f",value);
- g.setTextSize(1);g.setFont(&FreeSansBold9pt7b);int16_t x1,y1;uint16_t w,h;
+ g.setTextSize(1);g.setFont(&FreeSansBold12pt7b);int16_t x1,y1;uint16_t w,h;
  g.getTextBounds(number,0,0,&x1,&y1,&w,&h);
- if(w>54){g.setFont(nullptr);g.getTextBounds(number,0,0,&x1,&y1,&w,&h);}
- g.setTextColor(WHITE);g.setCursor(cx-int(w)/2-x1,y+14-y1);g.print(number);g.setFont(nullptr);
- txt(g,unit,y+33,0,SILVER,0,cx);
+ if(w>66){g.setFont(&FreeSansBold9pt7b);g.getTextBounds(number,0,0,&x1,&y1,&w,&h);}
+ g.setTextColor(WHITE);g.setCursor(cx-int(w)/2-x1,y+13-y1);g.print(number);g.setFont(nullptr);
+ txt(g,unit,y+35,0,SILVER,0,cx);
 }
 inline void renderAircraft(Adafruit_GFX&g,const AircraftData&a,time_t now,bool online){
  g.fillScreen(BG);g.setTextWrap(false);g.drawCircle(120,120,116,CYAN);
@@ -32,9 +43,9 @@ inline void renderAircraft(Adafruit_GFX&g,const AircraftData&a,time_t now,bool o
  int nameSize=3;g.setTextSize(1);g.setFont(&FreeSansBold18pt7b);int16_t nx,ny;uint16_t nw,nh;g.getTextBounds(name,0,0,&nx,&ny,&nw,&nh);
  if(nw>128)nameSize=7;
  txt(g,name,29,nameSize,WHITE);
- aircraftKindIcon(g,a.kind,expanded?88:77,expanded?2:1);
- aircraftMetric(g,"HOEHE",a.altitude,a.altValid,"m",expanded?48:54,expanded?69:61);
- aircraftMetric(g,"TEMPO",a.speed,a.speedValid,"km/h",expanded?192:186,expanded?69:61);
+ aircraftKindIcon(g,a.kind,expanded?91:80,1);
+ aircraftMetric(g,"HOEHE",a.altitude,a.altValid,"m",54,expanded?69:61);
+ aircraftMetric(g,"TEMPO",a.speed,a.speedValid,"km/h",186,expanded?69:61);
  snprintf(b,sizeof(b),"%.1f km",a.distance);txt(g,b,expanded?148:110,expanded?5:7,CYAN);
  if(a.origin[0]&&a.destination[0]){
   txt(g,"VON",136,0,SILVER);txt(g,a.origin,146,7,CYAN);

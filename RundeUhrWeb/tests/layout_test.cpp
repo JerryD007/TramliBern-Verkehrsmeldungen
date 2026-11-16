@@ -12,8 +12,8 @@ for(int route=0;route<4;route++)for(auto kind:{AircraftKind::Plane,AircraftKind:
  if(route)assert(!memcmp(g.getBuffer()+136*240,old.getBuffer()+136*240,(240-136)*240));
  for(int i=0;i<57600;i++)if((i%240-120)*(i%240-120)+(i/240-120)*(i/240-120)>119*119)assert(g.getBuffer()[i]==BG);
  if(kind!=AircraftKind::Unknown){int wanted=0,wrong=0;for(int y=50;y<121;y++)for(int x=76;x<165;x++){auto p=g.getBuffer()[y*240+x];wanted+=p==(kind==AircraftKind::Plane?YELLOW:RED);wrong+=p==(kind==AircraftKind::Plane?RED:YELLOW);}assert(wanted>50&&!wrong);}
- if(online&&fields==3&&(route==0||route==3)&&kind!=AircraftKind::Unknown){const char*path=kind==AircraftKind::Plane?(route?"preview/rc14_plane_route.ppm":"preview/rc14_plane_empty.ppm"):(route?"preview/rc14_heli_route.ppm":"preview/rc14_heli_empty.ppm");save(g,path);}
+ if(online&&fields==3&&(route==0||route==3)&&kind!=AircraftKind::Unknown){const char*path=kind==AircraftKind::Plane?(route?"preview/rc15_plane_route.ppm":"preview/rc15_plane_empty.ppm"):(route?"preview/rc15_heli_route.ppm":"preview/rc15_heli_empty.ppm");save(g,path);}
 }
 // Extreme accepted telemetry and long identifier still remain inside the circle.
 strcpy(a.callsign,"ABCDEFGH");a.altitude=18000;a.speed=2000;a.distance=999.9;a.altValid=a.speedValid=true;for(int route=0;route<2;route++){strcpy(a.origin,route?"Lanzarote Island":"");a.destination[0]=0;renderAircraft(g,a,1000,true);for(int i=0;i<57600;i++)if((i%240-120)*(i%240-120)+(i/240-120)*(i/240-120)>119*119)assert(g.getBuffer()[i]==BG);}
-puts("PASS RC14 layout: yellow plane/red helicopter, route area pixel-identical, missing endpoints, no route expanded, missing telemetry, offline, unknown kind, extreme values and circle bounds.");}
+puts("PASS RC15 layout: yellow plane/red helicopter, route area pixel-identical, missing endpoints, no route expanded, missing telemetry, offline, unknown kind, extreme values and circle bounds.");}

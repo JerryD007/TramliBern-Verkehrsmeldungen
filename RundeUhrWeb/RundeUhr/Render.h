@@ -46,10 +46,18 @@ inline void countdownIcon(Adafruit_GFX&g,int type,uint32_t ms,bool animate){
   g.fillTriangle(x,y,x-28,y+22,x-19,y+3,GREEN);g.fillTriangle(x,y,x+26,y+23,x+20,y+3,GREEN);
   g.fillCircle(x-4,y+4,4,BROWN);g.fillCircle(x+4,y+4,4,GOLD);
  }else if(type==1){
-  int y=100+dy;g.fillRoundRect(91,y,58,42,3,ORANGE);g.fillRect(116,y,8,42,YELLOW);
-  g.fillRoundRect(87,y-8,66,12,3,RED);g.fillRect(116,y-8,8,12,YELLOW);
-  g.drawCircle(110,y-16,9,YELLOW);g.drawCircle(130,y-16,9,YELLOW);g.fillCircle(120,y-8,4,YELLOW);
-  for(int k=0;k<6;k++){int x=79+k*16,yy=64+((k*11+int(animate?ms/100:0))%22);g.fillRect(x,yy,3,4,k%2?CYAN:PURPLE);}
+  int y=100+dy;
+  g.fillRoundRect(91,y,58,42,3,PURPLE);g.fillRect(116,y,8,42,CYAN);
+  g.fillTriangle(87,y-7,152,y-12,154,y+1,PURPLE);g.fillTriangle(87,y-7,154,y+1,89,y+6,PURPLE);
+  g.drawLine(89,y-6,151,y-11,WHITE);
+  g.fillTriangle(116,y-8,102,y+14,113,y+10,CYAN);
+  g.fillTriangle(123,y-8,137,y+12,129,y+9,CYAN);
+  g.fillCircle(108,y-19,10,CYAN);g.fillCircle(133,y-20,10,CYAN);
+  g.fillTriangle(102,y-13,120,y-7,114,y-24,CYAN);
+  g.fillTriangle(139,y-14,120,y-7,128,y-25,CYAN);
+  g.fillRoundRect(115,y-13,11,10,2,CYAN);
+  for(int k=0;k<3;k++){int x=79+k*40,yy=68+((k*11+int(animate?ms/100:0))%17);g.fillTriangle(x,yy-3,x-3,yy,x+3,yy,k%2?CYAN:PURPLE);g.fillTriangle(x-3,yy,x+3,yy,x,yy+3,k%2?CYAN:PURPLE);}
+
  }else if(type==2){
   int spread=animate?int((phase+1)*5):2;mug(g,68-spread,80+dy,false);mug(g,120+spread,80-dy,true);
   if(!animate||phase<-.4){g.drawLine(120,54,120,62,WHITE);g.drawLine(107,58,112,64,YELLOW);g.drawLine(133,58,128,64,YELLOW);}
@@ -61,9 +69,16 @@ inline void countdownIcon(Adafruit_GFX&g,int type,uint32_t ms,bool animate){
  }
 }
 
+// Fit complete hourly values in separate columns; fall back for rare wide values.
+inline void weatherRowText(Adafruit_GFX&g,String text,int cx,int y,int width,int color){
+ g.setTextSize(1);g.setFont(&FreeSansBold9pt7b);int16_t x1,y1;uint16_t w,h;
+ g.getTextBounds(text.c_str(),0,0,&x1,&y1,&w,&h);
+ if(w>width){g.setFont(nullptr);g.getTextBounds(text.c_str(),0,0,&x1,&y1,&w,&h);}
+ g.setTextColor(color);g.setCursor(cx-int(w)/2-x1,y-y1);g.print(text);g.setFont(nullptr);
+}
 inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moon,time_t now,bool online,bool setup,String apName,String apKey,uint32_t ms=0){
  activePalette=palette;g.fillScreen(BG);g.setTextWrap(false);int v=c.view;bool valid=timeValid(now);tm t={};if(valid)localtime_r(&now,&t);
- const int accents[]={CYAN,YELLOW,PURPLE,YELLOW,PURPLE,ORANGE};g.drawCircle(120,120,116,accents[v<5?v:5]);g.drawCircle(120,120,115,accents[v<5?v:5]);
+ const int accents[]={CYAN,YELLOW,PURPLE,YELLOW,PURPLE,ORANGE};g.drawCircle(120,120,116,(v==6?PURPLE:accents[v<5?v:5]));g.drawCircle(120,120,115,(v==6?PURPLE:accents[v<5?v:5]));
  if(setup){txt(g,"WLAN einrichten",35,2,CYAN);txt(g,apName,69,2);txt(g,"WLAN-Passwort",98,1);txt(g,apKey,122,2);txt(g,"Safari oeffnen",155,1);txt(g,"http://192.168.4.1",177,1);txt(g,"Setup ohne Internet",203,0,ORANGE);return;}
  if(!valid){txt(g,"Zeit fehlt",77,3,ORANGE);txt(g,"NTP ueber WLAN",126,2);txt(g,"Verbindung pruefen",153,1);return;}
  switch(v){
@@ -78,14 +93,14 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
   txt(g,((w.fields[j]&4)?String(w.probability[j]):String("--"))+"%",138,2,CYAN,0,68);
   txt(g,((w.fields[j]&8)?String(w.amount[j],1):String("--"))+" mm",138,2,CYAN,0,167);g.drawLine(120,137,120,153,DIM);
   g.drawLine(37,162,203,162,DIM);
-  for(int k=1;k<=2;k++){int i=j+k,y=170+(k-1)*24;
+  for(int k=1;k<=2;k++){int i=j+k,y=168+(k-1)*22;
    if(i>=w.count){txt(g,"Keine weiteren Daten",y,0,DIM);break;}
-   txt(g,fmtTime(w.hours[i]),y,0,WHITE,0,68);
-   // Compact cloud/sun symbol; probability conveys rain without mislabelling snow.
-   if(w.fields[i]&2){int code=w.codes[i];if(code<=2)g.fillCircle(101,y+3,4,YELLOW);if(code>0){g.fillCircle(104,y+5,3,WHITE);g.drawFastHLine(99,y+7,10,WHITE);}}
-   txt(g,((w.fields[i]&1)?String(w.temps[i],0):String("--"))+" C",y,0,WHITE,0,132);
-   txt(g,((w.fields[i]&4)?String(w.probability[i]):String("--"))+"%",y,0,CYAN,0,175);
+   weatherRowText(g,fmtTime(w.hours[i]),68,y,46,WHITE);
+   if(w.fields[i]&2){int code=w.codes[i];if(code<=2)g.fillCircle(99,y+6,4,YELLOW);if(code>0){g.fillCircle(101,y+7,4,WHITE);g.fillRect(96,y+8,11,4,WHITE);}}
+   weatherRowText(g,((w.fields[i]&1)?String(w.temps[i],0):String("--"))+" C",130,y,40,WHITE);
+   weatherRowText(g,((w.fields[i]&4)?String(w.probability[i]):String("--"))+"%",177,y,42,CYAN);
   }
+
  }else{txt(g,"Keine Vorhersage",105,2);txt(g,"Internet pruefen",140,1,ORANGE);}
  break;}
  case 3:case 4:{
@@ -117,7 +132,7 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
   break;
  }
  if(!countdownTarget(c,type,now,target)){txt(g,"Datum waehlen",168,2);txt(g,"In der Web-App",197,0,ORANGE);}else{long days=calendarDays(target,now);
- String remaining=days==0?String("Heute!"):String(labs(days))+(labs(days)==1?" Tag":" Tage");txt(g,remaining,161,remaining.length()>8?2:3,ORANGE);if(days<0)txt(g,"seit Ereignis",192,0);txt(g,fmtTime(target,"%d.%m.%Y"),200,2);}
+ String remaining=days==0?String("Heute!"):String(labs(days))+(labs(days)==1?" Tag":" Tage");txt(g,remaining,161,remaining.length()>8?2:3,type==1?PURPLE:ORANGE);if(days<0)txt(g,"seit Ereignis",192,0);txt(g,fmtTime(target,"%d.%m.%Y"),200,2);}
  break;}
 
  }

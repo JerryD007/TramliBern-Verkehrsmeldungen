@@ -1,7 +1,7 @@
 name: RundeUhr aircraft test
 on:
   push:
-    branches: ['test/rundeuhr-aircraft-layout-3.2-rc14']
+    branches: ['test/rundeuhr-design-3.2-rc15']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -37,6 +37,8 @@ jobs:
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_finance.sh
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_aircraft.sh
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" bash tests/run_layout.sh
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/design_preview.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/design_preview
+          build/design_preview
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_sky.sh
       - name: Verify live finance APIs and TLS roots
         working-directory: RundeUhrWeb
@@ -55,7 +57,7 @@ jobs:
           python3 tests/verify_binary.py
       - uses: actions/upload-artifact@v4
         with:
-          name: RundeUhr-3.2.0-rc14
+          name: RundeUhr-3.2.0-rc15
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
