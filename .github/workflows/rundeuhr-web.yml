@@ -32,6 +32,8 @@ jobs:
           build/web_logic
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/iss_test.cpp -o build/iss_test
           build/iss_test
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/iss_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/iss_render
+          build/iss_render
           python3 tests/tls_fragmentation_test.py
           python3 tests/fleet_cors_test.py
           g++ -std=c++17 tests/weekend_transition_test.cpp -o build/weekend_transition
