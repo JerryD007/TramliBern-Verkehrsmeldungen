@@ -1,6 +1,40 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+// Czech glyph slots 1..30 are rendered by NewsBand, never sent to the built-in font.
+static constexpr uint16_t NEWS_CZECH_CODEPOINTS[]={0xe1,0x10d,0x10f,0xe9,0x11b,0xed,0x148,0xf3,0x159,0x161,0x165,0xfa,0x16f,0xfd,0x17e,0xc1,0x10c,0x10e,0xc9,0x11a,0xcd,0x147,0xd3,0x158,0x160,0x164,0xda,0x16e,0xdd,0x17d};
+static constexpr uint8_t NEWS_CZECH_ROWS[][8]={
+ {2,4,0,14,1,15,17,15}, // á
+ {10,4,0,14,16,16,17,14}, // č
+ {10,4,1,1,15,17,17,15}, // ď
+ {2,4,0,14,17,31,16,14}, // é
+ {10,4,0,14,17,31,16,14}, // ě
+ {2,4,4,0,12,4,4,14}, // í
+ {10,4,0,30,17,17,17,17}, // ň
+ {2,4,0,14,17,17,17,14}, // ó
+ {10,4,0,22,25,16,16,16}, // ř
+ {10,4,0,15,16,14,1,30}, // š
+ {10,4,8,28,8,8,9,6}, // ť
+ {2,4,0,17,17,17,19,13}, // ú
+ {4,10,0,17,17,17,19,13}, // ů
+ {2,4,0,17,17,15,1,14}, // ý
+ {10,4,0,31,2,4,8,31}, // ž
+ {2,4,14,17,17,31,17,17}, // Á
+ {10,4,14,17,16,16,17,14}, // Č
+ {10,4,30,17,17,17,17,30}, // Ď
+ {2,4,31,16,30,16,16,31}, // É
+ {10,4,31,16,30,16,16,31}, // Ě
+ {2,4,14,4,4,4,4,14}, // Í
+ {10,4,17,25,21,19,17,17}, // Ň
+ {2,4,14,17,17,17,17,14}, // Ó
+ {10,4,30,17,30,20,18,17}, // Ř
+ {10,4,15,16,14,1,17,14}, // Š
+ {10,4,31,4,4,4,4,4}, // Ť
+ {2,4,17,17,17,17,17,14}, // Ú
+ {4,10,17,17,17,17,17,14}, // Ů
+ {2,4,17,17,10,4,4,4}, // Ý
+ {10,4,31,1,2,4,8,31}, // Ž
+};
 // UTF-8 to the built-in font's CP437 glyphs. No heap allocation; original RSS stays UTF-8.
 inline size_t newsDisplayText(const char* text,char* out,size_t capacity){
  size_t n=0;
@@ -19,6 +53,8 @@ inline size_t newsDisplayText(const char* text,char* out,size_t capacity){
   }
   if(cp>=0x300&&cp<=0x36f)continue;
   uint8_t glyph='?';
+  for(unsigned k=0;k<30;k++)if(cp==NEWS_CZECH_CODEPOINTS[k]){glyph=k+1;break;}
+  if(glyph!='?'){if(out&&n+1<capacity)out[n]=char(glyph);n++;continue;}
   if(cp>=32&&cp<127)glyph=cp;
   else switch(cp){
    case 0xe4:glyph=132;break;case 0xf6:glyph=148;break;case 0xfc:glyph=129;break;

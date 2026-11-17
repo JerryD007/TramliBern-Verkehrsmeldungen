@@ -2,11 +2,11 @@
 #include <Stream.h>
 #include "NewsModel.h"
 #include "AircraftRoute.h"
-// Bounded streaming RSS reader: five headlines only; descriptions/images discarded.
+// Bounded streaming RSS reader: three headlines only; descriptions/images discarded.
 // XML is parsed through the final </rss>; incomplete responses never replace cache.
 class NewsFeed:public Stream {
  NewsData result;NewsItem item;char tag[192]={},text[768]={},stack[20][32]={};
- size_t tn=0,used=0,total=0;int depth=0,field=0,mode=0;bool inItem=false,bad=false,closed=false;char quote=0;
+ size_t tn=0,used=0,total=0;int depth=0,field=0,mode=0;bool inItem=false,bad=false,closed=false,cnn=false,cnnSource=false;char quote=0;
  void append(char c){if(field&&used+1<sizeof(text)){text[used++]=c;text[used]=0;}}
  void finishField(){
   if(!field)return;
@@ -20,7 +20,18 @@ class NewsFeed:public Stream {
    }else decoded[j++]=text[i];
   }
   if(field==1)routeText(item.title,sizeof(item.title),decoded);
-  if(field==2){if((strncmp(decoded,"https://www.tagesschau.de/",25)&&strncmp(decoded,"https://www.srf.ch/",18))||strlen(decoded)>=sizeof(item.link))bad=true;else strcpy(item.link,decoded);}
+  if(field==2){
+   const char* fallback=nullptr;
+   if(cnn){if(!strncmp(decoded,"https://news.google.com/rss/articles/",37)||!strncmp(decoded,"https://news.google.com/articles/",33))fallback="https://www.cnn.com/";else bad=true;}
+   else if(!strncmp(decoded,"https://ct24.ceskatelevize.cz/",30))fallback="https://ct24.ceskatelevize.cz/";
+   else if(!strncmp(decoded,"https://www.tagesschau.de/",25))fallback="https://www.tagesschau.de/";
+   else if(!strncmp(decoded,"https://www.srf.ch/",18))fallback="https://www.srf.ch/";
+   else bad=true;
+   // Titles are shown on-device and in Safari; retain a publisher landing URL for
+   // aggregator/oversized URLs instead of allocating a multi-kilobyte link buffer.
+   if(fallback)strcpy(item.link,cnn||strlen(decoded)>=sizeof(item.link)?fallback:decoded);
+  }
+  if(field==5)cnnSource=!strcmp(decoded,"CNN");
   if(field==3&&!launchUTC(decoded,item.at))bad=true;
   if(field==4&&!item.at){char day[4],mon[4],zone[8];int dd,yy,h,m,sec;const char*months[]={"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
    if(sscanf(decoded,"%3s, %d %3s %d %d:%d:%d %7s",day,&dd,mon,&yy,&h,&m,&sec,zone)!=8){bad=true;}else {int month=0;for(int k=0;k<12;k++)if(!strcmp(mon,months[k]))month=k+1;char iso[24];snprintf(iso,sizeof(iso),"%04d-%02d-%02dT%02d:%02d:%02dZ",yy,month,dd,h,m,sec);time_t t;if(!launchUTC(iso,t))bad=true;else if(!strcmp(zone,"GMT")||!strcmp(zone,"UTC"))item.at=t;else {int zh,zm;if(strlen(zone)!=5||(zone[0]!='+'&&zone[0]!='-')||sscanf(zone+1,"%2d%2d",&zh,&zm)!=2||zh>23||zm>59)bad=true;else item.at=t-(zone[0]=='+'?1:-1)*(zh*3600+zm*60);}}
@@ -34,15 +45,16 @@ class NewsFeed:public Stream {
   while(tag[k]&&tag[k]!=' '&&tag[k]!='\t'&&tag[k]!='/'&&j<31)name[j++]=tag[k++];
   if(!name[0]||j==31){bad=true;return;}bool self=tn&&tag[tn-1]=='/';
   if(end){if(!depth||strcmp(stack[depth-1],name)){bad=true;return;}
-   if(inItem&&field&&(!strcmp(name,"title")||!strcmp(name,"link")||!strcmp(name,"dc:date")||!strcmp(name,"pubDate")))finishField();
-   if(!strcmp(name,"item")){if(!item.title[0]||!item.link[0]||!item.at)bad=true;else if(result.count<3)result.items[result.count++]=item;inItem=false;}
+   if(inItem&&field&&(!strcmp(name,"title")||!strcmp(name,"link")||!strcmp(name,"dc:date")||!strcmp(name,"pubDate")||!strcmp(name,"source")))finishField();
+   if(!strcmp(name,"item")){if(!item.title[0]||!item.link[0]||!item.at)bad=true;else if(!cnn||cnnSource){int pos=0;while(pos<result.count&&result.items[pos].at>=item.at)pos++;if(pos<3){if(result.count<3)result.count++;for(int k=result.count-1;k>pos;k--)result.items[k]=result.items[k-1];result.items[pos]=item;}}inItem=false;}
    depth--;if(!strcmp(name,"rss"))closed=true;
   }else if(!self){if((depth==0&&strcmp(name,"rss"))||depth>=20||closed){bad=true;return;}strcpy(stack[depth++],name);
-   if(!strcmp(name,"item")){if(inItem){bad=true;return;}inItem=true;item=NewsItem();}
-   else if(inItem&&depth>=2&&!strcmp(stack[depth-2],"item")){field=!strcmp(name,"title")?1:!strcmp(name,"link")?2:!strcmp(name,"dc:date")?3:!strcmp(name,"pubDate")?4:0;used=0;text[0]=0;}
+   if(!strcmp(name,"item")){if(inItem){bad=true;return;}inItem=true;item=NewsItem();cnnSource=false;}
+   else if(inItem&&depth>=2&&!strcmp(stack[depth-2],"item")){field=!strcmp(name,"title")?1:!strcmp(name,"link")?2:!strcmp(name,"dc:date")?3:!strcmp(name,"pubDate")?4:!strcmp(name,"source")?5:0;used=0;text[0]=0;}
   }
  }
  public:
+ explicit NewsFeed(bool cnnAggregator=false):cnn(cnnAggregator){}
  size_t write(uint8_t c)override{return write(&c,1);}
  size_t write(const uint8_t*p,size_t n)override{
   if(total+n>262144){bad=true;return 0;}total+=n;
