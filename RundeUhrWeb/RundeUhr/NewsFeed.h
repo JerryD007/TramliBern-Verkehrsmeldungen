@@ -37,7 +37,7 @@ class NewsFeed:public Stream {
    if(inItem&&field&&(!strcmp(name,"title")||!strcmp(name,"link")||!strcmp(name,"dc:date")||!strcmp(name,"pubDate")))finishField();
    if(!strcmp(name,"item")){if(!item.title[0]||!item.link[0]||!item.at)bad=true;else if(result.count<3)result.items[result.count++]=item;inItem=false;}
    depth--;if(!strcmp(name,"rss"))closed=true;
-  }else if(!self){if(depth>=20||closed){bad=true;return;}strcpy(stack[depth++],name);
+  }else if(!self){if((depth==0&&strcmp(name,"rss"))||depth>=20||closed){bad=true;return;}strcpy(stack[depth++],name);
    if(!strcmp(name,"item")){if(inItem){bad=true;return;}inItem=true;item=NewsItem();}
    else if(inItem&&depth>=2&&!strcmp(stack[depth-2],"item")){field=!strcmp(name,"title")?1:!strcmp(name,"link")?2:!strcmp(name,"dc:date")?3:!strcmp(name,"pubDate")?4:0;used=0;text[0]=0;}
   }
