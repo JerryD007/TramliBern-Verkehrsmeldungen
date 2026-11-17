@@ -1,11 +1,11 @@
 #pragma once
 #include "Render.h"
 #include "QuakeModel.h"
-inline void renderQuake(Adafruit_GFX&g,const QuakeData&q,time_t now,bool online){
+inline void renderQuake(Adafruit_GFX&g,const QuakeData&q,time_t now,bool online,const Config&c=Config()){
  g.fillScreen(BG);g.setTextWrap(false);g.drawCircle(120,120,116,ORANGE);
- txt(g,"ERDBEBEN",25,2,ORANGE);txt(g,"Weltweit M4.5+ / 24 h",49,0,SILVER);
+ txt(g,"ERDBEBEN",25,2,ORANGE);char filter[48];snprintf(filter,sizeof(filter),"M%.1f+ / %u min",c.quakeMagnitude,c.quakeWindow);txt(g,filter,49,0,SILVER);
  if(!q.valid){txt(g,"Warte auf Daten",103,1);txt(g,!online?"WLAN offline":q.error[0]?"Abruf fehlgeschlagen":"USGS wird geladen",143,0,ORANGE);}
- else if(!q.count){txt(g,"Keine Ereignisse",100,1);txt(g,"im Zeitfenster",123,1);}
+ else if(!q.count){txt(g,"Keine passenden",94,1);txt(g,"Erdbeben",119,7);txt(g,c.quakeRadius?"Umkreisfilter aktiv":"Weltweiter Filter",157,0,SILVER);txt(g,"Filter im Web pruefen",178,0,SILVER);}
  else {const auto&e=q.events[(uint64_t(now)/8)%q.count];char b[128];snprintf(b,sizeof(b),"M %.1f",e.magnitude);txt(g,b,72,3,quakeStale(q,now)?GRAY:ORANGE);
  // Fixed-width ASCII transliteration avoids broken UTF-8 on the small font.
  char place[112];snprintf(place,sizeof(place),"%s",latin(String(e.place)).c_str());

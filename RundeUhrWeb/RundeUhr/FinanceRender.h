@@ -13,7 +13,7 @@ inline void financeArrow(Adafruit_GFX&g,const Quote&q,time_t now,bool btc,bool o
 inline void financeValue(Adafruit_GFX&g,String value,int y,bool btc){
  const GFXfont* fonts[]={&FreeSansBold24pt7b,&FreeSansBold18pt7b,&FreeSansBold12pt7b,&FreeSansBold9pt7b};
  g.setTextSize(1);int16_t x1,y1;uint16_t w,h;
- for(int i=btc?0:3;i<4;i++){g.setFont(fonts[i]);g.getTextBounds(value.c_str(),0,0,&x1,&y1,&w,&h);if(w<=174)break;}
+ for(int i=btc?0:2;i<4;i++){g.setFont(fonts[i]);g.getTextBounds(value.c_str(),0,0,&x1,&y1,&w,&h);if(w<=174)break;}
  // Values formatted by quoteNumber fit this column even at the accepted extremes.
  if(w>174){g.setFont(nullptr);g.getTextBounds(value.c_str(),0,0,&x1,&y1,&w,&h);}
  g.setTextColor(WHITE);g.setCursor(108-int(w)/2-x1,y-y1);g.print(value);g.setFont(nullptr);
@@ -28,7 +28,7 @@ inline void renderFinance(Adafruit_GFX&g,const Config&c,const FinanceData&f,time
   txt(g,!online?"Offline":quoteStale(f.btc,now,true)?"Nicht aktuell":"Coinbase",213,0,quoteStale(f.btc,now,true)?ORANGE:DIM);
  }else{
   txt(g,"Currency",28,2,CYAN);bool stale=!online;
-  for(int i=0;i<3;i++){int y=62+i*44;txt(g,String(c.fxBase[i])+" > "+c.fxQuote[i],y,2,CYAN);financeValue(g,f.fx[i].valid?"1 = "+quoteNumber(f.fx[i].value,false):"--",y+22,false);financeArrow(g,f.fx[i],now,false,online,205,y+28);stale|=quoteStale(f.fx[i],now,false);}
+  for(int i=0;i<3;i++){int y=57+i*48;txt(g,String(c.fxBase[i])+" > "+c.fxQuote[i],y,2,CYAN);financeValue(g,f.fx[i].valid?"1 = "+quoteNumber(f.fx[i].value,false):"--",y+21,false);financeArrow(g,f.fx[i],now,false,online,205,y+31);stale|=quoteStale(f.fx[i],now,false);}
   txt(g,"Frankfurter - Referenz",201,0,DIM);txt(g,stale?"Nicht aktuell":"Datum: Web-App",214,0,stale?ORANGE:SILVER);
  }
 }
