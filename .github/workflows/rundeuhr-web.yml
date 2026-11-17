@@ -45,6 +45,7 @@ jobs:
           python3 tests/launch_scheduler_test.py
           python3 tests/deferred_scheduler_test.py
           python3 tests/receive_scratch_test.py
+          g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/weather_live_test.cpp -o build/weather_live_test
           g++ -std=c++17 -fsanitize=address,undefined -I tests/host -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/body_test.cpp -o build/body_test
           build/body_test
           g++ -std=c++17 -I tests/host -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/news_test.cpp -o build/news_test
@@ -82,6 +83,9 @@ jobs:
           build/news_test /tmp/news.xml
           python3 tests/check_live.py
           python3 tests/check_aircraft_live.py
+      - name: Verify live weather HTTPS and firmware parser
+        working-directory: RundeUhrWeb
+        run: python3 tests/check_weather_tls.py
       - name: Compile ESP32-C3
         working-directory: RundeUhrWeb
         run: |

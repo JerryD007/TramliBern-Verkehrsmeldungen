@@ -3,7 +3,7 @@
 struct IssResult {IssData data;};
 QueueHandle_t issResultQueue;
 inline void fetchIss(IssData&i){
- WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(8);
+ WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  if(!http.begin(client,"https://api.wheretheiss.at/v1/satellites/25544")){strcpy(i.error,"HTTPS Start fehlgeschlagen");return;}
  http.setUserAgent("RundeUhr/3.2.0-rc21");http.addHeader("Accept-Encoding","identity");i.http=http.GET();

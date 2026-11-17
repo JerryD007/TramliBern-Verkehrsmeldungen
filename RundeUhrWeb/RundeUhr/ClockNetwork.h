@@ -17,7 +17,9 @@ inline bool requestJSON(const String& url,JsonDocument &doc,String &error,NetDia
  WiFiClientSecure client;
  // Standard X.509 chain validation rather than the bundle verification callback.
  // Only two roots are parsed per connection to keep memory bounded.
- client.setCACert(rootPEM);client.setHandshakeTimeout(10);
+ // The previous 10 s budget matched the observed failed request duration.
+ // Allow 20 s for a slow handshake; this is bounded, not a diagnosis of TLS -1.
+ client.setCACert(rootPEM);client.setHandshakeTimeout(20);
  diag.heapBeforeTLS=ESP.getFreeHeap();diag.largestBlock=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
  HTTPClient http;http.setConnectTimeout(7000);http.setTimeout(10000);http.useHTTP10(true);
  if(!http.begin(client,url)){error="HTTPS Start fehlgeschlagen";return false;}

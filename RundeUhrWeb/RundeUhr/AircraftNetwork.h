@@ -4,7 +4,7 @@
 struct AircraftResult {Config config;AircraftData data;};
 QueueHandle_t aircraftResultQueue;
 inline void fetchAircraft(AircraftData&a,const Config&c,uint32_t&retry){
- WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(8);
+ WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  String url="https://opendata.adsb.fi/api/v3/lat/"+String(c.aircraftLat,5)+"/lon/"+String(c.aircraftLon,5)+"/dist/"+String(int(ceil(c.aircraftRadius/1.852)));
  if(!http.begin(client,url)){strcpy(a.error,"HTTPS start failed");return;}

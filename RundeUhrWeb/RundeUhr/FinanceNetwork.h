@@ -6,7 +6,7 @@ struct FinanceResult {Config config;FinanceData data;};
 QueueHandle_t financeResultQueue;
 inline void fetchQuote(Quote&q,const char*base,const char*currency,bool btc){
  if(!btc&&!strcmp(base,currency)){setQuoteValue(q,1);q.valid=true;q.received=time(nullptr);q.date[0]=0;q.error[0]=0;return;}
- WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(8);
+ WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  String url=btc?String("https://api.coinbase.com/v2/prices/BTC-")+currency+"/spot":String("https://api.frankfurter.dev/v2/rate/")+base+"/"+currency;
  if(!http.begin(client,url)){strcpy(q.error,"HTTPS Start fehlgeschlagen");return;}
