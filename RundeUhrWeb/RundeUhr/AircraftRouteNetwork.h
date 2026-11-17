@@ -13,7 +13,7 @@ inline int fetchAircraftRoute(const char*call,char*origin,char*dest,uint32_t&del
  if(count<0||body.overflowed()||body.allocationFailed()||(length>=0&&count!=length))return -4;
  JsonDocument filter;for(auto k:{"callsign","callsign_icao","callsign_iata"})filter["response"]["flightroute"][k]=true;
  for(auto place:{"origin","destination"})for(auto k:{"municipality","name"})filter["response"]["flightroute"][place][k]=true;
- JsonDocument d;if(deserializeJson(d,body.bytes(),body.size(),DeserializationOption::Filter(filter),DeserializationOption::NestingLimit(8))||!parseAircraftRoute(d,call,origin,dest,97))return -5;
+ JsonDocument d;if(deserializeJson(d,body,DeserializationOption::Filter(filter),DeserializationOption::NestingLimit(8))||!parseAircraftRoute(d,call,origin,dest,97))return -5;
  return 200;
 }
 inline void enrichAircraftRoute(AircraftData&a){

@@ -1,7 +1,8 @@
 #pragma once
 #include <ArduinoJson.h>
 #include "QuakeModel.h"
-inline bool parseQuake(JsonDocument&d,QuakeData&out,time_t now){
+#include "EventPolicy.h"
+inline bool parseQuake(JsonDocument&d,QuakeData&out,time_t now,const Config* policy=nullptr){
  if(d["type"]!="FeatureCollection"||!d["features"].is<JsonArray>()||!d["metadata"]["generated"].is<int64_t>())return false;
  int64_t generated=d["metadata"]["generated"].as<int64_t>()/1000;
  if(generated<1704067200||generated>int64_t(now)+60||int64_t(now)-generated>900)return false;
@@ -14,7 +15,8 @@ inline bool parseQuake(JsonDocument&d,QuakeData&out,time_t now){
   double mag=p["mag"],depth=c[2];int64_t at=p["time"].as<int64_t>()/1000;
   if(!isfinite(mag)||mag<0||mag>10||!isfinite(depth)||depth< -20||depth>1000||at<1704067200||at>int64_t(now)+60)return false;
   if(mag<4.5||int64_t(now)-at>86400)continue;
-  QuakeEvent e;e.magnitude=mag;e.depth=depth;e.at=at;
+  QuakeEvent e;e.magnitude=mag;e.depth=depth;e.at=at;if(c[0].is<double>()&&c[1].is<double>()){e.lon=c[0];e.lat=c[1];e.location=isfinite(e.lat)&&isfinite(e.lon)&&fabs(e.lat)<=90&&fabs(e.lon)<=180;}
+  if(policy&&!quakeRelevant(*policy,e,now))continue;
   const char* place=p["place"]|"Ort unbekannt";snprintf(e.place,sizeof(e.place),"%s",place);
   // Keep the five newest entries independent of server order.
   int pos=0;while(pos<n.count&&n.events[pos].at>=e.at)pos++;

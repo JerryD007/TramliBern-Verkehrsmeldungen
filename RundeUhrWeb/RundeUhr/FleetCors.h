@@ -19,5 +19,5 @@ void fleetRoutes(){
   if(s.method()==HTTP_OPTIONS){s.sendHeader("Access-Control-Allow-Methods","GET, POST, OPTIONS");s.sendHeader("Access-Control-Allow-Headers","Content-Type, X-Uhr-Token");s.sendHeader("Access-Control-Max-Age","60");if(s.header("Access-Control-Request-Private-Network")=="true")s.sendHeader("Access-Control-Allow-Private-Network","true");s.send(204);return true;}
   if(s.method()!=HTTP_GET&&s.method()!=HTTP_POST){s.send(405);return true;}return next();
  });
- server.on("/api/fleet/state",HTTP_GET,[]{JsonDocument d;d["fleetProtocol"]=1;d["boardId"]=boardID;d["deviceLabel"]=deviceLabel(cfg,deviceSuffix);d["ip"]=WiFi.localIP().toString();d["firmware"]="3.2.0-rc19";d["bootId"]=token;d["token"]=token;d["imageSHA256"]=runningImageSHA();String s;serializeJson(d,s);server.sendHeader("Cache-Control","no-store");server.send(200,"application/json",s);});
+ server.on("/api/fleet/state",HTTP_GET,[]{JsonDocument d;d["fleetProtocol"]=1;d["boardId"]=boardID;d["deviceLabel"]=deviceLabel(cfg,deviceSuffix);d["ip"]=WiFi.localIP().toString();d["firmware"]="3.2.0-rc20";d["bootId"]=token;d["token"]=token;d["imageSHA256"]=runningImageSHA();String s;serializeJson(d,s);server.sendHeader("Cache-Control","no-store");server.send(200,"application/json",s);});
 }

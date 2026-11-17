@@ -18,7 +18,7 @@ inline void fetchQuote(Quote&q,const char*base,const char*currency,bool btc){
  if(!body.ready()){strcpy(q.error,"RAM fehlt");http.end();return;}
  int count=http.writeToStream(&body);http.end();client.stop();
  if(count<0||body.overflowed()||body.allocationFailed()||(length>=0&&count!=length)){strcpy(q.error,"Antwort unvollstaendig");return;}
- JsonDocument d;if(deserializeJson(d,body.bytes(),body.size())||!parseFinance(d,q,base,currency,btc,time(nullptr)))strcpy(q.error,"Ungueltige Preisdaten");
+ JsonDocument d;if(deserializeJson(d,body)||!parseFinance(d,q,base,currency,btc,time(nullptr)))strcpy(q.error,"Ungueltige Preisdaten");
 }
 // Match the compiled mbedTLS buffers, including TLS framing and cipher overhead.
 // Keep the total-heap safety floor; success is admission, not a handshake guarantee.

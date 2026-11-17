@@ -6,9 +6,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include "Currencies.h"
+#include "NewsSources.h"
 // Stable IDs: 2 aliases Wetter & Regen (1); 4 aliases Sonne & Mond (3). Fourteen visible screens.
-constexpr int VIEW_COUNT=16;
-inline uint16_t mergedScreenMask(uint16_t mask){if(mask&16)mask=(mask|8)&~16;if(mask&4)mask=(mask|2)&~4;return mask;}
+constexpr int VIEW_COUNT=17;
+inline uint32_t mergedScreenMask(uint32_t mask){if(mask&16)mask=(mask|8)&~16;if(mask&4)mask=(mask|2)&~4;return mask;}
 inline int mergedScreenView(int view){return view==4?3:view==2?1:view;}
 constexpr const char* ZURICH_TZ="CET-1CEST,M3.5.0,M10.5.0/3";
 struct Config {
@@ -17,7 +18,8 @@ struct Config {
  char countdownDates[5][11]={}; char customEvent[49]="Mein Ereignis";
  uint8_t countdownType=0; bool animations=true; bool weekendTransition=false;
  double lat=46.948,lon=7.4474;
- uint16_t mask=1011,interval=15;
+ uint32_t mask=1011;uint16_t interval=15;
+ uint8_t newsFeed=0;bool launchPriority=true,quakePriority=true;uint16_t launchWindow=60,quakeWindow=60,quakeRadius=0,newsWindow=180;float quakeMagnitude=4.5;
  uint8_t view=0; bool automatic=false;
  bool aircraftPriority=false,aircraftInRange=false;
  char aircraftPlace[49]="Bern";double aircraftLat=46.948,aircraftLon=7.4474;uint16_t aircraftRadius=50;
@@ -38,7 +40,7 @@ struct Weather {
 };
 struct Moon {bool valid=false;double phase=0,lit=0;time_t full=0;};
 inline bool timeValid(time_t t){return t>=1704067200LL&&t<4102444800LL;}
-inline int nextView(int view,uint16_t mask){mask=mergedScreenMask(mask);view=mergedScreenView(view);for(int i=1;i<=VIEW_COUNT;i++){int n=(view+i)%VIEW_COUNT;if(mask&(1<<n))return n;}return view;}
+inline int nextView(int view,uint32_t mask){mask=mergedScreenMask(mask);view=mergedScreenView(view);for(int i=1;i<=VIEW_COUNT;i++){int n=(view+i)%VIEW_COUNT;if(mask&(1<<n))return n;}return view;}
 inline int oldView(int v){const int map[10]={0,-1,-1,1,2,3,-1,4,-1,5};return v>=0&&v<10?map[v]:-1;}
 inline void migrateViews(int view,int mask,Config &c){int v=oldView(view);c.view=v<0?0:v;c.mask=0;for(int i=0;i<10;i++){int n=oldView(i);if(n>=0&&(mask&(1<<i)))c.mask|=1<<n;}if(!c.mask)c.mask=1;}
 inline bool parseDate(const char* s,time_t &result){

@@ -40,7 +40,7 @@ inline bool requestJSON(String url,JsonDocument &doc,String &error,NetDiagnostic
  // Only parse fields used by the display. TLS buffers have been released above.
  JsonDocument filter;for(auto k:{"time","temperature_2m","weather_code","precipitation_probability","precipitation"})filter["hourly"][k]=true;
  for(auto k:{"time","sunrise","sunset"})filter["daily"][k]=true;filter["error"]=true;filter["reason"]=true;
- auto e=deserializeJson(doc,body.bytes(),body.size(),DeserializationOption::Filter(filter),DeserializationOption::NestingLimit(12));
+ auto e=deserializeJson(doc,body,DeserializationOption::Filter(filter),DeserializationOption::NestingLimit(12));
  if(e){error="JSON: "+String(e.c_str())+" ("+String(body.size())+" B)";return false;}
  if(doc["error"]==true){error="API: "+String(doc["reason"]|"Unbekannter Fehler");return false;}
  return true;
@@ -64,6 +64,7 @@ inline bool fetchWeather(const Config &c,Weather &w,String &error,NetDiagnostics
 #include "IssNetwork.h"
 #include "QuakeNetwork.h"
 #include "LaunchNetwork.h"
+#include "NewsNetwork.h"
 inline void networkTask(void*){
  NetConfig state={};bool configured=false,first=true,previousOnline=false;uint32_t last=0;bool success=false;
  for(;;){NetConfig next;if(xQueueReceive(netConfigQueue,&next,0)==pdTRUE){if(!configured||next.generation!=state.generation||next.refresh!=state.refresh)first=true;state=next;configured=true;}
@@ -81,7 +82,7 @@ inline void networkTask(void*){
     r.diagnostics.networkStackFree=uxTaskGetStackHighWaterMark(nullptr);r.diagnostics.busy=false;r.diagnostics.duration=millis()-now;strlcpy(r.error,error.c_str(),sizeof(r.error));xQueueOverwrite(netResultQueue,&r);
    }
   }
-  if(configured&&WiFi.status()==WL_CONNECTED&&!otaActive&&timeValid(time(nullptr))){financeTick(state.config,false);aircraftTick(state.config);issTick(state.config);quakeTick(state.config);launchTick(state.config);}
+  if(configured&&WiFi.status()==WL_CONNECTED&&!otaActive&&timeValid(time(nullptr))){financeTick(state.config,false);aircraftTick(state.config);issTick(state.config);quakeTick(state.config);launchTick(state.config);newsTick(state.config);}
   vTaskDelay(pdMS_TO_TICKS(150));
  }
 }
