@@ -11,7 +11,7 @@ int main(){setenv("TZ",ZURICH_TZ,1);tzset();time_t now;assert(parseDate("2026-11
  deserializeJson(d,R"({"date":"2026-11-13","base":"CHF","quote":"CZK","rate":26.50})");assert(parseFinance(d,f.fx[0],"CHF","CZK",false,now));d["date"]="2026-02-30";assert(!parseFinance(d,f.fx[1],"CHF","CZK",false,now));d["date"]="2099-01-01";assert(!parseFinance(d,f.fx[1],"CHF","CZK",false,now));
  f.fx[1]=f.fx[0];f.fx[1].value=25;f.fx[2]=f.fx[0];f.fx[2].value=.94;
  assert(!quoteStale(f.btc,now+599,true));assert(quoteStale(f.btc,now+601,true));strcpy(f.btc.error,"HTTP 429");assert(quoteStale(f.btc,now,true));f.btc.error[0]=0;
- assert(VIEW_COUNT==15&&c.mask==1011&&nextView(9,4095)==10&&nextView(10,4095)==11&&nextView(11,4095)==0&&nextView(9,1023)==0);
+ assert(VIEW_COUNT==16&&c.mask==1011&&nextView(9,4095)==10&&nextView(10,4095)==11&&nextView(11,4095)==0&&nextView(9,1023)==0);
  GFXcanvas8 g(240,240);
  for(int view=10;view<12;view++){c.view=view;renderFinance(g,c,f,now,true);save(g,view==10?"preview/bitcoin.ppm":"preview/currency.ppm");for(int i=0;i<57600;i++)if((i%240-120)*(i%240-120)+(i/240-120)*(i/240-120)>119*119)assert(g.getBuffer()[i]==BG);}
  for(double price:{.00001,1.,80000.,1234567.,999999999999.}){f.btc.value=price;c.view=10;renderFinance(g,c,f,now,false);}
