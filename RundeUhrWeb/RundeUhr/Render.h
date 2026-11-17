@@ -137,7 +137,7 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
   break;
  }
  if(!countdownTarget(c,type,now,target)){txt(g,"Datum waehlen",168,2);txt(g,"In der Web-App",197,0,ORANGE);}else{long days=calendarDays(target,now);
- String remaining=days==0?String("Heute!"):String(labs(days))+(labs(days)==1?" Tag":" Tage");txt(g,remaining,161,remaining.length()>8?2:3,type==3?WHITE:type==1?PURPLE:ORANGE);if(days<0)txt(g,"seit Ereignis",192,0);if(type==3&&days>=0)g.drawFastHLine(101,192,38,DIM);txt(g,fmtTime(target,"%d.%m.%Y"),200,2,type==3?YELLOW:WHITE);}
+ String remaining=days==0?String("Heute!"):String(labs(days))+(labs(days)==1?" Tag":" Tage");txt(g,remaining,161,remaining.length()>8?2:3,type==3?WHITE:type==1?PURPLE:RED);if(days<0)txt(g,"seit Ereignis",192,0);if(type==3&&days>=0)g.drawFastHLine(101,192,38,DIM);txt(g,fmtTime(target,"%d.%m.%Y"),200,2,type==3?YELLOW:WHITE);}
  break;}
 
  }

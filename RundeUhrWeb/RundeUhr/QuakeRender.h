@@ -6,11 +6,18 @@ inline void renderQuake(Adafruit_GFX&g,const QuakeData&q,time_t now,bool online,
  txt(g,"ERDBEBEN",25,2,ORANGE);char filter[48];snprintf(filter,sizeof(filter),"M%.1f+ / %u min",c.quakeMagnitude,c.quakeWindow);txt(g,filter,49,0,SILVER);
  if(!q.valid){txt(g,"Warte auf Daten",103,1);txt(g,!online?"WLAN offline":q.error[0]?"Abruf fehlgeschlagen":"USGS wird geladen",143,0,ORANGE);}
  else if(!q.count){txt(g,"Keine passenden",94,1);txt(g,"Erdbeben",119,7);txt(g,c.quakeRadius?"Umkreisfilter aktiv":"Weltweiter Filter",157,0,SILVER);txt(g,"Filter im Web pruefen",178,0,SILVER);}
- else {const auto&e=q.events[(uint64_t(now)/8)%q.count];char b[128];snprintf(b,sizeof(b),"M %.1f",e.magnitude);txt(g,b,72,3,quakeStale(q,now)?GRAY:ORANGE);
- // Fixed-width ASCII transliteration avoids broken UTF-8 on the small font.
- char place[112];snprintf(place,sizeof(place),"%s",latin(String(e.place)).c_str());
- for(int row=0;row<3;row++){char line[29]={};size_t offset=row*28;if(offset>=strlen(place))break;snprintf(line,sizeof(line),"%.28s",place+offset);txt(g,line,116+row*13,0,WHITE);}
+ else {const auto&e=q.events[(uint64_t(now)/8)%q.count];char b[128];snprintf(b,sizeof(b),"M %.1f",e.magnitude);txt(g,b,72,3,quakeStale(q,now)?GRAY:RED);
+ // Wrap enlarged region text by measured pixels, keeping date and depth clear.
+ String place=latin(String(e.place));unsigned start=0;
+ for(int row=0;row<2&&start<place.length();row++){
+  unsigned end=start,lastSpace=start;g.setTextSize(1);g.setFont(&FreeSansBold9pt7b);
+  while(end<place.length()){int16_t x,y;uint16_t w,h;String part=place.substring(start,end+1);g.getTextBounds(part.c_str(),0,0,&x,&y,&w,&h);if(w>204)break;if(place[end]==' ')lastSpace=end;end++;}
+  if(row==0&&end<place.length()&&lastSpace>start)end=lastSpace;
+  if(end==start)end++;
+  String line=place.substring(start,end);if(row==1&&end<place.length())line=line+"..";
+  txt(g,line,113+row*20,1,WHITE);start=end;while(start<place.length()&&place[start]==' ')start++;
+ }
  struct tm t;localtime_r(&e.at,&t);strftime(b,sizeof(b),"%d.%m. %H:%M",&t);txt(g,b,162,1);
- snprintf(b,sizeof(b),"Tiefe %.0f km",e.depth);txt(g,b,184,0,SILVER);}
+ snprintf(b,sizeof(b),"Tiefe %.0f km",e.depth);txt(g,b,184,1,WHITE);}
  txt(g,!online?"Offline":quakeStale(q,now)?"Nicht aktuell":q.error[0]?"Abruffehler":"USGS / alle 5 min",207,0,q.error[0]?ORANGE:SILVER);
 }

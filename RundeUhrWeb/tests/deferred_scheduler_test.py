@@ -23,6 +23,11 @@ void xQueueOverwrite(int,{name}Result*r){{output=*r;}}
  clockMs+=29999;issTick(c);assert(calls==4);clockMs++;httpCode=429;issTick(c);assert(calls==5);
  clockMs+=299999;issTick(c);assert(calls==5);clockMs++;httpCode=200;issTick(c);assert(calls==6&&output.data.valid&&!output.data.error[0]);
  """
+    if name=='News':extra="""
+ clockMs+=5400000;httpCode=-1;newsTick(c);assert(calls==4&&output.data.valid);
+ clockMs+=59999;newsTick(c);assert(calls==4);clockMs++;httpCode=429;newsTick(c);assert(calls==5);
+ clockMs+=5399999;newsTick(c);assert(calls==5);clockMs++;httpCode=200;newsTick(c);assert(calls==6&&output.data.valid&&!output.data.error[0]);
+ """
     post=f'''int main(){{Config c;c.view={view};c.mask=1;
  {name.lower()}Tick(c);assert(calls==0&&!networkBusy&&strstr(output.data.error,"15 s"));
  clockMs+=14999;memoryOK=true;{name.lower()}Tick(c);assert(calls==0);

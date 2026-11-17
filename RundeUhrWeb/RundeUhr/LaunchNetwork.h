@@ -6,7 +6,7 @@ inline void fetchLaunch(LaunchData&d,uint32_t&retry){
  WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  if(!http.begin(client,"https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=3&mode=list")){strcpy(d.error,"HTTPS Start fehlgeschlagen");return;}
- const char*headers[]={"Retry-After"};http.collectHeaders(headers,1);http.setUserAgent("RundeUhr/3.2.0-rc22 personal display");http.addHeader("Accept-Encoding","identity");d.http=http.GET();
+ const char*headers[]={"Retry-After"};http.collectHeaders(headers,1);http.setUserAgent("RundeUhr/3.2.0-rc23 personal display");http.addHeader("Accept-Encoding","identity");d.http=http.GET();
  if(d.http!=200){char detail[48]={};int tls=client.lastError(detail,sizeof(detail));snprintf(d.error,sizeof(d.error),"HTTP %d / TLS %d",d.http,tls);if(d.http==429)retry=launchRetry(http.header("Retry-After").c_str(),time(nullptr));http.end();return;}
  int length=http.getSize();if(length>12288){strcpy(d.error,"Antwort zu gross");http.end();return;}
  BoundedBody body(length>0?size_t(length):12288);if(!body.ready()){strcpy(d.error,"RAM fehlt");http.end();return;}

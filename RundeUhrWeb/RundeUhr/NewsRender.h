@@ -7,11 +7,13 @@ inline void renderNews(Adafruit_GFX&g,const Config&c,const NewsData&n,time_t now
  // A fixed horizontal text band stays inside the circular display.
  int eligible[3],count=0;for(int i=0;i<n.count;i++)if(!c.automatic||(n.items[i].at<=now&&now-n.items[i].at<=c.newsWindow*60))eligible[count++]=i;
  if(!count){txt(g,"Keine neuen Meldungen",120,0);return;}
- // Each headline gets enough time to scroll completely at 30 px/s, with end pauses.
+ // Each headline gets enough time to scroll completely at 60 px/s, with end pauses.
  uint32_t total=0,durations[3];for(int k=0;k<count;k++){durations[k]=newsHeadlineDuration(n.items[eligible[k]].title);total+=durations[k];}
  uint32_t phase=ms%total;int idx=0;while(idx+1<count&&phase>=durations[idx])phase-=durations[idx++];auto&e=n.items[eligible[idx]];
- g.setFont(nullptr);g.setTextSize(3);g.setTextColor(WHITE);int width=strlen(e.title)*18,travel=width>184?width-184:0;int offset=phase<2500?0:int((phase-2500)*30/1000);if(offset>travel)offset=travel;
- // Draw only full glyphs in the band, never outside the circle.
- for(size_t j=0;j<strlen(e.title);j++){int x=28+int(j)*18-offset;if(x>=28&&x+18<=212){g.setCursor(x,104);g.write(uint8_t(e.title[j]));}}
+ char headline[256];size_t length=newsDisplayText(e.title,headline,sizeof(headline));
+ g.setFont(nullptr);g.setTextSize(4);g.cp437(true);g.setTextColor(WHITE);int width=length*NEWS_ADVANCE,travel=width>184?width-184:0;int offset=phase<1500?0:int((phase-1500)*NEWS_SPEED/1000);if(offset>travel)offset=travel;
+ // Draw complete decoded glyphs, not individual UTF-8 bytes.
+ for(size_t j=0;j<length;j++){int x=28+int(j)*NEWS_ADVANCE-offset;if(x>=28&&x+24<=212){g.setCursor(x,100);g.write(uint8_t(headline[j]));}}
+ g.cp437(false);
  tm t;localtime_r(&e.at,&t);char b[32];strftime(b,sizeof(b),"%d.%m. %H:%M",&t);txt(g,b,164,1,SILVER);txt(g,NEWS_SOURCES[n.source].credit,190,1,CYAN);if(!online||newsStale(n,now)||n.error[0])txt(g,"Nicht aktuell",211,0,ORANGE);
 }
