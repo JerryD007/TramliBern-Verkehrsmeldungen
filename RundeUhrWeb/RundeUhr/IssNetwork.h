@@ -1,13 +1,17 @@
 #pragma once
 #include "IssParse.h"
+#include <mbedtls/error.h>
+#include "IssTlsClient.h"
 struct IssResult {IssData data;};
 QueueHandle_t issResultQueue;
 inline void fetchIss(IssData&i){
- WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
+ IssTlsClient client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
+ i.attempted=time(nullptr);i.heapBefore=ESP.getFreeHeap();i.largestBefore=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);i.tlsCode=0;i.tlsDetail[0]=0;
+ if(!client.connectVerified("api.wheretheiss.at",443,i)){i.http=-1;snprintf(i.error,sizeof(i.error),"TLS %d; siehe ISS TLS-Detail",i.tlsCode);return;}
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  if(!http.begin(client,"https://api.wheretheiss.at/v1/satellites/25544")){strcpy(i.error,"HTTPS Start fehlgeschlagen");return;}
- http.setUserAgent("RundeUhr/3.2.0-rc24");http.addHeader("Accept-Encoding","identity");i.http=http.GET();
- if(i.http!=200){char detail[48]={};int tls=client.lastError(detail,sizeof(detail));snprintf(i.error,sizeof(i.error),"HTTP %d / TLS %d",i.http,tls);http.end();return;}
+ http.setUserAgent("RundeUhr/3.2.0-rc25");http.addHeader("Accept-Encoding","identity");i.http=http.GET();
+ if(i.http!=200){char detail[48]={};int tls=client.lastError(detail,sizeof(detail));snprintf(i.error,sizeof(i.error),"HTTP %d / TLS %d: %.40s",i.http,tls,detail);http.end();return;}
  int length=http.getSize();if(length>2048){strcpy(i.error,"Antwort zu gross");http.end();return;}
  BoundedBody body(length>0?size_t(length):2048);if(!body.ready()){strcpy(i.error,"RAM fehlt");http.end();return;}
  int count=http.writeToStream(&body);http.end();client.stop();
