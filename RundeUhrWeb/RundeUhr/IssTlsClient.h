@@ -12,7 +12,7 @@ public:
    flags=mbedtls_ssl_get_verify_result(&sslclient->ssl_ctx);
    // Never accept a handshake with nonzero verification flags.
    if(ret>=0&&flags)ret=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
-   sslclient->last_error=ret;
+   sslclient->last_error=ret<0?ret:0;
   }else{char detail[96]={};ret=lastError(detail,sizeof(detail));if(ret>=0)ret=-1;}
   out.tlsCode=ret>=0?0:ret;
   if(ret>=0){

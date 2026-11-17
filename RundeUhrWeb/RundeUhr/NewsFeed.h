@@ -2,6 +2,15 @@
 #include <Stream.h>
 #include "NewsModel.h"
 #include "AircraftRoute.h"
+// RSS may contain old but valid articles; launch dates have a stricter lower bound.
+inline bool newsUTC(const char*s,time_t&out){
+ if(!s||strlen(s)!=20||s[4]!='-'||s[7]!='-'||s[10]!='T'||s[13]!=':'||s[16]!=':'||s[19]!='Z')return false;
+ for(int i=0;i<19;i++)if(i!=4&&i!=7&&i!=10&&i!=13&&i!=16&&(s[i]<'0'||s[i]>'9'))return false;
+ int y,m,d,h,n,sec;if(sscanf(s,"%4d-%2d-%2dT%2d:%2d:%2dZ",&y,&m,&d,&h,&n,&sec)!=6||y<1970||y>2099||m<1||m>12||h>23||n>59||sec>59)return false;
+ int days[]={31,28+int(launchLeap(y)),31,30,31,30,31,31,30,31,30,31};if(d<1||d>days[m-1])return false;
+ int64_t total=0;for(int z=1970;z<y;z++)total+=365+int(launchLeap(z));for(int z=0;z<m-1;z++)total+=days[z];
+ out=time_t(0LL+(total+d-1)*86400+h*3600+n*60+sec);return true;
+}
 // Bounded streaming RSS reader: three headlines only; descriptions/images discarded.
 // XML is parsed through the final </rss>; incomplete responses never replace cache.
 class NewsFeed:public Stream {
@@ -32,9 +41,9 @@ class NewsFeed:public Stream {
    if(fallback)strcpy(item.link,cnn||strlen(decoded)>=sizeof(item.link)?fallback:decoded);
   }
   if(field==5)cnnSource=!strcmp(decoded,"CNN");
-  if(field==3&&!launchUTC(decoded,item.at))bad=true;
+  if(field==3&&!newsUTC(decoded,item.at))bad=true;
   if(field==4&&!item.at){char day[4],mon[4],zone[8];int dd,yy,h,m,sec;const char*months[]={"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
-   if(sscanf(decoded,"%3s, %d %3s %d %d:%d:%d %7s",day,&dd,mon,&yy,&h,&m,&sec,zone)!=8){bad=true;}else {int month=0;for(int k=0;k<12;k++)if(!strcmp(mon,months[k]))month=k+1;char iso[24];snprintf(iso,sizeof(iso),"%04d-%02d-%02dT%02d:%02d:%02dZ",yy,month,dd,h,m,sec);time_t t;if(!launchUTC(iso,t))bad=true;else if(!strcmp(zone,"GMT")||!strcmp(zone,"UTC"))item.at=t;else {int zh,zm;if(strlen(zone)!=5||(zone[0]!='+'&&zone[0]!='-')||sscanf(zone+1,"%2d%2d",&zh,&zm)!=2||zh>23||zm>59)bad=true;else item.at=t-(zone[0]=='+'?1:-1)*(zh*3600+zm*60);}}
+   if(sscanf(decoded,"%3s, %d %3s %d %d:%d:%d %7s",day,&dd,mon,&yy,&h,&m,&sec,zone)!=8){bad=true;}else {int month=0;for(int k=0;k<12;k++)if(!strcmp(mon,months[k]))month=k+1;char iso[24];snprintf(iso,sizeof(iso),"%04d-%02d-%02dT%02d:%02d:%02dZ",yy,month,dd,h,m,sec);time_t t;if(!newsUTC(iso,t))bad=true;else if(!strcmp(zone,"GMT")||!strcmp(zone,"UTC"))item.at=t;else {int zh,zm;if(strlen(zone)!=5||(zone[0]!='+'&&zone[0]!='-')||sscanf(zone+1,"%2d%2d",&zh,&zm)!=2||zh>23||zm>59)bad=true;else item.at=t-(zone[0]=='+'?1:-1)*(zh*3600+zm*60);}}
   }
   field=0;used=0;text[0]=0;
  }

@@ -12,7 +12,10 @@ for name,url,cnn in feeds:
  dates=[email.utils.parsedate_to_datetime(i.findtext("pubDate")) for i in items]
  newest=max(dates);age=(datetime.datetime.now(datetime.timezone.utc)-newest).total_seconds()
  assert -600<=age<172800,(name,"stale/future",newest,age)
- result=subprocess.run([str(root/"build/news_test"),str(p)]+(["cnn"] if cnn else []));failed=failed or result.returncode!=0
+ result=subprocess.run([str(root/"build/news_test"),str(p)]+(["cnn"] if cnn else []),capture_output=True,text=True);print(result.stdout,result.stderr);failed=failed or result.returncode!=0
+ if result.returncode==0:
+  actual=[int(line.split()[1]) for line in result.stdout.splitlines() if line.startswith("NEWS_AT ")]
+  assert actual==sorted([int(d.timestamp()) for d in dates],reverse=True)[:3],(name,"newest order",actual)
  report.append(dict(source=name,url=url,bytes=p.stat().st_size,items=len(items),newest=newest.isoformat(),age_seconds=age,tls="host curl with shipped roots; not ESP32"))
  print("Live source",report[-1],"parser",result.returncode,flush=True)
 (root/"build/news_live_report.json").write_text(json.dumps(report,indent=2))

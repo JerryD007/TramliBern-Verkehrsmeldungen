@@ -34,7 +34,7 @@ b=out/'RundeUhr_3_2_0_rc25.ino.bin'
 if b.exists():p(f'BIN: <b>{b.stat().st_size:,} B</b>. Rezerva OTA = 1 966 080 - {b.stat().st_size:,} = <b>{1966080-b.stat().st_size:,} B</b>.'.replace(',',' '))
 report=out/'Vysledky_testu_RC25.json'
 if report.exists():
- d=json.loads(report.read_text());p(f'Statická RAM: RC24 62 216 B → RC25 <b>{d["static_ram"]} B</b>; rozdíl <b>{62216-d["static_ram"]} B</b>. To není měření volné RAM při HTTPS.')
+ d=json.loads(report.read_text());p(f'Statická RAM RC25: <b>{d["static_ram"]} B</b> (RC24: 62 216 B). To není měření volné RAM při HTTPS.')
 p('Úplný záznam kompilace, testů a SHA-256 je v ZIP. Zásobníky hlavní i síťové úlohy mají nadále 12 KiB. Uložená Wi-Fi a nastavení se zachovávají. TLS ověřování certifikátů zůstává zapnuté.')
 story.append(PageBreak());title('Ověření a hranice testů')
 p('<b>Počítač / GitHub Actions:</b> skutečná kompilace ESP32-C3, kontrola BIN a OTA oddílů, parsování živých HTTPS odpovědí, testy původních funkcí, ukládání konfigurace, paměťových bloků a časovačů. WebKit a Chromium používají simulované API ESP32. Grafické testy kontrolují kruhové hranice; náhledy byly také vizuálně prohlédnuty.')

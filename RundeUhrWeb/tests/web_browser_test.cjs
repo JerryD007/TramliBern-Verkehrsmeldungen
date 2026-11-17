@@ -38,6 +38,7 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  await page.evaluate(()=>{state.quake={valid:true,stale:false,count:0,received:1794890000};state.quakeWindow=60;state.quakeMagnitude=4.5;state.quakeRadius=0;paintQuake();});assert((await page.locator('#quakeStatus').textContent()).includes('keine passenden Ereignisse'));
  await page.locator('#newsFeed').selectOption('5');await page.locator('#newsSourceForm button').click();await page.waitForTimeout(200);assert.equal(state.newsFeed,5);
  for(const id of ['7','8']){await page.locator('#newsFeed').selectOption(id);await page.locator('#newsSourceForm button').click();await page.waitForTimeout(200);assert.equal(state.newsFeed,Number(id));}
+ await page.locator('#launchWindow').fill('10080');await page.locator('#eventPolicy button').click();await page.waitForTimeout(200);assert.equal(state.launchWindow,10080);assert.equal(await page.locator('#launchWindow').getAttribute('max'),'10080');
  await page.locator('#launchWindow').fill('45');await page.locator('#quakeMagnitude').fill('5.5');await page.locator('#eventPolicy button').click();await page.waitForTimeout(200);assert.equal(state.launchWindow,45);assert.equal(state.quakeMagnitude,5.5);
  await page.locator('nav a[href="#screens"]').click();
  await page.locator('#cycle15').check();await page.waitForFunction(()=>!!(state.mask&32768));assert(state.mask&32768);await page.locator('#cycle15').uncheck();await page.waitForFunction(()=>!(state.mask&32768));
