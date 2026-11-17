@@ -6,7 +6,7 @@
 // XML is parsed through the final </rss>; incomplete responses never replace cache.
 class NewsFeed:public Stream {
  NewsData result;NewsItem item;char tag[192]={},text[768]={},stack[20][32]={};
- size_t tn=0,used=0,total=0;int depth=0,field=0,mode=0;bool inItem=false,bad=false,closed=false,cnn=false,cnnSource=false;char quote=0;
+ size_t tn=0,used=0,total=0;int depth=0,field=0,mode=0;bool inItem=false,bad=false,closed=false,cnn=false,cnnSource=false;char quote=0,lastTagChar=0;
  void append(char c){if(field&&used+1<sizeof(text)){text[used++]=c;text[used]=0;}}
  void finishField(){
   if(!field)return;
@@ -43,7 +43,7 @@ class NewsFeed:public Stream {
   if(tag[0]=='!'){bad=true;return;} // no DTD/entity expansion
   bool end=tag[0]=='/';char name[32]={};size_t k=end?1:0,j=0;
   while(tag[k]&&tag[k]!=' '&&tag[k]!='\t'&&tag[k]!='/'&&j<31)name[j++]=tag[k++];
-  if(!name[0]||j==31){bad=true;return;}bool self=tn&&tag[tn-1]=='/';
+  if(!name[0]||j==31){bad=true;return;}bool self=lastTagChar=='/';
   if(end){if(!depth||strcmp(stack[depth-1],name)){bad=true;return;}
    if(inItem&&field&&(!strcmp(name,"title")||!strcmp(name,"link")||!strcmp(name,"dc:date")||!strcmp(name,"pubDate")||!strcmp(name,"source")))finishField();
    if(!strcmp(name,"item")){if(!item.title[0]||!item.link[0]||!item.at)bad=true;else if(!cnn||cnnSource){int pos=0;while(pos<result.count&&result.items[pos].at>=item.at)pos++;if(pos<3){if(result.count<3)result.count++;for(int k=result.count-1;k>pos;k--)result.items[k]=result.items[k-1];result.items[pos]=item;}}inItem=false;}
@@ -63,13 +63,13 @@ class NewsFeed:public Stream {
     tag[tn++]=c;if(tn>=3){bool done=mode==2?tag[tn-3]==']'&&tag[tn-2]==']'&&c=='>':tag[tn-3]=='-'&&tag[tn-2]=='-'&&c=='>';
      if(done){tn=0;mode=0;continue;}if(mode==2){if(tag[0]=='&'){for(const char*p="&amp;";*p;p++)append(*p);}else append(tag[0]);}tag[0]=tag[1];tag[1]=tag[2];tn=2;}continue;
    }
-   if(mode==0){if(c=='<'){mode=1;tn=0;quote=0;}else append(c);continue;}
-   if(tn+1>=sizeof(tag)){bad=true;continue;}
+   if(mode==0){if(c=='<'){mode=1;tn=0;quote=0;lastTagChar=0;}else append(c);continue;}
    if(c=='>'&&!quote){tag[tn]=0;token();tn=0;mode=0;continue;}
-   tag[tn++]=c;tag[tn]=0;if(!strcmp(tag,"![CDATA[")){mode=2;tn=0;}else if(!strcmp(tag,"!--")){mode=3;tn=0;}else if(c=='\''||c=='"'){if(!quote)quote=c;else if(quote==c)quote=0;}
+   lastTagChar=c;if(tn+1<sizeof(tag)){tag[tn++]=c;tag[tn]=0;}if(!strcmp(tag,"![CDATA[")){mode=2;tn=0;}else if(!strcmp(tag,"!--")){mode=3;tn=0;}else if(c=='\''||c=='"'){if(!quote)quote=c;else if(quote==c)quote=0;}
   }return n;
  }
  bool finish(NewsData&out,time_t now){if(bad||!closed||depth||mode)return false;result.valid=true;result.received=now;result.http=out.http;result.source=out.source;out=result;return true;}
+ bool failed()const{return bad;}
  size_t size()const{return total;}
  int available()override{return 0;}int read()override{return -1;}int peek()override{return -1;}void flush()override{}
 };
