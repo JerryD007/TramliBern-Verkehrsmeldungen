@@ -36,14 +36,7 @@ Adafruit_GC9A01A display(TFT_CS,TFT_DC,TFT_RST);
 PaletteCanvas canvas(240,240);
 WebServer server(80);DNSServer dns;Preferences prefs;
 Config cfg;Weather weather;Moon moon;FinanceData finance;AircraftData aircraft;IssData iss;QuakeData quake;LaunchData launches;NewsData news;EventPriority eventPriority;int eventView=-1;uint32_t manualUntil=0,renderSince=0;int renderedView=-1;
-// Queue results are processed sequentially on the main task. Only one scratch
-// object is alive at a time; placement construction starts its C++ lifetime.
-union ReceiveScratch {
- NetResult weather; FinanceResult finance; NewsResult news; LaunchResult launch;
- QuakeResult quake; IssResult iss; AircraftResult aircraft;
- ReceiveScratch() {} ~ReceiveScratch() {}
-} receiveScratch;
-static_assert(std::is_trivially_destructible<NetResult>::value && std::is_trivially_destructible<FinanceResult>::value && std::is_trivially_destructible<NewsResult>::value && std::is_trivially_destructible<LaunchResult>::value && std::is_trivially_destructible<QuakeResult>::value && std::is_trivially_destructible<IssResult>::value && std::is_trivially_destructible<AircraftResult>::value,"Receive scratch requires trivial destructors");
+#include "ReceiveScratch.h"
 int actualView(time_t now,bool online){if(manualUntil&&int32_t(manualUntil-millis())>0)return cfg.view;return eventView>=0?eventView:aircraftDisplayView(cfg,aircraft,now,online);}
 volatile uint32_t ntpLast=0;
 void onTimeSync(struct timeval *tv){ntpLast=tv->tv_sec;}

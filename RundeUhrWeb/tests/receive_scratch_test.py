@@ -1,8 +1,8 @@
 from pathlib import Path
 import subprocess,tempfile,re
 r=Path(__file__).resolve().parents[1]
-source=(r/'RundeUhr/RundeUhr.ino').read_text()
-union=source[source.index('union ReceiveScratch'):source.index('int actualView')]
+source=(r/'RundeUhr/ReceiveScratch.h').read_text()
+union=source[source.index('union ReceiveScratch'):]
 pre='#include <new>\n#include <type_traits>\n#include <cassert>\n#include <cstdio>\n'
 for name in ['Finance','Aircraft','Iss','Quake','Launch','News']:
  pre+=f'#include "{name}Model.h"\n'
