@@ -81,7 +81,7 @@ inline void weatherRowText(Adafruit_GFX&g,String text,int cx,int y,int width,int
 }
 inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moon,time_t now,bool online,bool setup,String apName,String apKey,uint32_t ms=0){
  activePalette=palette;g.fillScreen(BG);g.setTextWrap(false);int v=c.view;bool valid=timeValid(now);tm t={};if(valid)localtime_r(&now,&t);
- const int accents[]={CYAN,YELLOW,PURPLE,YELLOW,PURPLE,ORANGE};g.drawCircle(120,120,116,(v==9?CYAN:v==6?PURPLE:accents[v<5?v:5]));g.drawCircle(120,120,115,(v==9?CYAN:v==6?PURPLE:accents[v<5?v:5]));
+ const int accents[]={CYAN,YELLOW,PURPLE,YELLOW,PURPLE,ORANGE};g.drawCircle(120,120,116,(v==5||v==7?RED:v==9?CYAN:v==6?PURPLE:accents[v<5?v:5]));g.drawCircle(120,120,115,(v==5||v==7?RED:v==9?CYAN:v==6?PURPLE:accents[v<5?v:5]));
  if(setup){txt(g,"WLAN einrichten",35,2,CYAN);txt(g,apName,69,2);txt(g,"WLAN-Passwort",98,1);txt(g,apKey,122,2);txt(g,"Safari oeffnen",155,1);txt(g,"http://192.168.4.1",177,1);txt(g,"Setup ohne Internet",203,0,ORANGE);return;}
  // The gold countdown uses decorative side arcs, not a progress gauge.
  if(v==8){g.fillScreen(BG);for(int a=-50;a<50;a++){double q=a*M_PI/180,q2=(a+1)*M_PI/180;int yy=120+sin(q)*112,yy2=120+sin(q2)*112;int xx=cos(q)*112,xx2=cos(q2)*112;g.drawLine(120-xx,yy,120-xx2,yy2,YELLOW);g.drawLine(120+xx,yy,120+xx2,yy2,YELLOW);}}

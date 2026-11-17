@@ -2,8 +2,9 @@
 #include "Render.h"
 #include "QuakeModel.h"
 inline void renderQuake(Adafruit_GFX&g,const QuakeData&q,time_t now,bool online,const Config&c=Config()){
- g.fillScreen(BG);g.setTextWrap(false);g.drawCircle(120,120,116,ORANGE);
- txt(g,"ERDBEBEN",25,2,ORANGE);char filter[48];snprintf(filter,sizeof(filter),"M%.1f+ / %u min",c.quakeMagnitude,c.quakeWindow);txt(g,filter,49,0,SILVER);
+ static const uint16_t quakePalette[]={0x0000,0xffff,0x07f5,0xfc10,0x4208,0xffe0,0xb35f,0xf800,0x47e9,0x9bd3,0xc618,0x8410,0xfd20,0xfdb8,0x04b5,0x2104};
+ activePalette=quakePalette;g.fillScreen(BG);g.setTextWrap(false);g.drawCircle(120,120,116,RED);
+ txt(g,"ERDBEBEN",25,2,CYAN);char filter[48];snprintf(filter,sizeof(filter),"M%.1f+ / %u min",c.quakeMagnitude,c.quakeWindow);txt(g,filter,49,0,SILVER);
  if(!q.valid){txt(g,"Warte auf Daten",103,1);txt(g,!online?"WLAN offline":q.error[0]?"Abruf fehlgeschlagen":"USGS wird geladen",143,0,ORANGE);}
  else if(!q.count){txt(g,"Keine passenden",94,1);txt(g,"Erdbeben",119,7);txt(g,c.quakeRadius?"Umkreisfilter aktiv":"Weltweiter Filter",157,0,SILVER);txt(g,"Filter im Web pruefen",178,0,SILVER);}
  else {const auto&e=q.events[(uint64_t(now)/8)%q.count];char b[128];snprintf(b,sizeof(b),"M %.1f",e.magnitude);txt(g,b,72,3,quakeStale(q,now)?GRAY:RED);
