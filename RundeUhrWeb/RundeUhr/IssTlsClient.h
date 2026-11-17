@@ -4,7 +4,7 @@
 class IssTlsClient : public WiFiClientSecure {
 public:
  bool connectVerified(const char* host,uint16_t port,IssData& out){
-  setPlainStart(true);
+  setPlainStart();
   bool initialized=WiFiClientSecure::connect(host,port,5000);
   uint32_t flags=0;int ret;
   if(initialized){

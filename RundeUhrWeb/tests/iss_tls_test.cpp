@@ -14,7 +14,7 @@ void mbedtls_x509_crt_verify_info(char*b,size_t n,const char*,uint32_t){snprintf
 void mbedtls_strerror(int,char*b,size_t n){snprintf(b,n,"TLS failure");}
 class WiFiClientSecure {
 protected:std::shared_ptr<Context> sslclient=std::make_shared<Context>();bool _stillinPlainStart=false;
-public:bool stopped=false;void setPlainStart(bool x){_stillinPlainStart=x;}
+public:bool stopped=false;void setPlainStart(){_stillinPlainStart=true;}
  int connect(const char*,uint16_t,int){assert(_stillinPlainStart);return initializeOK;}
  int lastError(char*,size_t){return -1;}void stop(){stopped=true;}
  bool plain(){return _stillinPlainStart;}

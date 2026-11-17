@@ -14,6 +14,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Probe new RSS sources
+        run: |
+          python3 - <<'PY'
+          import urllib.request, xml.etree.ElementTree as E, email.utils
+          for name,url in [
+            ('ct24','https://ct24.ceskatelevize.cz/rss/hlavni-zpravy'),
+            ('cnn-old','http://rss.cnn.com/rss/edition.rss'),
+            ('cnn-google','https://news.google.com/rss/search?q=site%3Acnn.com%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen')]:
+            try:
+              r=urllib.request.urlopen(url,timeout=20); b=r.read(); root=E.fromstring(b); items=root.findall('.//item')
+              print(name,r.status,r.url,len(b),'items',len(items))
+              for i in items[:3]: print(i.findtext('title'),i.findtext('pubDate'),'linklen',len(i.findtext('link') or ''),'source',i.findtext('source'))
+            except Exception as e: print(name,type(e).__name__,str(e))
+          PY
       - uses: arduino/setup-arduino-cli@v2
       - name: Install ESP32 and pinned libraries
         run: |
