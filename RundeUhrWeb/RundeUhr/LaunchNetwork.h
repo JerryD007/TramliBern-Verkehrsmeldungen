@@ -6,7 +6,7 @@ inline void fetchLaunch(LaunchData&d,uint32_t&retry){
  WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(8);
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  if(!http.begin(client,"https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=3&mode=list")){strcpy(d.error,"HTTPS Start fehlgeschlagen");return;}
- const char*headers[]={"Retry-After"};http.collectHeaders(headers,1);http.setUserAgent("RundeUhr/3.2.0-rc20 personal display");http.addHeader("Accept-Encoding","identity");d.http=http.GET();
+ const char*headers[]={"Retry-After"};http.collectHeaders(headers,1);http.setUserAgent("RundeUhr/3.2.0-rc21 personal display");http.addHeader("Accept-Encoding","identity");d.http=http.GET();
  if(d.http!=200){snprintf(d.error,sizeof(d.error),"HTTP %d",d.http);if(d.http==429)retry=launchRetry(http.header("Retry-After").c_str(),time(nullptr));http.end();return;}
  int length=http.getSize();if(length>12288){strcpy(d.error,"Antwort zu gross");http.end();return;}
  BoundedBody body(length>0?size_t(length):12288);if(!body.ready()){strcpy(d.error,"RAM fehlt");http.end();return;}
@@ -22,6 +22,6 @@ inline void launchTick(const Config&c){
  if((c.view!=15&&!(c.mask&(1<<15)))||otaActive)return;
  if(attempted&&uint32_t(millis()-last)<retry)return;
  networkBusy=true;if(otaActive){networkBusy=false;return;}
- Quote probe;data.http=0;retry=1800000UL;if(!financeMemoryReady(probe))strcpy(data.error,"RAM: Abruf verschoben");else fetchLaunch(data,retry);
+ Quote probe;data.http=0;retry=1800000UL;if(!financeMemoryReady(probe)){retry=15000UL;strcpy(data.error,"RAM: Abruf verschoben; in 15 s");}else fetchLaunch(data,retry);
  networkBusy=false;last=millis();attempted=true;data.nextAttempt=time(nullptr)+retry/1000;LaunchResult result{data};xQueueOverwrite(launchResultQueue,&result);
 }

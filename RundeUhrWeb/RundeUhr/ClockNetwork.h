@@ -6,11 +6,14 @@
 #include "Trust.h"
 #include "BoundedBody.h"
 #include "ParseData.h"
+#include "FinanceNetwork.h"
 struct NetDiagnostics {bool busy=false;time_t attempt=0;int http=0,tls=0;uint32_t bytes=0,duration=0,largestBlock=0,heapBeforeTLS=0,networkStackFree=0;uint8_t trustProfile=0;};
 struct NetResult {Weather weather;char error[192]="";uint32_t generation=0;NetDiagnostics diagnostics;};
 struct NetConfig {Config config;uint32_t generation=0,refresh=0;};
 QueueHandle_t netConfigQueue,netResultQueue;
-inline bool requestJSON(String url,JsonDocument &doc,String &error,NetDiagnostics &diag,const char* rootPEM){
+inline bool requestJSON(const String& url,JsonDocument &doc,String &error,NetDiagnostics &diag,const char* rootPEM){
+ Quote probe;
+ if(!financeMemoryReady(probe)){diag.heapBeforeTLS=probe.heapBefore;diag.largestBlock=probe.largestBefore;error="RAM: Abruf verschoben; in 15 s";return false;}
  WiFiClientSecure client;
  // Standard X.509 chain validation rather than the bundle verification callback.
  // Only two roots are parsed per connection to keep memory bounded.
@@ -66,19 +69,19 @@ inline bool fetchWeather(const Config &c,Weather &w,String &error,NetDiagnostics
 #include "LaunchNetwork.h"
 #include "NewsNetwork.h"
 inline void networkTask(void*){
- NetConfig state={};bool configured=false,first=true,previousOnline=false;uint32_t last=0;bool success=false;
+ NetConfig state={};bool configured=false,first=true,previousOnline=false;uint32_t last=0;bool success=false;uint32_t weatherRetry=60000UL;
  for(;;){NetConfig next;if(xQueueReceive(netConfigQueue,&next,0)==pdTRUE){if(!configured||next.generation!=state.generation||next.refresh!=state.refresh)first=true;state=next;configured=true;}
   bool online=WiFi.status()==WL_CONNECTED;if(online&&!previousOnline)first=true;previousOnline=online;
   if(configured&&online&&!otaActive&&timeValid(time(nullptr))){
    uint32_t now=millis();
    // Preload all three products after NTP, independent of selected screen/cycle.
-   if(first||uint32_t(now-last)>=(success?900000UL:60000UL)){
+   if(first||uint32_t(now-last)>=(success?900000UL:weatherRetry)){
     networkBusy=true;
     if(otaActive){networkBusy=false;vTaskDelay(pdMS_TO_TICKS(150));continue;}
     first=false;last=now;NetResult r;r.generation=state.generation;r.diagnostics.busy=true;r.diagnostics.attempt=time(nullptr);
     r.diagnostics.largestBlock=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     strlcpy(r.error,"Wetter wird geladen ...",sizeof(r.error));xQueueOverwrite(netResultQueue,&r);
-    String error;success=fetchWeather(state.config,r.weather,error,r.diagnostics);networkBusy=false;
+    String error;success=fetchWeather(state.config,r.weather,error,r.diagnostics);networkBusy=false;weatherRetry=error.startsWith("RAM: Abruf verschoben")?15000UL:60000UL;
     r.diagnostics.networkStackFree=uxTaskGetStackHighWaterMark(nullptr);r.diagnostics.busy=false;r.diagnostics.duration=millis()-now;strlcpy(r.error,error.c_str(),sizeof(r.error));xQueueOverwrite(netResultQueue,&r);
    }
   }

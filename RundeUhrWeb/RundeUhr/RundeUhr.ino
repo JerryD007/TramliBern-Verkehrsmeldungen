@@ -25,6 +25,8 @@
 #include <esp_sntp.h>
 #include "ConfigCodec.h"
 #include <atomic>
+#include <new>
+#include <type_traits>
 std::atomic<bool> otaActive{false}, networkBusy{false};
 #include "ClockNetwork.h"
 #include "WebApp.h"
@@ -34,6 +36,14 @@ Adafruit_GC9A01A display(TFT_CS,TFT_DC,TFT_RST);
 PaletteCanvas canvas(240,240);
 WebServer server(80);DNSServer dns;Preferences prefs;
 Config cfg;Weather weather;Moon moon;FinanceData finance;AircraftData aircraft;IssData iss;QuakeData quake;LaunchData launches;NewsData news;EventPriority eventPriority;int eventView=-1;uint32_t manualUntil=0,renderSince=0;int renderedView=-1;
+// Queue results are processed sequentially on the main task. Only one scratch
+// object is alive at a time; placement construction starts its C++ lifetime.
+union ReceiveScratch {
+ NetResult weather; FinanceResult finance; NewsResult news; LaunchResult launch;
+ QuakeResult quake; IssResult iss; AircraftResult aircraft;
+ ReceiveScratch() {} ~ReceiveScratch() {}
+} receiveScratch;
+static_assert(std::is_trivially_destructible<NetResult>::value && std::is_trivially_destructible<FinanceResult>::value && std::is_trivially_destructible<NewsResult>::value && std::is_trivially_destructible<LaunchResult>::value && std::is_trivially_destructible<QuakeResult>::value && std::is_trivially_destructible<IssResult>::value && std::is_trivially_destructible<AircraftResult>::value,"Receive scratch requires trivial destructors");
 int actualView(time_t now,bool online){if(manualUntil&&int32_t(manualUntil-millis())>0)return cfg.view;return eventView>=0?eventView:aircraftDisplayView(cfg,aircraft,now,online);}
 volatile uint32_t ntpLast=0;
 void onTimeSync(struct timeval *tv){ntpLast=tv->tv_sec;}
@@ -70,7 +80,7 @@ bool frameWrite(NetworkClient &client,const uint8_t *data,size_t size,uint32_t s
 void routes(){
  const char* headers[]={"X-Uhr-Token","Origin","Access-Control-Request-Private-Network"};server.collectHeaders(headers,3);fleetRoutes();
  server.on("/",HTTP_GET,[]{server.sendHeader("Cache-Control","no-store");server.sendHeader("Content-Encoding","gzip");server.send_P(200,"text/html; charset=utf-8",(const char*)WEB_APP, sizeof(WEB_APP));});
- server.on("/api/state",HTTP_GET,[]{JsonDocument d;configJSON(d);time_t now=time(nullptr);d["firmware"]="3.2.0-rc20";d["imageSHA256"]=runningImageSHA();d["model"]=ESP.getChipModel();d["flash"]=ESP.getFlashChipSize();d["sketchSize"]=ESP.getSketchSize();d["uptime"]=millis()/1000;d["rssi"]=WiFi.RSSI();d["bootId"]=token;
+ server.on("/api/state",HTTP_GET,[]{JsonDocument d;configJSON(d);time_t now=time(nullptr);d["firmware"]="3.2.0-rc21";d["imageSHA256"]=runningImageSHA();d["model"]=ESP.getChipModel();d["flash"]=ESP.getFlashChipSize();d["sketchSize"]=ESP.getSketchSize();d["uptime"]=millis()/1000;d["rssi"]=WiFi.RSSI();d["bootId"]=token;
   const char* viewNames[]={"Analoguhr","Wetter & Regen","Wetter & Regen","Sonne & Mond","Sonne & Mond","Ferien","Geburtstag","Wochenende","Arschloch weg","Frei wählbar","Bitcoin","Währungen","Nächstes Flugzeug","ISS Radar","Erdbeben","Raketenstarts","Nachrichten"};auto vn=d["screenNames"].to<JsonArray>();for(auto name:viewNames)vn.add(name);
  auto air=d["aircraft"].to<JsonObject>();d["displayView"]=actualView(now,WiFi.status()==WL_CONNECTED);d["eventPriorityView"]=eventView;d["effectiveMask"]=eventCycleMask(cfg,launches,quake,news,now,WiFi.status()==WL_CONNECTED);d["aircraftPriorityActive"]=aircraftPriorityActive(cfg,aircraft,now,WiFi.status()==WL_CONNECTED);air["origin"]=aircraft.origin;air["destination"]=aircraft.destination;air["routeHTTP"]=aircraft.routeHTTP;air["approaching"]=aircraft.approaching;air["checked"]=aircraft.checked;air["found"]=aircraft.found;air["callsign"]=aircraft.callsign;air["hex"]=aircraft.hex;air["registration"]=aircraft.registration;air["type"]=aircraft.type;air["kind"]=aircraft.kind==AircraftKind::Helicopter?"helicopter":aircraft.kind==AircraftKind::Plane?"plane":"unknown";air["distance"]=aircraft.distance;if(aircraft.altValid)air["altitude"]=aircraft.altitude;if(aircraft.speedValid)air["speed"]=aircraft.speed;air["received"]=int64_t(aircraft.received);air["positionAt"]=int64_t(aircraft.positionAt);air["error"]=aircraft.error;air["stale"]=aircraftStale(aircraft,now);air["http"]=aircraft.http;air["tls"]=aircraft.tls;air["heapBefore"]=aircraft.heapBefore;air["largestBefore"]=aircraft.largestBefore;air["largestAfterFirst"]=aircraft.largestAfterFirst;air["probeIn"]=aircraft.probeIn;air["probeOut"]=aircraft.probeOut;air["memoryGate"]=aircraft.memoryGate;
  auto ls=d["launches"].to<JsonObject>();ls["valid"]=launches.valid;ls["stale"]=launchStale(launches,now);ls["received"]=int64_t(launches.received);ls["nextAttempt"]=int64_t(launches.nextAttempt);ls["http"]=launches.http;ls["error"]=launches.error;auto le=ls["events"].to<JsonArray>();for(int j=0;j<launches.count;j++){auto e=le.add<JsonObject>();e["name"]=launches.events[j].name;e["net"]=int64_t(launches.events[j].net);e["status"]=launchStatus(launches.events[j]);e["precision"]=launches.events[j].precision;}
@@ -117,13 +127,13 @@ void loop(){
  if(!online&&uint32_t(ms-offlineSince)>45000&&!scanRunning&&!scanRequested&&(!scanDone||uint32_t(ms-scanFinished)>60000))requestScan();
  if(wifiPending&&!scanRunning){wifiPending=false;scanRequested=false;connectSaved(wifiChoice,ms);}
  if(apActive)dns.processNextRequest(); // Keep the named, password-protected WLAN visible, also when connected to home Wi-Fi.
- server.handleClient();static NetResult r;while(xQueueReceive(netResultQueue,&r,0)==pdTRUE){if(r.generation!=generation)continue;weatherError=r.error;diagnostics=r.diagnostics;if(!diagnostics.busy){Serial.print("Wetter: ");Serial.println(weatherError.length()?weatherError:"OK");}if(r.weather.valid)weather=r.weather;firstDraw=true;}
- static FinanceResult fr;while(xQueueReceive(financeResultQueue,&fr,0)==pdTRUE){if(financeConfigEqual(cfg,fr.config)){finance=fr.data;firstDraw=true;}}
- static NewsResult nr;while(xQueueReceive(newsResultQueue,&nr,0)==pdTRUE){if(nr.data.source==cfg.newsFeed){news=nr.data;firstDraw=true;}}
- static LaunchResult lr;while(xQueueReceive(launchResultQueue,&lr,0)==pdTRUE){launches=lr.data;firstDraw=true;}
- static QuakeResult qr;while(xQueueReceive(quakeResultQueue,&qr,0)==pdTRUE){quake=qr.data;firstDraw=true;}
- static IssResult ir;while(xQueueReceive(issResultQueue,&ir,0)==pdTRUE){iss=ir.data;firstDraw=true;}
- static AircraftResult ar;while(xQueueReceive(aircraftResultQueue,&ar,0)==pdTRUE){if(aircraftConfigEqual(cfg,ar.config)){aircraft=ar.data;firstDraw=true;}}
+ server.handleClient();NetResult& r=*new (&receiveScratch.weather) NetResult;while(xQueueReceive(netResultQueue,&r,0)==pdTRUE){if(r.generation!=generation)continue;weatherError=r.error;diagnostics=r.diagnostics;if(!diagnostics.busy){Serial.print("Wetter: ");Serial.println(weatherError.length()?weatherError:"OK");}if(r.weather.valid)weather=r.weather;firstDraw=true;}
+ FinanceResult& fr=*new (&receiveScratch.finance) FinanceResult;while(xQueueReceive(financeResultQueue,&fr,0)==pdTRUE){if(financeConfigEqual(cfg,fr.config)){finance=fr.data;firstDraw=true;}}
+ NewsResult& nr=*new (&receiveScratch.news) NewsResult;while(xQueueReceive(newsResultQueue,&nr,0)==pdTRUE){if(nr.data.source==cfg.newsFeed){news=nr.data;firstDraw=true;}}
+ LaunchResult& lr=*new (&receiveScratch.launch) LaunchResult;while(xQueueReceive(launchResultQueue,&lr,0)==pdTRUE){launches=lr.data;firstDraw=true;}
+ QuakeResult& qr=*new (&receiveScratch.quake) QuakeResult;while(xQueueReceive(quakeResultQueue,&qr,0)==pdTRUE){quake=qr.data;firstDraw=true;}
+ IssResult& ir=*new (&receiveScratch.iss) IssResult;while(xQueueReceive(issResultQueue,&ir,0)==pdTRUE){iss=ir.data;firstDraw=true;}
+ AircraftResult& ar=*new (&receiveScratch.aircraft) AircraftResult;while(xQueueReceive(aircraftResultQueue,&ar,0)==pdTRUE){if(aircraftConfigEqual(cfg,ar.config)){aircraft=ar.data;firstDraw=true;}}
  if(timeValid(time(nullptr))&&(!moon.valid||uint32_t(ms-lastMoon)>60000)){lastMoon=ms;moon=calculateMoon(time(nullptr));}
  bool manual=manualUntil&&int32_t(manualUntil-ms)>0;Config policy=cfg;if(manual)policy.automatic=false;
  int previousEvent=eventView;eventView=eventPriority.tick(policy,launches,quake,news,time(nullptr),ms,online);if(previousEvent!=eventView){firstDraw=true;lastSwitch=ms;}
