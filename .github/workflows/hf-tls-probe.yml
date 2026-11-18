@@ -1,0 +1,23 @@
+name: Read-only TLS source diagnosis
+on:
+  push:
+    branches: [test/himmel-flugzeug-landscape]
+    paths: [.github/workflows/hf-tls-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public aircraft TLS chain without devices
+        run: |
+          mkdir -p report
+          date -u > report/time.txt
+          timeout 25 openssl s_client -connect opendata.adsb.fi:443 -servername opendata.adsb.fi -showcerts </dev/null > report/chain.txt 2>report/verify.txt || true
+          curl --max-time 25 -sS -D report/headers.txt 'https://opendata.adsb.fi/api/v3/lat/46.948/lon/7.447/dist/27' -o report/aircraft.json || true
+          cat report/verify.txt
+          cat report/headers.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-aircraft-tls-diagnosis
+          path: report
