@@ -1,0 +1,40 @@
+name: WetterHimmel test build
+on:
+  push:
+    branches: ['test/wetterhimmel-1.10-fleet-flight']
+    paths: ['wetterhimmel/**', '.github/workflows/wetterhimmel-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract isolated project
+        run: python3 -m zipfile -e wetterhimmel/source.zip wetterhimmel/project
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install pinned compiler and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.0 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install ArduinoJson@7.4.2 LovyanGFX@1.2.7
+      - name: Assemble and test web
+        run: |
+          python3 wetterhimmel/project/Tools/compress_web.py
+          npm install --prefix wetterhimmel/project/Tests jsdom@24.1.3
+          node wetterhimmel/project/Tests/new/web-modern.cjs
+      - name: Compile without flashing
+        run: |
+          mkdir -p wetterhimmel/build
+          set -o pipefail
+          arduino-cli compile --jobs 2 --fqbn 'esp32:esp32:esp32:FlashMode=dio,FlashFreq=40,PartitionScheme=huge_app,PSRAM=disabled' --build-path "$PWD/wetterhimmel/build" wetterhimmel/project/WetterHimmel 2>&1 | tee wetterhimmel/build/compile.log
+          python3 -c "from pathlib import Path; p=Path('wetterhimmel/build/WetterHimmel.ino.bin'); assert p.stat().st_size <= 1966080"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WetterHimmel-test-build
+          path: |
+            wetterhimmel/build/*.bin
+            wetterhimmel/build/compile.log
