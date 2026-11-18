@@ -125,6 +125,7 @@ jobs:
       - name: Install browser testing tools
         timeout-minutes: 8
         run: |
+          sudo python3 -c 'from pathlib import Path; [p.write_text(p.read_text().replace("http://us-east-2.ec2.archive.ubuntu.com/ubuntu", "https://archive.ubuntu.com/ubuntu")) for p in Path("/etc/apt").rglob("*") if p.is_file() and (p.name=="sources.list" or p.suffix in (".sources", ".list"))]'
           npm install playwright@1.58.2
           npx playwright install --with-deps webkit chromium
       - name: Browser tests (simulated ESP API)
