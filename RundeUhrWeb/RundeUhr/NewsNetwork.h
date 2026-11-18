@@ -5,14 +5,18 @@
 #include <new>
 struct NewsResult {NewsData data;};QueueHandle_t newsResultQueue;
 inline void fetchNews(NewsData&d){
+ // Reserve the transactional parser BEFORE TLS consumes/ fragments the heap.
+ // The memory gate must account for this live reservation, not only TLS buffers.
+ std::unique_ptr<NewsFeed> feed(new(std::nothrow) NewsFeed(d.source==8));
+ if(!feed){strcpy(d.error,"RAM: RSS Parser; neuer Versuch in 60 s");return;}
+ Quote probe;if(!financeMemoryReady(probe)){strcpy(d.error,"RAM: RSS + TLS; neuer Versuch in 60 s");return;}
+
  WiFiClientSecure client;client.setCACert(FINANCE_TRUST);client.setHandshakeTimeout(20);
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(10000);http.useHTTP10(true);
  if(!http.begin(client,NEWS_SOURCES[d.source].url)){strcpy(d.error,"HTTPS Start fehlgeschlagen");return;}
  const char* headers[]={"Transfer-Encoding"};http.collectHeaders(headers,1);
  http.addHeader("Accept-Encoding","identity");http.setUserAgent("RundeUhr/3.2.0-rc27 private RSS reader");d.http=http.GET();
  if(d.http!=200){char detail[48]={};int tls=client.lastError(detail,sizeof(detail));snprintf(d.error,sizeof(d.error),"HTTP %d / TLS %d",d.http,tls);http.end();return;}
- std::unique_ptr<NewsFeed> feed(new(std::nothrow) NewsFeed(d.source==8));
- if(!feed){strcpy(d.error,"RAM beim RSS Empfang");http.end();client.stop();return;}
  int expected=http.getSize();int n=(expected>=0&&http.header("Transfer-Encoding").length()==0)?readNewsBody(client,*feed,expected):http.writeToStream(feed.get());http.end();client.stop();
  if(n<0||(expected>=0&&n!=expected)){snprintf(d.error,sizeof(d.error),"RSS Lesen %d: %u/%d B",n,unsigned(feed->size()),expected);return;}
  if(!feed->finish(d,time(nullptr)))strcpy(d.error,"RSS unvollstaendig/ungueltig");

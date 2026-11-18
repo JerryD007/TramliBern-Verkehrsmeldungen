@@ -1,7 +1,7 @@
-name: RundeUhr RC29 tests
+name: RundeUhr RC30 tests
 on:
   push:
-    branches: ['test/rundeuhr-rc29']
+    branches: ['test/rundeuhr-rc30']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RundeUhr-3.2.0-rc29
+          name: RundeUhr-3.2.0-rc30
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
