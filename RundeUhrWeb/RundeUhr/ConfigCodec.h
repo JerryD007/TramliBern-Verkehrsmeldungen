@@ -66,5 +66,7 @@ inline bool loadConfig(JsonDocument &d,Config&c,bool&migrated){
  d["view"]=v;d["mask"]=m?m:1;d["schema"]=4;migrated=true;
  }
  if(schema!=1&&schema!=2&&schema!=3&&schema!=4){c=t;return false;}
+ // One-time RC26 policy migration; unrelated settings and credentials stay intact.
+ if((d["eventPolicyVersion"]|0)<26){d["launchWindow"]=10080;d["quakeWindow"]=1440;d["quakeMagnitude"]=4.5;d["quakeRadius"]=0;d["newsWindow"]=1440;d["eventPolicyVersion"]=26;migrated=true;}
  bool ok=decodeConfig(d,t);if(ok&&(t.view!=(d["view"]|0)||t.mask!=(d["mask"]|0))){migrated=true;d["view"]=t.view;d["mask"]=t.mask;}c=t;return ok;
 }

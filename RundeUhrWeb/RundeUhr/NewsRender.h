@@ -19,7 +19,7 @@ inline void renderNews(Adafruit_GFX&g,const Config&c,const NewsData&n,time_t now
  if(!count){txt(g,"Keine neuen Meldungen",120,0);return;}
  // Each headline gets enough time to scroll completely at 90 px/s, with end pauses.
  uint32_t total=0,durations[3];for(int k=0;k<count;k++){durations[k]=newsHeadlineDuration(n.items[eligible[k]].title);total+=durations[k];}
- uint32_t phase=ms%total;int idx=0;while(idx+1<count&&phase>=durations[idx])phase-=durations[idx++];auto&e=n.items[eligible[idx]];
+ uint32_t phase=c.automatic?std::min(ms,total-1):ms%total;int idx=0;while(idx+1<count&&phase>=durations[idx])phase-=durations[idx++];auto&e=n.items[eligible[idx]];
  char headline[256];size_t length=newsDisplayText(e.title,headline,sizeof(headline));
  g.setFont(nullptr);g.setTextSize(4);g.cp437(true);g.setTextColor(WHITE);int width=length*NEWS_ADVANCE,travel=width>184?width-184:0;int offset=phase<1500?0:int((phase-1500)*NEWS_SPEED/1000);if(offset>travel)offset=travel;
  NewsBand band(g);band.setTextWrap(false);band.setTextSize(4);band.cp437(true);band.setTextColor(WHITE);

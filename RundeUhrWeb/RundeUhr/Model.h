@@ -19,7 +19,7 @@ struct Config {
  uint8_t countdownType=0; bool animations=true; bool weekendTransition=false;
  double lat=46.948,lon=7.4474;
  uint32_t mask=1011;uint16_t interval=15;
- uint8_t newsFeed=0;bool launchPriority=true,quakePriority=true;uint16_t launchWindow=60,quakeWindow=60,quakeRadius=0,newsWindow=180;float quakeMagnitude=4.5;
+ uint8_t newsFeed=0;bool launchPriority=true,quakePriority=true;uint16_t launchWindow=10080,quakeWindow=1440,quakeRadius=0,newsWindow=1440;float quakeMagnitude=4.5;
  uint8_t view=0; bool automatic=false;
  bool aircraftPriority=false,aircraftInRange=false;
  char aircraftPlace[49]="Bern";double aircraftLat=46.948,aircraftLon=7.4474;uint16_t aircraftRadius=50;
