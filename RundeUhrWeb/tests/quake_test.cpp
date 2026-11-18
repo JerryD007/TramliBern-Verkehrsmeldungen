@@ -7,7 +7,7 @@ for(int k=0;k<8;k++){auto f=d["features"].add<JsonObject>();f["properties"]["typ
 auto keep=q;d["features"][0]["properties"]["mag"]=nullptr;assert(!parseQuake(d,q,now));assert(q.events[0].at==keep.events[0].at);d["features"][0]["properties"]["mag"]=4.5;d["metadata"]["generated"]=int64_t(now-901)*1000;assert(!parseQuake(d,q,now));d["metadata"]["generated"]=int64_t(now+61)*1000;assert(!parseQuake(d,q,now));d["metadata"]["generated"]=int64_t(now)*1000;d["metadata"]["count"]=9;assert(!parseQuake(d,q,now));assert(nextView(13,(1<<13)|(1<<14))==14);assert(nextView(14,1<<13)==13);
 // A successful feed can legitimately have zero matches under a 60-minute filter.
 d["metadata"]["count"]=8;for(auto f:d["features"].as<JsonArray>())f["properties"]["time"]=int64_t(now-7200)*1000;
-Config filter;assert(parseQuake(d,q,now,&filter)&&q.valid&&q.count==0);
+Config filter;filter.quakeWindow=60;assert(parseQuake(d,q,now,&filter)&&q.valid&&q.count==0);
 filter.quakeWindow=1440;assert(parseQuake(d,q,now,&filter)&&q.count==5);
 filter.quakeMagnitude=9;assert(parseQuake(d,q,now,&filter)&&q.valid&&q.count==0);
 filter.quakeMagnitude=4.5;filter.quakeRadius=1;assert(parseQuake(d,q,now,&filter)&&q.count==0);
