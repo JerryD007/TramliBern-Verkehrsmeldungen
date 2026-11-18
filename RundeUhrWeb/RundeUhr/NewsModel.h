@@ -36,5 +36,5 @@ inline uint64_t newsFrameKey(const NewsData&n,const NewsFrame&f,time_t now,bool 
 struct NewsScrollClock {
  uint32_t elapsed=0,last=0;
  void reset(uint32_t now){elapsed=0;last=now;}
- void frame(uint32_t now){uint32_t delta=now-last;last=now;elapsed+=std::min(delta,33U);}
+ void frame(uint32_t now){uint32_t delta=now-last;last=now;elapsed+=std::min<uint32_t>(delta,33U);}
 };
