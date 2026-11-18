@@ -35,7 +35,7 @@ inline bool financeMemoryReady(Quote&q){
 // Called by the existing single network worker: never concurrent with weather TLS.
 inline void financeTick(const Config&c,bool reset){
  static Config previous;static FinanceData data;static bool started=false;static uint32_t last[4]={};static bool attempted[4]={};static uint8_t cursor=0;
- if(!started||!financeConfigEqual(c,previous)||reset){data=FinanceData();memset(attempted,0,sizeof(attempted));previous=c;started=true;}
+ if(!started||!financeConfigEqual(c,previous)||reset){BitcoinHistory history=data.history;bool keep=started&&!strcmp(c.btcCurrency,previous.btcCurrency);data=FinanceData();if(keep)data.history=history;memset(attempted,0,sizeof(attempted));previous=c;started=true;}
  uint32_t ms=millis();
  for(int j=0;j<4;j++){int i=(cursor+j)%4;bool enabled=i==0?(c.view==10||(c.mask&(1<<10))):(c.view==11||(c.mask&(1<<11)));if(!enabled)continue;
  Quote&q=i==0?data.btc:data.fx[i-1];uint32_t interval=q.memoryDeferred?15000UL:q.error[0]?300000UL:(i==0?120000UL:21600000UL);
@@ -46,6 +46,7 @@ inline void financeTick(const Config&c,bool reset){
  bool identity=i>0&&!strcmp(c.fxBase[i-1],c.fxQuote[i-1]);
  if(!identity&&!financeMemoryReady(q)){q.memoryDeferred=true;snprintf(q.error,sizeof(q.error),"RAM %s: %lu B; Block %lu/%lu; in 15 s",q.memoryGate==1?"gesamt":q.memoryGate==2?"TLS Eingang":"TLS Ausgang",(unsigned long)q.heapBefore,(unsigned long)q.largestBefore,(unsigned long)q.largestAfterFirst);}
  else fetchQuote(q,i==0?"BTC":c.fxBase[i-1],i==0?c.btcCurrency:c.fxQuote[i-1],i==0);
+ if(i==0)data.history.add(q);
  networkBusy=false;last[i]=millis();attempted[i]=true;cursor=(i+1)%4;
  FinanceResult result;result.config=c;result.data=data;xQueueOverwrite(financeResultQueue,&result);return;
  }
