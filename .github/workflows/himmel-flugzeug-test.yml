@@ -1,0 +1,50 @@
+name: Himmel Flugzeug development checks
+on:
+  push:
+    branches: [test/himmel-flugzeug-landscape]
+    paths: [himmel-flugzeug/source.zip, .github/workflows/himmel-flugzeug-test.yml]
+permissions:
+  contents: read
+jobs:
+  host-and-esp32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.6.0'
+      - name: Install pinned ESP32 dependencies
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.0
+          arduino-cli lib install LovyanGFX@1.2.7 ArduinoJson@7.4.2
+          python3 -m pip install pillow
+          mkdir app
+          unzip -q himmel-flugzeug/source.zip -d app
+          cd app/Tests
+          npm install --no-save jsdom@26
+      - name: Host checks on production source
+        run: |
+          export ARDUINOJSON_INCLUDE="$HOME/Arduino/libraries/ArduinoJson/src"
+          export ARDUINOJSON_DIR="$ARDUINOJSON_INCLUDE"
+          cd app
+          python3 Tools/compress_web.py
+          python3 Tools/run_tests.py
+      - name: Compile ESP32 without flashing
+        run: |
+          arduino-cli compile --jobs 2 --fqbn esp32:esp32:esp32:FlashMode=dio,FlashFreq=40,PartitionScheme=huge_app,PSRAM=disabled --build-path build app/WetterHimmel 2>&1 | tee app/Tests/new/compile-ci.log
+          test -s build/WetterHimmel.ino.bin
+          python3 -c "from pathlib import Path; n=Path('build/WetterHimmel.ino.bin').stat().st_size; assert n<=1966080; print('Actual OTA bytes:',n,'remaining:',1966080-n)"
+        shell: bash --noprofile --norc -eo pipefail {0}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: himmel-flugzeug-dev1-build-and-tests
+          path: |
+            build/WetterHimmel.ino.bin
+            app/Tests/new/*.log
+            app/Tests/new/results.json
+            app/Tests/new/*.png
