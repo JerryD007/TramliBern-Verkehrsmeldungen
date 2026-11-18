@@ -72,6 +72,11 @@ jobs:
           g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/design_preview.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/design_preview
           build/design_preview
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_sky.sh
+      - name: Compile ESP32-C3
+        working-directory: RundeUhrWeb
+        run: |
+          arduino-cli compile --jobs 4 --fqbn 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40,UploadSpeed=115200' --output-dir build RundeUhr 2>&1 | tee build/compile.log
+          python3 tests/verify_binary.py
       - name: Verify live finance APIs and TLS roots
         working-directory: RundeUhrWeb
         run: |
@@ -97,11 +102,6 @@ jobs:
       - name: Verify live weather HTTPS and firmware parser
         working-directory: RundeUhrWeb
         run: python3 tests/check_weather_tls.py
-      - name: Compile ESP32-C3
-        working-directory: RundeUhrWeb
-        run: |
-          arduino-cli compile --jobs 4 --fqbn 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40,UploadSpeed=115200' --output-dir build RundeUhr 2>&1 | tee build/compile.log
-          python3 tests/verify_binary.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
