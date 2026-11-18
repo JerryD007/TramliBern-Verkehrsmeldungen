@@ -12,5 +12,7 @@ int main(){time_t now=1794890000;Config c;c.automatic=true;c.mask=(1UL<<14)|(1UL
  q.events[0].magnitude=5.9;assert(quakeRelevant(c,q.events[0],now));assert(!quakeUrgent(q.events[0],now));q.events[0].magnitude=6;q.events[0].at=now-3600;assert(quakeUrgent(q.events[0],now));q.events[0].at--;assert(!quakeUrgent(q.events[0],now));q.events[0].at=now-86400;assert(quakeRelevant(c,q.events[0],now));q.events[0].at--;assert(!quakeRelevant(c,q.events[0],now));
  c.automatic=true;n.count=3;n.items[0].at=now-86401;n.items[1].at=now-86400;n.items[2].at=now-60;strcpy(n.items[2].title,"third headline");NewsSession session;session.begin(c,n,now);assert(session.selected.items[0].at==n.items[1].at);session.begin(c,n,now);assert(session.selected.items[0].at==n.items[2].at);assert(session.duration==newsHeadlineDuration("third headline"));session.begin(c,n,now);assert(session.selected.items[0].at==n.items[1].at);
  n.items[1].at=now+1;n.items[2].at=now-86401;assert(!(eventCycleMask(c,l,q,n,now,true)&65536));
- 
+
+ EventPriority remembered;memcpy(remembered.seen,p.seen,sizeof(p.seen));assert(remembered.known(p.activeKey));
+ auto alert=priorityLaunch(l,now,launchKey(l.events[0]));if(launchUrgent(l.events[0],now))assert(alert.count==1);
  puts("PASS skip/priority/freshness/area/magnitude/manual/cooldown/32-bit mask");}
