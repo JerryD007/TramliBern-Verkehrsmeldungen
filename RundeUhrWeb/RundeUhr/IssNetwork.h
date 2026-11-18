@@ -10,7 +10,7 @@ inline void fetchIss(IssData&i){
  HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(6000);http.useHTTP10(true);
  if(!http.begin(client,"https://api.wheretheiss.at/v1/satellites/25544")){strcpy(i.error,"HTTPS Start fehlgeschlagen");return;}
  if(!client.connectVerified("api.wheretheiss.at",443,i)){i.http=-1;snprintf(i.error,sizeof(i.error),"TLS %d; siehe ISS TLS-Detail",i.tlsCode);return;}
- http.setUserAgent("RundeUhr/3.2.0-rc26");http.addHeader("Accept-Encoding","identity");i.http=http.GET();
+ http.setUserAgent("RundeUhr/3.2.0-rc27");http.addHeader("Accept-Encoding","identity");i.http=http.GET();
  if(i.http!=200){char detail[48]={};int tls=client.lastError(detail,sizeof(detail));snprintf(i.error,sizeof(i.error),"HTTP %d / TLS %d: %.40s",i.http,tls,detail);http.end();return;}
  int length=http.getSize();if(length>2048){strcpy(i.error,"Antwort zu gross");http.end();return;}
  BoundedBody body(length>0?size_t(length):2048);if(!body.ready()){strcpy(i.error,"RAM fehlt");http.end();return;}

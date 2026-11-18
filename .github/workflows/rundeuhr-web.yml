@@ -1,7 +1,7 @@
-name: RundeUhr RC26 tests
+name: RundeUhr RC27 tests
 on:
   push:
-    branches: ['test/rundeuhr-rc26']
+    branches: ['test/rundeuhr-rc27']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -58,6 +58,8 @@ jobs:
           build/iss_tls_test
           g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/news_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/news_render_test
           build/news_render_test
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/news_transfer_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/news_transfer_test
+          build/news_transfer_test
           python3 tests/tls_fragmentation_test.py
           python3 tests/fleet_cors_test.py
           g++ -std=c++17 tests/weekend_transition_test.cpp -o build/weekend_transition
@@ -103,7 +105,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RundeUhr-3.2.0-rc26
+          name: RundeUhr-3.2.0-rc27
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log

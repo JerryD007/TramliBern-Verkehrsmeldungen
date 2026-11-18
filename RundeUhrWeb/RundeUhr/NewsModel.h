@@ -18,3 +18,23 @@ struct NewsSession {
   if(count){int i=eligible[next%count];next=(next+1)%count;selected.items[0]=n.items[i];selected.count=1;duration=newsHeadlineDuration(n.items[i].title);}else duration=5000;
  }
 };
+
+struct NewsFrame {int index=-1;uint32_t phase=0;};
+inline NewsFrame newsFrame(const Config&c,const NewsData&n,time_t now,uint32_t ms){
+ NewsFrame f;int eligible[3],count=0;uint32_t total=0,durations[3];
+ if(!n.valid)return f;
+ for(int i=0;i<n.count;i++)if(!c.automatic||(n.items[i].at<=now&&now-n.items[i].at<=c.newsWindow*60)){eligible[count]=i;durations[count]=newsHeadlineDuration(n.items[i].title);total+=durations[count++];}
+ if(!count)return f;f.phase=c.automatic?std::min(ms,total-1):ms%total;int idx=0;
+ while(idx+1<count&&f.phase>=durations[idx])f.phase-=durations[idx++];f.index=eligible[idx];return f;
+}
+inline uint64_t newsFrameKey(const NewsData&n,const NewsFrame&f,time_t now,bool online){
+ uint64_t h=1469598103934665603ULL;auto mix=[&](uint8_t b){h=(h^b)*1099511628211ULL;};mix(n.source);mix(online);mix(newsStale(n,now));mix(n.error[0]!=0);mix(f.index+1);
+ if(f.index>=0){const auto&e=n.items[f.index];uint64_t at=e.at;for(int i=0;i<8;i++)mix(at>>(i*8));for(const char*s=e.title;*s;s++)mix(*s);}return h;
+}
+
+// Advance only on rendered frames. A blocked main loop must not consume the headline.
+struct NewsScrollClock {
+ uint32_t elapsed=0,last=0;
+ void reset(uint32_t now){elapsed=0;last=now;}
+ void frame(uint32_t now){uint32_t delta=now-last;last=now;elapsed+=std::min(delta,33U);}
+};
