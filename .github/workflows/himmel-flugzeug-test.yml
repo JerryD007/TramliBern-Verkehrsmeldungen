@@ -24,6 +24,7 @@ jobs:
           python3 -m pip install pillow cryptography
           mkdir app
           unzip -q himmel-flugzeug/source.zip -d app
+          (cd app && python3 ../himmel-flugzeug/dev8-ui-patch.py)
           cd app/Tests
           npm install --no-save jsdom@26
       - name: Host checks on production source
@@ -42,7 +43,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: himmel-flugzeug-dev6-build-and-tests
+          name: himmel-flugzeug-dev8-build-and-tests
           path: |
             build/WetterHimmel.ino.bin
             build/WetterHimmel.ino.map
