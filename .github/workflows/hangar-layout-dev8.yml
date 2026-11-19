@@ -1,0 +1,29 @@
+name: Hangar dev8 browser layout
+on:
+  push:
+    branches: [test/himmel-flugzeug-landscape]
+    paths: [.github/workflows/hangar-layout-dev8.yml, himmel-flugzeug/hangar-layout-dev8.cjs]
+permissions:
+  contents: read
+jobs:
+  layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          mkdir app
+          unzip -q himmel-flugzeug/source.zip -d app
+          (cd app && python3 ../himmel-flugzeug/dev8-ui-patch.py && python3 Tools/compress_web.py)
+          npm install playwright@1.58.2
+          npx playwright install --with-deps webkit chromium
+      - run: node himmel-flugzeug/hangar-layout-dev8.cjs | tee hangar-layout.log
+        shell: bash --noprofile --norc -eo pipefail {0}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hangar-dev8-layout
+          path: hangar-layout.log
