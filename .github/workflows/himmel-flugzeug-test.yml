@@ -2,7 +2,7 @@ name: Himmel Flugzeug development checks
 on:
   push:
     branches: [test/himmel-flugzeug-landscape]
-    paths: [himmel-flugzeug/source.zip, .github/workflows/himmel-flugzeug-test.yml]
+    paths: [himmel-flugzeug/source.zip, himmel-flugzeug/dev8-ui-patch.py, .github/workflows/himmel-flugzeug-test.yml]
 permissions:
   contents: read
 jobs:
