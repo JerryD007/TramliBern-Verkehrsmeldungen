@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: himmel-flugzeug-dev4-build-and-tests
+          name: himmel-flugzeug-dev5-build-and-tests
           path: |
             build/WetterHimmel.ino.bin
             build/WetterHimmel.ino.map
