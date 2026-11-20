@@ -1,13 +1,11 @@
-name: TramliBern RC29 - compile ESP32
+name: TramliBern RC28 OTA password recovery (USB)
 on:
   push:
     branches:
-      - test/tramlibern-4.0-rc27-build
+      - test/tramlibern-rc28-ota-password-recovery
     paths:
-      - RC27_SOURCE_UPLOAD.zip
       - .github/workflows/tramlibern-rc27-build.yml
-      - .github/rc28_patch.py
-      - .github/rc29_patch.py
+      - .github/ota_recovery_patch.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,54 +14,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract uploaded RC27 source archive
+      - name: Extract preserved RC27 base
         run: |
-          test -s RC27_SOURCE_UPLOAD.zip || { echo "::error::Missing RC27_SOURCE_UPLOAD.zip"; exit 1; }
-          mkdir -p src
+          test -s RC27_SOURCE_UPLOAD.zip
+          mkdir src
           unzip -q RC27_SOURCE_UPLOAD.zip -d src
           test -s src/TramliBern/TramliBern.ino
           test -s src/TramliBern/partitions.csv
-      - name: Set up Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-      - name: Install ESP32 core and libraries
+      - name: Apply exactly RC28 and one-shot OTA recovery (NO RC29 changes)
+        run: |
+          python3 .github/rc28_patch.py src/TramliBern/TramliBern.ino
+          python3 .github/ota_recovery_patch.py src/TramliBern/TramliBern.ino
+          grep -q 'otaRecDone1' src/TramliBern/TramliBern.ino
+          if grep -q 'showWifiQR' src/TramliBern/TramliBern.ino; then echo 'Unexpected RC29 QR code in recovery' && exit 1; fi
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install exact dependencies
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli lib install "ArduinoJson@7.4.2"
           arduino-cli lib install "GFX Library for Arduino@1.6.0"
           arduino-cli lib install "XPT2046_Touchscreen@1.4"
-      - name: Apply RC28 then RC29 changes
-        run: |
-          python3 .github/rc28_patch.py src/TramliBern/TramliBern.ino
-          python3 .github/rc29_patch.py src/TramliBern/TramliBern.ino
-      - name: Install QR code library
-        run: |
-          git clone --depth 1 https://github.com/ricmoo/QRCode.git "$HOME/Arduino/libraries/QRCode"
-      - name: Bundle QRCode sources locally (avoid ESP32 header collision)
-        run: |
-          cp "$HOME/Arduino/libraries/QRCode/src/qrcode.c" src/TramliBern/qrcode.c
-          cp "$HOME/Arduino/libraries/QRCode/src/qrcode.h" src/TramliBern/qrcode.h
-          sed -i 's/#include <qrcode.h>/#include "qrcode.h"/' src/TramliBern/TramliBern.ino
-      - name: Compile RC29 HomeCross
+      - name: Compile recovery
         run: |
           mkdir -p build
           arduino-cli compile --jobs 1 --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs --output-dir build --export-binaries src/TramliBern
-      - name: Check OTA capacity
+      - name: Assert capacity and package all exact compiled sources
         run: |
           test -s build/TramliBern.ino.bin
           bytes=$(stat -c '%s' build/TramliBern.ino.bin)
-          echo "Firmware size: $bytes bytes; OTA slot: 1966080 bytes"
+          echo "BIN_BYTES=$bytes"
+          echo "OTA_SLOT=1966080"
           test "$bytes" -le 1966080
-      - name: Package output
-        run: |
-          mkdir -p deliver
-          cp build/TramliBern.ino.bin deliver/TramliBern_RC29.ino.bin
-          sha256sum deliver/TramliBern_RC29.ino.bin > deliver/SHA256SUMS.txt
-          mkdir -p deliver/VerifiedSource
-          cp src/TramliBern/TramliBern.ino src/TramliBern/qrcode.c src/TramliBern/qrcode.h deliver/VerifiedSource/
-      - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+          mkdir -p deliver/ArduinoSource
+          cp -a src/TramliBern/. deliver/ArduinoSource/
+          cp build/TramliBern.ino.bin deliver/TramliBern_RC28_OTA_RECOVERY.ino.bin
+          sha256sum deliver/TramliBern_RC28_OTA_RECOVERY.ino.bin > deliver/SHA256SUMS.txt
+          echo "Build SHA: $GITHUB_SHA" > deliver/BUILD_INFO.txt
+          echo "Restores only OTA password via one-shot boot flag; requires USB flash; no other settings erased." >> deliver/BUILD_INFO.txt
+      - uses: actions/upload-artifact@v4
         with:
-          name: TramliBern_RC29_compiled_bin
+          name: TramliBern_RC28_OTA_RECOVERY_verified
           path: deliver/
           if-no-files-found: error
