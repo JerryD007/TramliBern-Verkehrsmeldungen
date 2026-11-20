@@ -7,7 +7,7 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  for(const [engine,launch] of (process.env.WEBKIT_ONLY?[['webkit',webkit]]:process.env.CHROMIUM_ONLY?[['chromium',chromium]]:[['webkit',webkit],['chromium',chromium]])){
  const browser=await launch.launch({headless:true,...(engine==='chromium'&&process.env.SYSTEM_CHROMIUM?{executablePath:'/usr/bin/chromium',args:['--no-sandbox']}:{} )});const page=await browser.newPage({viewport:{width:1440,height:1024}});let state=structuredClone(base),calls=[],fail=false,otaMode='ok',errors=[],postCount=0;
  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
- await page.route('http://rundeuhr.local/**',async route=>{
+ await page.route(/^http:\/\/(rundeuhr\.local|192\.168\.4\.1)\//,async route=>{
  const r=route.request(),p=new URL(r.url()).pathname,data=r.method()==='POST'?r.postDataJSON():null;
  if(p==='/'){await route.fulfill({contentType:'text/html',body:html});return;}
  if(fail){await route.abort('failed');return;}
@@ -27,6 +27,18 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  if(p==='/api/config/export')result={...state,backupFamily:'RundeUhr-settings-v1'};
  await route.fulfill({contentType:'application/json',body:JSON.stringify(result)});
  });
+ await page.goto('http://192.168.4.1/');
+ await page.waitForFunction(()=>document.getElementById('connection').textContent==='Gerät verbunden');
+ assert(await page.locator('#wifi').isVisible());
+ await page.waitForFunction(()=>document.querySelectorAll('#networks button').length===2);
+ await page.locator('#networks button').nth(1).click();
+ assert.equal(await page.locator('#ssid').inputValue(),'Druhá síť');
+ await page.locator('#pass').fill('ExamplePassword');await page.locator('#showPass').check();
+ assert.equal(await page.locator('#pass').getAttribute('type'),'text');await page.locator('#showPass').uncheck();
+ assert.equal(await page.locator('#pass').getAttribute('type'),'password');
+ await page.locator('#wifiForm button').click();
+ await page.waitForFunction(()=>document.getElementById('pass').value==='');
+ assert(calls.some(c=>c.p==='/api/wifi'&&c.data.ssid==='Druhá síť'&&c.data.pass==='ExamplePassword'));
  await page.goto('http://rundeuhr.local/');await page.waitForFunction(()=>document.getElementById('connection').textContent==='Gerät verbunden');
  await page.waitForFunction(()=>document.getElementById('previewStatus').textContent.includes('Aktuelle Display-Aufnahme'));
  assert.equal(await page.locator('.screen-card').count(),15);assert.equal(await page.locator('html').getAttribute('lang'),'de');assert.equal(await page.locator('#deviceTitle').textContent(),base.deviceLabel);

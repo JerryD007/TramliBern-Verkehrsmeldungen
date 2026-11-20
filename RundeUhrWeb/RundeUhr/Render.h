@@ -2,6 +2,7 @@
 // Shared renderer: firmware and host previews use exactly these drawing routines.
 #include "Model.h"
 #include "WeekendFrames.h"
+#include "WifiSetupQR.h"
 #include <Fonts/FreeSansBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
@@ -82,7 +83,22 @@ inline void weatherRowText(Adafruit_GFX&g,String text,int cx,int y,int width,int
 inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moon,time_t now,bool online,bool setup,String apName,String apKey,uint32_t ms=0){
  activePalette=palette;g.fillScreen(BG);g.setTextWrap(false);int v=c.view;bool valid=timeValid(now);tm t={};if(valid)localtime_r(&now,&t);
  const int accents[]={CYAN,YELLOW,PURPLE,YELLOW,PURPLE,ORANGE};g.drawCircle(120,120,116,(v==5||v==7?RED:v==9?CYAN:v==6?PURPLE:accents[v<5?v:5]));g.drawCircle(120,120,115,(v==5||v==7?RED:v==9?CYAN:v==6?PURPLE:accents[v<5?v:5]));
- if(setup){txt(g,"WLAN einrichten",35,2,CYAN);txt(g,apName,69,2);txt(g,"WLAN-Passwort",98,1);txt(g,apKey,122,2);txt(g,"Safari oeffnen",155,1);txt(g,"http://192.168.4.1",177,1);txt(g,"Setup ohne Internet",203,0,ORANGE);return;}
+ if(setup){
+  g.fillScreen(BG);g.drawCircle(120,120,116,CYAN);
+  txt(g,"WLAN Setup",28,2,CYAN);
+  static WifiSetupQR qr;
+  if(qr.prepare(apName.c_str(),apKey.c_str())){
+   const int size=qrcodegen_getSize(qr.code),scale=154/(size+8),side=(size+8)*scale,origin=(240-side)/2;
+   g.fillRect(origin,origin,side,side,WHITE); // Four-module quiet zone on every side.
+   for(int y=0;y<size;y++)for(int x=0;x<size;x++)if(qrcodegen_getModule(qr.code,x,y))g.fillRect(origin+(x+4)*scale,origin+(y+4)*scale,scale,scale,BG);
+   txt(g,"Mit iPhone scannen",201,0,WHITE);
+   txt(g,"192.168.4.1",216,0,CYAN);
+  }else{ // Manual fallback must remain usable even if encoding fails.
+   txt(g,apName,69,2);txt(g,"WLAN-Passwort",98,1);txt(g,apKey,122,2);
+   txt(g,"Safari oeffnen",155,1);txt(g,"192.168.4.1",177,1);
+  }
+  return;
+ }
  // The gold countdown uses decorative side arcs, not a progress gauge.
  if(v==8){g.fillScreen(BG);for(int a=-50;a<50;a++){double q=a*M_PI/180,q2=(a+1)*M_PI/180;int yy=120+sin(q)*112,yy2=120+sin(q2)*112;int xx=cos(q)*112,xx2=cos(q2)*112;g.drawLine(120-xx,yy,120-xx2,yy2,YELLOW);g.drawLine(120+xx,yy,120+xx2,yy2,YELLOW);}}
  if(!valid){txt(g,"Zeit fehlt",77,3,ORANGE);txt(g,"NTP ueber WLAN",126,2);txt(g,"Verbindung pruefen",153,1);return;}

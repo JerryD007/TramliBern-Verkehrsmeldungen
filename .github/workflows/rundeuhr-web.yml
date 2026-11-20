@@ -1,7 +1,7 @@
-name: RundeUhr RC30 tests
+name: RundeUhr RC31 tests
 on:
   push:
-    branches: ['test/rundeuhr-rc30']
+    branches: ['test/rundeuhr-rc31']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -28,19 +28,23 @@ jobs:
           mkdir -p build
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" bash tools/build_thumbs.sh
           git diff --exit-code -- web/thumbs.json RundeUhr/WebApp.h preview/App.html
+          g++ -std=c++17 -fsanitize=address,undefined -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/wifi_qr_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/wifi_qr_test
+          build/wifi_qr_test
+          python3 -m pip install Pillow zxing-cpp
+          python3 tests/wifi_qr_decode.py
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/web_logic_test.cpp -o build/web_logic
           build/web_logic
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/iss_test.cpp -o build/iss_test
           build/iss_test
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/iss_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/iss_render
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/iss_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/iss_render
           build/iss_render
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/quake_test.cpp -o build/quake_test
           build/quake_test
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/quake_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/quake_render
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/quake_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/quake_render
           build/quake_render
           g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/launch_test.cpp -o build/launch_test
           build/launch_test
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/launch_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/launch_render
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/launch_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/launch_render
           build/launch_render
           python3 tests/launch_scheduler_test.py
           python3 tests/deferred_scheduler_test.py
@@ -56,22 +60,22 @@ jobs:
           build/event_test
           g++ -std=c++17 tests/iss_tls_test.cpp -o build/iss_tls_test
           build/iss_tls_test
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/news_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/news_render_test
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/news_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/news_render_test
           build/news_render_test
-          g++ -std=c++17 -fsanitize=address,undefined -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/news_transfer_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/news_transfer_test
+          g++ -std=c++17 -fsanitize=address,undefined -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/news_transfer_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/news_transfer_test
           build/news_transfer_test
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/bitcoin_history_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/bitcoin_history_test
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/bitcoin_history_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/bitcoin_history_test
           build/bitcoin_history_test
           python3 tests/tls_fragmentation_test.py
           python3 tests/fleet_cors_test.py
           g++ -std=c++17 tests/weekend_transition_test.cpp -o build/weekend_transition
           build/weekend_transition
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/weekend_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/weekend_render
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/weekend_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/weekend_render
           build/weekend_render
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_finance.sh
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_aircraft.sh
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" bash tests/run_layout.sh
-          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/design_preview.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" -o build/design_preview
+          g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/design_preview.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/design_preview
           build/design_preview
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_sky.sh
       - name: Compile ESP32-C3
@@ -107,10 +111,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RundeUhr-3.2.0-rc30
+          name: RundeUhr-3.2.0-rc31
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
+            RundeUhrWeb/build/wifi_setup*.png
             RundeUhrWeb/build/live_*.xml
             RundeUhrWeb/build/news_live_report.json
             RundeUhrWeb/tests/live_*.json

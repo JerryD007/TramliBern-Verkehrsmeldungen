@@ -25,6 +25,6 @@ $('uploadFirmware').onclick=safeAction(async()=>{
  finally{uploadLock(false);if(finishSent){$('uploadFirmware').disabled=true;notify('Vor einem weiteren Update die Seite neu laden und die Firmware-Version prüfen.');}}
 });
 window.addEventListener('beforeunload',e=>{if(uploading){e.preventDefault();e.returnValue='Update läuft';}});
-const initialHash=location.hash.slice(1).split('/');go(initialHash[0]||'overview');if(initialHash[0]==='extensions'&&initialHash[1])openModule(initialHash[1]);
+const initialHash=location.hash.slice(1).split('/');go(initialHash[0]||(location.hostname==='192.168.4.1'?'wifi':'overview'));if(initialHash[0]==='extensions'&&initialHash[1])openModule(initialHash[1]);
 setInterval(poll,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
 poll().then(()=>{loadOtaInfo();if(activePage==='wifi'){loadNetworks();scan();}});
