@@ -39,6 +39,11 @@ jobs:
       - name: Install QR code library
         run: |
           git clone --depth 1 https://github.com/ricmoo/QRCode.git "$HOME/Arduino/libraries/QRCode"
+      - name: Bundle QRCode sources locally (avoid ESP32 header collision)
+        run: |
+          cp "$HOME/Arduino/libraries/QRCode/src/qrcode.c" src/TramliBern/qrcode.c
+          cp "$HOME/Arduino/libraries/QRCode/src/qrcode.h" src/TramliBern/qrcode.h
+          sed -i 's/#include <qrcode.h>/#include "qrcode.h"/' src/TramliBern/TramliBern.ino
       - name: Compile RC29 HomeCross
         run: |
           mkdir -p build
@@ -54,6 +59,8 @@ jobs:
           mkdir -p deliver
           cp build/TramliBern.ino.bin deliver/TramliBern_RC29.ino.bin
           sha256sum deliver/TramliBern_RC29.ino.bin > deliver/SHA256SUMS.txt
+          mkdir -p deliver/VerifiedSource
+          cp src/TramliBern/TramliBern.ino src/TramliBern/qrcode.c src/TramliBern/qrcode.h deliver/VerifiedSource/
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
