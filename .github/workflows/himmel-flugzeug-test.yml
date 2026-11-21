@@ -1,7 +1,7 @@
 name: Himmel Flugzeug development checks
 on:
   push:
-    branches: [test/himmel-dev24-memory-hangar]
+    branches: [test/himmel-dev25-hangar-cache]
     paths: [himmel-flugzeug/source.zip, .github/workflows/himmel-flugzeug-test.yml]
 permissions:
   contents: read
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: himmel-flugzeug-dev24-build-and-tests
+          name: himmel-flugzeug-dev25-build-and-tests
           path: |
             build/WetterHimmel.ino.bin
             build/WetterHimmel.ino.map
