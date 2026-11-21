@@ -1,8 +1,8 @@
 name: Himmel Flugzeug development checks
 on:
   push:
-    branches: [test/himmel-flugzeug-landscape]
-    paths: [himmel-flugzeug/source.zip, himmel-flugzeug/dev8-ui-patch.py, .github/workflows/himmel-flugzeug-test.yml]
+    branches: [test/himmel-dev24-memory-hangar]
+    paths: [himmel-flugzeug/source.zip, .github/workflows/himmel-flugzeug-test.yml]
 permissions:
   contents: read
 jobs:
@@ -24,7 +24,6 @@ jobs:
           python3 -m pip install pillow cryptography
           mkdir app
           unzip -q himmel-flugzeug/source.zip -d app
-          (cd app && python3 ../himmel-flugzeug/dev8-ui-patch.py)
           cd app/Tests
           npm install --no-save jsdom@26
       - name: Host checks on production source
@@ -43,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: himmel-flugzeug-dev9-build-and-tests
+          name: himmel-flugzeug-dev24-build-and-tests
           path: |
             build/WetterHimmel.ino.bin
             build/WetterHimmel.ino.map
