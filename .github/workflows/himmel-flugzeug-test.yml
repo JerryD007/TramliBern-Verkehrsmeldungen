@@ -1,7 +1,7 @@
 name: Himmel Flugzeug development checks
 on:
   push:
-    branches: [test/himmel-dev26-network-memory]
+    branches: [test/himmel-dev27-tls-memory]
     paths: [himmel-flugzeug/source.zip, .github/workflows/himmel-flugzeug-test.yml]
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@3.3.0
           arduino-cli lib install LovyanGFX@1.2.7 ArduinoJson@7.4.2
-          python3 -m pip install pillow cryptography
+          python3 -m pip install pillow cryptography cmake
           mkdir app
           unzip -q himmel-flugzeug/source.zip -d app
           cd app/Tests
@@ -33,21 +33,23 @@ jobs:
           cd app
           python3 Tools/compress_web.py
           python3 Tools/run_tests.py
+          python3 Tests/tls_memory_test.py | tee Tests/new/tls-memory-host.log
       - name: Compile ESP32 without flashing
         run: |
           arduino-cli compile --jobs 2 --fqbn esp32:esp32:esp32:FlashMode=dio,FlashFreq=40,PartitionScheme=huge_app,PSRAM=disabled --build-path build app/WetterHimmel 2>&1 | tee app/Tests/new/compile-ci.log
           test -s build/WetterHimmel.ino.bin
+          python3 app/Tools/check_tls_build.py --packages "$HOME/.arduino15/packages" --build build | tee app/Tests/new/tls-build-check.log
           python3 -c "from pathlib import Path; n=Path('build/WetterHimmel.ino.bin').stat().st_size; assert n<=1966080; print('Actual OTA bytes:',n,'remaining:',1966080-n)"
         shell: bash --noprofile --norc -eo pipefail {0}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: himmel-flugzeug-dev26-build-and-tests
+          name: himmel-flugzeug-dev27-build-and-tests
           path: |
             build/WetterHimmel.ino.bin
             build/WetterHimmel.ino.map
             build/WetterHimmel.ino.partitions.bin
             app/WetterHimmel/WebCompressed.h
             app/Tests/new/*.log
-            app/Tests/new/results.json
+            app/Tests/new/*.json
             app/Tests/new/*.png
