@@ -63,12 +63,12 @@ inline void countdownIcon(Adafruit_GFX&g,int type,uint32_t ms,bool animate){
   int spread=animate?int((phase+1)*5):2;mug(g,68-spread,80+dy,false);mug(g,120+spread,80-dy,true);
   if(!animate||phase<-.4){g.drawLine(120,54,120,62,WHITE);g.drawLine(107,58,112,64,YELLOW);g.drawLine(133,58,128,64,YELLOW);}
  }else if(type==3){ // Gold hand with clear joints and a cuff.
-  int y=dy;g.fillRoundRect(96,102+y,48,32,10,YELLOW);
-  g.fillRoundRect(116,64+y,12,57,6,YELLOW);
-  g.fillRoundRect(101,91+y,13,29,6,YELLOW);g.fillRoundRect(130,94+y,12,27,6,YELLOW);g.fillRoundRect(141,101+y,10,24,5,YELLOW);
+  int y=dy;g.fillRoundRect(96,102+y,48,32,10,GOLD);
+  g.fillRoundRect(116,64+y,12,57,6,GOLD);
+  g.fillRoundRect(101,91+y,13,29,6,GOLD);g.fillRoundRect(130,94+y,12,27,6,GOLD);g.fillRoundRect(141,101+y,10,24,5,GOLD);
   g.drawRoundRect(101,96+y,13,24,5,BG);g.drawRoundRect(130,99+y,12,22,5,BG);g.drawLine(119,77+y,125,77+y,BG);
-  g.fillRoundRect(91,111+y,27,12,6,YELLOW);g.drawLine(98,116+y,113,121+y,BG);
-  g.fillRoundRect(105,137+y,31,10,2,YELLOW);g.fillCircle(130,142+y,2,BG);
+  g.fillRoundRect(91,111+y,27,12,6,GOLD);g.drawLine(98,116+y,113,121+y,BG);
+  g.fillRoundRect(105,137+y,31,10,2,GOLD);g.fillCircle(130,142+y,2,BG);
 
  }
 }
@@ -100,7 +100,7 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
   return;
  }
  // The gold countdown uses decorative side arcs, not a progress gauge.
- if(v==8){g.fillScreen(BG);for(int a=-50;a<50;a++){double q=a*M_PI/180,q2=(a+1)*M_PI/180;int yy=120+sin(q)*112,yy2=120+sin(q2)*112;int xx=cos(q)*112,xx2=cos(q2)*112;g.drawLine(120-xx,yy,120-xx2,yy2,YELLOW);g.drawLine(120+xx,yy,120+xx2,yy2,YELLOW);}}
+ if(v==8){g.fillScreen(BG);for(int a=-50;a<50;a++){double q=a*M_PI/180,q2=(a+1)*M_PI/180;int yy=120+sin(q)*112,yy2=120+sin(q2)*112;int xx=cos(q)*112,xx2=cos(q2)*112;g.drawLine(120-xx,yy,120-xx2,yy2,GOLD);g.drawLine(120+xx,yy,120+xx2,yy2,GOLD);}}
  if(!valid){txt(g,"Zeit fehlt",77,3,ORANGE);txt(g,"NTP ueber WLAN",126,2);txt(g,"Verbindung pruefen",153,1);return;}
  switch(v){
  case 0:{for(int i=0;i<60;i++){double a=i*M_PI/30;int r=i%5?105:100;g.drawLine(120+sin(a)*r,120-cos(a)*r,120+sin(a)*109,120-cos(a)*109,i%5?DIM:WHITE);}for(int i=1;i<=12;i++){double a=i*M_PI/6;txt(g,String(i),int(113-cos(a)*87),2,WHITE,0,int(120+sin(a)*87));}txt(g,fmtTime(now,"%d.%m.%Y"),158,2);hand(g,((t.tm_hour%12)+t.tm_min/60.0)*M_PI/6,51,2,WHITE);hand(g,(t.tm_min+t.tm_sec/60.0)*M_PI/30,77,2,WHITE);hand(g,t.tm_sec*M_PI/30,87,0,ORANGE);g.fillCircle(120,120,5,ORANGE);break;}
@@ -153,7 +153,7 @@ inline void render(Adafruit_GFX &g,const Config&c,const Weather&w,const Moon&moo
   break;
  }
  if(!countdownTarget(c,type,now,target)){txt(g,"Datum waehlen",168,2);txt(g,"In der Web-App",197,0,ORANGE);}else{long days=calendarDays(target,now);
- String remaining=days==0?String("Heute!"):String(labs(days))+(labs(days)==1?" Tag":" Tage");txt(g,remaining,161,remaining.length()>8?2:3,type==3?WHITE:type==1?PURPLE:RED);if(days<0)txt(g,"seit Ereignis",192,0);if(type==3&&days>=0)g.drawFastHLine(101,192,38,DIM);txt(g,fmtTime(target,"%d.%m.%Y"),200,2,type==3?YELLOW:WHITE);}
+ String remaining=days==0?String("Heute!"):String(labs(days))+(labs(days)==1?" Tag":" Tage");txt(g,remaining,161,remaining.length()>8?2:3,type==3?WHITE:type==1?PURPLE:RED);if(days<0)txt(g,"seit Ereignis",192,0);if(type==3&&days>=0)g.drawFastHLine(101,192,38,DIM);txt(g,fmtTime(target,"%d.%m.%Y"),200,2,type==3?GOLD:WHITE);}
  break;}
 
  }
