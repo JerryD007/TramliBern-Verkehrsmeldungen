@@ -27,6 +27,7 @@ jobs:
           cd app/Tests
           npm install --no-save jsdom@26
       - name: Host checks on production source
+        shell: bash --noprofile --norc -eo pipefail {0}
         run: |
           export ARDUINOJSON_INCLUDE="$HOME/Arduino/libraries/ArduinoJson/src"
           export ARDUINOJSON_DIR="$ARDUINOJSON_INCLUDE"
