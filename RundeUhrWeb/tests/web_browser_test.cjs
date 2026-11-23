@@ -72,13 +72,23 @@ function bmp(){const b=Buffer.alloc(28918);b.write('BM');b.writeUInt32LE(b.lengt
  await page.setViewportSize({width:390,height:844});
  for(const id of ['overview','screens','controls','appearance','countdowns','wifi','extensions','system']){await page.evaluate(id=>go(id),id);await page.waitForTimeout(80);const widths=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);assert(widths[0]<=widths[1],id+' horizontal overflow: '+widths);if(id==='screens'){const box=await page.locator('#card0 img').boundingBox();assert(Math.abs(box.width-box.height)<1,'Preview must stay circular');}if(engine==='webkit')await page.screenshot({path:'tests/webkit-mobile-'+id+'.png',fullPage:true});}
  await page.evaluate(()=>go('countdowns'));
+ await page.locator('#weekendStartDay').selectOption('4');
+ await page.locator('#weekendStartTime').fill('18:15');
+ await page.locator('#weekendEndDay').selectOption('0');
+ await page.locator('#weekendEndTime').fill('22:45');
  await page.locator('#weekendTransition').check();
  await page.locator('#weekendForm button').click();
  await page.waitForTimeout(300);
  assert.equal(state.weekendTransition,true);
  await page.reload();await page.waitForTimeout(500);
  assert.equal(await page.locator('#weekendTransition').isChecked(),true);
- console.log('PASS weekend transition switch persistence');
+ assert.equal(await page.locator('#weekendStartDay').inputValue(),'4');
+ assert.equal(await page.locator('#weekendStartTime').inputValue(),'18:15');
+ assert.equal(await page.locator('#weekendEndDay').inputValue(),'0');
+ assert.equal(await page.locator('#weekendEndTime').inputValue(),'22:45');
+ assert.equal(state.countdownDates[4],'2027-05-09');
+ assert.equal(state.interval,27);
+ console.log('PASS weekend figure weekly schedule and switch persistence; other settings preserved');
  // Reject wrong-chip/oversized images before beginning OTA.
  await page.evaluate(()=>go('extensions'));await page.locator('#aircraftPlace').fill('Praha');await page.locator('#aircraftLat').fill('50.08');await page.locator('#aircraftLon').fill('14.43');await page.locator('#aircraftRadius').fill('25');await page.locator('#aircraftPriorityToggle').check();await page.waitForFunction(()=>state.aircraftPriority===true);await page.locator('#aircraftPriorityMode').selectOption('2');await page.locator('#aircraftForm button').click();await page.waitForTimeout(150);assert.equal(state.aircraftPlace,'Praha');assert.equal(state.aircraftRadius,25);assert.equal(state.aircraftPriority,true);assert.equal(state.aircraftInRange,true);assert.equal(state.lat,base.lat);await page.evaluate(()=>{state.aircraft={found:true,callsign:'TEST123',distance:1,destination:'Test City'};paintAircraft();});assert((await page.locator('#aircraftStatus').innerText()).includes('Test City'));await page.evaluate(()=>{state.aircraft.destination='';paintAircraft();});assert(!(await page.locator('#aircraftStatus').innerText()).includes('Ziel:'));await page.locator('#aircraftPriorityMode').selectOption('1');await page.locator('#aircraftForm button').click();await page.waitForTimeout(150);assert(state.aircraftPriority&&!state.aircraftInRange);await page.locator('#aircraftPriorityToggle').uncheck();await page.waitForFunction(()=>state.aircraftPriority===false);assert(!state.aircraftPriority);assert(!state.aircraftInRange);await page.evaluate(()=>go('screens'));await page.locator('#aircraftPriorityCard').check();await page.waitForFunction(()=>state.aircraftPriority===true);assert(state.aircraftPriority);const oldMask=state.mask;await page.locator('#aircraftPriorityCard').uncheck();await page.waitForFunction(()=>state.aircraftPriority===false);assert.equal(state.mask,oldMask);await page.reload();await page.waitForFunction(()=>loaded);await page.evaluate(()=>go('screens'));assert(!(await page.locator('#aircraftPriorityCard').isChecked()));fail=true;await page.locator('#aircraftPriorityCard').click();await page.waitForFunction(()=>!saving && !document.getElementById('aircraftPriorityCard').checked);assert(!(await page.locator('#aircraftPriorityCard').isChecked()));assert(!state.aircraftPriority);fail=false;await page.evaluate(()=>poll());console.log('PASS explicit priority switches: immediate save, mode retained, card sync, reload, failed write rollback, cycle unchanged');
  await page.evaluate(()=>go('system'));await page.locator('#firmwareFile').setInputFiles({name:'wrong.ino.bin',mimeType:'application/octet-stream',buffer:Buffer.alloc(2048)});await page.locator('#uploadFirmware').click();await page.waitForTimeout(120);assert(!calls.some(c=>c.p==='/api/update/begin'));

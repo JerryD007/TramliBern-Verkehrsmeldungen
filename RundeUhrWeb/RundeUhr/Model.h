@@ -87,11 +87,8 @@ inline bool weekendPictureOnly(time_t now,const Config& c=Config()){
  return (minute-start+week)%week < (end-start+week)%week;
 }
 
-// Half-open local calendar window; reboot never extends it.
+// Half-open local weekly schedule; reboot never extends it.
+// Keep the persisted flag/key for compatibility with existing settings.
 inline bool weekendTransitionActive(time_t now,const Config& c){
- if(!c.weekendTransition||!c.animations||!weekendPictureOnly(now,c))return false;
- tm local={};localtime_r(&now,&local);
- const int week=7*1440,start=c.weekendStartDay*1440+c.weekendStartMinute;
- const int minute=local.tm_wday*1440+local.tm_hour*60+local.tm_min;
- return (minute-start+week)%week<30;
+ return c.weekendTransition && c.animations && weekendPictureOnly(now,c);
 }

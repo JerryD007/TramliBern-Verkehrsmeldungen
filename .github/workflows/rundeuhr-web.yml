@@ -1,7 +1,7 @@
-name: RundeUhr RC31 tests
+name: RundeUhr RC32 tests
 on:
   push:
-    branches: ['test/rundeuhr-rc31']
+    branches: ['test/rundeuhr-rc32']
     paths: ['RundeUhrWeb/**', '.github/workflows/rundeuhr-web.yml']
   workflow_dispatch:
 defaults:
@@ -70,6 +70,8 @@ jobs:
           python3 tests/fleet_cors_test.py
           g++ -std=c++17 tests/weekend_transition_test.cpp -o build/weekend_transition
           build/weekend_transition
+          g++ -std=c++17 -I "$HOME/Arduino/libraries/ArduinoJson/src" tests/weekend_config_test.cpp -o build/weekend_config
+          build/weekend_config
           g++ -std=c++17 -DARDUINO=10819 -I tests/host -I "$HOME/Arduino/libraries/Adafruit_GFX_Library" tests/weekend_render_test.cpp "$HOME/Arduino/libraries/Adafruit_GFX_Library/Adafruit_GFX.cpp" RundeUhr/qrcodegen.c -o build/weekend_render
           build/weekend_render
           GFX_DIR="$HOME/Arduino/libraries/Adafruit_GFX_Library" JSON_DIR="$HOME/Arduino/libraries/ArduinoJson/src" bash tests/run_finance.sh
@@ -111,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RundeUhr-3.2.0-rc31
+          name: RundeUhr-3.2.0-rc32
           path: |
             RundeUhrWeb/build/RundeUhr.ino.bin
             RundeUhrWeb/build/compile.log
