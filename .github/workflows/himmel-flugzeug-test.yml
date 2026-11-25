@@ -15,6 +15,7 @@ jobs:
         with:
           version: '1.6.0'
       - name: Install pinned ESP32 dependencies
+        id: deps
         run: |
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -36,6 +37,7 @@ jobs:
           python3 Tools/run_tests.py
           python3 Tests/tls_memory_test.py | tee Tests/new/tls-memory-host.log
       - name: Compile ESP32 without flashing
+        if: always() && steps.deps.outcome == 'success'
         run: |
           arduino-cli compile --jobs 2 --fqbn esp32:esp32:esp32:FlashMode=dio,FlashFreq=40,PartitionScheme=huge_app,PSRAM=disabled --build-path build app/WetterHimmel 2>&1 | tee app/Tests/new/compile-ci.log
           test -s build/WetterHimmel.ino.bin
